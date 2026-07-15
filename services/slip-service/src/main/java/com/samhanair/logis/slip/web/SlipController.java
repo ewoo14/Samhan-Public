@@ -10,6 +10,7 @@ import com.samhanair.logis.security.permission.RequirePermission;
 import com.samhanair.logis.slip.domain.DeliveryTag;
 import com.samhanair.logis.slip.domain.SlipStatus;
 import com.samhanair.logis.slip.domain.SlipType;
+import com.samhanair.logis.slip.price.service.PartnerProductPriceMemoryBulkItemResponse;
 import com.samhanair.logis.slip.price.service.PartnerProductPriceMemoryResponse;
 import com.samhanair.logis.slip.price.service.PartnerProductPriceMemoryService;
 import com.samhanair.logis.slip.service.NextDaySlipImageService;
@@ -20,6 +21,7 @@ import com.samhanair.logis.slip.web.dto.AddLineRequest;
 import com.samhanair.logis.slip.web.dto.CreateSlipRequest;
 import com.samhanair.logis.slip.web.dto.EditHeaderRequest;
 import com.samhanair.logis.slip.web.dto.NextDaySlipImageResponse;
+import com.samhanair.logis.slip.web.dto.PartnerProductPriceMemoryBulkRequest;
 import com.samhanair.logis.slip.web.dto.RejectRequest;
 import com.samhanair.logis.slip.web.dto.SlipCleanupResponse;
 import com.samhanair.logis.slip.web.dto.SlipDetailResponse;
@@ -235,6 +237,25 @@ public class SlipController {
         return priceMemoryService.find(partnerId, productId)
                 .map(response -> ResponseEntity.ok(ApiResponse.ok(response)))
                 .orElseGet(() -> ResponseEntity.noContent().build());
+    }
+
+    /**
+     * 거래처 한 곳의 N개 품목 최근 수동단가 bulk 조회.
+     *
+     * <p>최대 100 UUID 를 query string 으로 보내면 약 3.7KB 이상이 되어 보수적 2KB request-line
+     * 경계를 넘으므로 조회용 POST body 를 사용한다. 응답은 hit 만 요청 순서로 반환하고 miss 는
+     * 생략한다. 전체 miss 도 {@code 200 data=[]} 이며, 요청당 인가 판정은 한 번만 수행한다.
+     */
+    @Operation(summary = "거래처+품목 최근 수동단가 bulk 조회",
+            description = "최대 100개 productIds 중 기억값 hit 만 요청 순서의 배열로 반환한다. "
+                    + "miss 는 생략하며 전체 miss 도 200 data=[]. 단가는 VAT 포함 입력단가다.")
+    @PostMapping("/price-memory/bulk")
+    public ApiResponse<List<PartnerProductPriceMemoryBulkItemResponse>> getPriceMemories(
+            @Valid @RequestBody PartnerProductPriceMemoryBulkRequest request,
+            @RequestHeader(value = CALLER_HEADER, required = false) String callerHeader,
+            @RequestHeader(value = "X-User-Role", required = false) String role) {
+        checkPriceMemoryReadPermission(callerHeader, role);
+        return ApiResponse.ok(priceMemoryService.findAll(request.partnerId(), request.productIds()));
     }
 
     /**
@@ -731,14 +752,17 @@ public class SlipController {
      */
     private void checkPriceMemoryReadPermission(String callerHeader, String role) {
         UUID accountId = parseAccountId(callerHeader);
-        boolean canCreateOutbound = accountId != null && dynamicPermissionClient.check(
-                accountId, SALES_SLIP_CREATE_PAGE_CODE, PermissionAction.CREATE);
-        boolean canCreateInbound = accountId != null && dynamicPermissionClient.check(
-                accountId, PURCHASES_SLIP_EDIT_PAGE_CODE, PermissionAction.UPDATE);
-        boolean canCreateEstimate = accountId != null && (
-                dynamicPermissionClient.check(accountId, ESTIMATES_LIST_PAGE_CODE, PermissionAction.CREATE)
-                        || dynamicPermissionClient.check(accountId, ESTIMATES_LIST_PAGE_CODE, PermissionAction.UPDATE));
-        if (!canCreateOutbound && !canCreateInbound && !canCreateEstimate) {
+        // 의미는 기존 4종 OR 와 동일하다. 한 권한이 true 면 뒤의 auth-service 동기 호출은 생략한다.
+        boolean allowed = accountId != null
+                && (dynamicPermissionClient.check(
+                                accountId, SALES_SLIP_CREATE_PAGE_CODE, PermissionAction.CREATE)
+                        || dynamicPermissionClient.check(
+                                accountId, PURCHASES_SLIP_EDIT_PAGE_CODE, PermissionAction.UPDATE)
+                        || dynamicPermissionClient.check(
+                                accountId, ESTIMATES_LIST_PAGE_CODE, PermissionAction.CREATE)
+                        || dynamicPermissionClient.check(
+                                accountId, ESTIMATES_LIST_PAGE_CODE, PermissionAction.UPDATE));
+        if (!allowed) {
             permissionGuardMetrics.incrementDenied(
                     "slip-service", SALES_SLIP_CREATE_PAGE_CODE, role, PermissionAction.CREATE.name());
             log.warn("[#809] price-memory permission denied accountId={}", accountId);

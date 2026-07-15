@@ -791,6 +791,10 @@ W10-3 시점 = 4 weight (`Regular / Medium / SemiBold / Bold`) 의무 + graceful
 
 ## 참조 문서
 
+- 2026-07-15 #809 / PR #820: 전표·견적 `(거래처+품목)` VAT 포함 최근단가 기억. R3 BE에서
+  100품목 POST bulk 조회, `remembered_at` 최신성 guard, 최대 100라인 set-based upsert,
+  fail-soft 전용 timeout/계측/Prometheus 경보를 보강했다. 주문은 범위 밖이다.
+
 - 누적 결정: `migration/decisions/DECISIONS.md`
 - Phase 6 회고: `docs/dev-reports/phase6-retrospective.md`
 - Phase 7 진입 평가: `docs/migration/phase7/M-PHASE-7-readiness.md`

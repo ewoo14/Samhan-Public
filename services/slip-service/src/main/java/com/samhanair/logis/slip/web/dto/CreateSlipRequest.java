@@ -86,7 +86,8 @@ public record CreateSlipRequest(
          * 당착(지방 당일 하차) = slipDate 와 동일 값 전달. 지방/야적 태그에만 유효.
          */
         LocalDate unloadDate,
-        @NotEmpty @Valid List<SlipLineRequest> lines) {
+        @NotEmpty @Size(max = 100, message = "전표 라인은 최대 100건까지 저장할 수 있습니다")
+        @Valid List<SlipLineRequest> lines) {
 
     /**
      * 전표 라인 — productId / 수량 / 단가 / 메모 + 표시용 snapshot 명칭.

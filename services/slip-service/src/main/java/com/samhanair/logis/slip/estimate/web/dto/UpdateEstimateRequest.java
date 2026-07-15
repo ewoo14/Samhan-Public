@@ -23,6 +23,7 @@ public record UpdateEstimateRequest(
         @Size(max = 200) String partnerAddress,
         LocalDate validUntil,
         @Size(max = 1000) String memo,
+        @Size(max = 100, message = "견적 라인은 최대 100건까지 저장할 수 있습니다")
         @Valid List<EstimateLineUpdate> lines) {
 
     public record EstimateLineUpdate(

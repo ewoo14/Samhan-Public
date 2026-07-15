@@ -87,7 +87,7 @@
 - [Codex 디스패치=Claude commit 대행+approval never](feedback_codex_sandbox_git.md) — Codex git 금지(파일만), approval-policy never, model 생략+effort high. 집PC codex exec: rev-parse 차단(git show 로 검증)·workspace-write 쓰기차단→fix=danger-full-access+사후 git diff 대조(2026-07-03)
 - [Codex 리뷰도 danger-full-access](feedback_codex_review_sandbox_danger_access.md) — read-only는 이 PC서 테스트 실행(캐시 쓰기)까지 차단→정적분석만. genuine 실QA 리뷰=danger-full-access(git 금지 유지·PM 커밋). 2026-07-06 #31 개발책임자 지적
 - [Codex 모델 자동 전환](feedback_codex_model_auto_switch.md) — 기본 spark+medium, 보안/migration/race 등 gpt-5.5 high
-- [🚨 codex CLI 이중설치=모델 400](feedback_codex_cli_version_model_mismatch.md) — config.toml 모델 상향 시 `400 requires a newer version` = MCP가 쓰는 **PATH npm codex**(≠데스크톱 앱 번들)가 구버전. `npm i -g @openai/codex@latest` 후 **세션 재시작**해야 반영(kill 금지). MCP idle timeout 1800s abort≠미수행 — 산출물 디스크 확인 (2026-07-15 #809)
+- [🚨 codex CLI 이중설치=모델 400 + abort 복구](feedback_codex_cli_version_model_mismatch.md) — config.toml 모델 상향 시 `400 requires a newer version` = MCP가 쓰는 **PATH npm codex**(≠데스크톱 앱 번들)가 구버전. `npm i -g @openai/codex@latest` 후 **세션 재시작**해야 반영(kill 금지). **MCP idle timeout 1800s abort≠미수행·Codex는 계속 돔** — 🚨**diff 해시 2회=false-STABLE**(검증 중엔 안 씀), 진짜 신호=**rollout 로그 LastWriteTime 90s 무변동+codex PID**. **threadId·최종보고는 rollout jsonl 파일명/본문에서 회수→`codex-reply` 로 이어받기**(UTF-8 명시 읽기) (2026-07-15 #809)
 - [Codex 권한 새 세션부터](feedback_codex_permission_new_session.md) — allow 추가는 새 세션부터, 진행중 무리한 재시도 금지
 - [Codex MCP 세션 한정 한계](feedback_codex_mcp_session_limit.md) — -32000 후 새 세션·codex exec·Agent 대체
 - [codex exec kill이 MCP vendor 공유 종료](feedback_codex_kill_shares_mcp_vendor.md) — Name=codex.exe 일괄 kill이 MCP 서버 vendor 바이너리까지 종료→세션 MCP 이탈(인세션 /mcp 재연결 불가·재시작만 확실). exec 특정 PID트리만 종료·mcp-server 제외

@@ -18,16 +18,28 @@ import com.samhanair.logis.slip.client.UserInternalClient;
 import com.samhanair.logis.slip.client.WarehouseInternalClient;
 import com.samhanair.logis.slip.domain.DeliveryTag;
 import com.samhanair.logis.slip.domain.SlipType;
+import com.samhanair.logis.slip.price.config.PartnerProductPriceMemoryProperties;
+import com.samhanair.logis.slip.price.domain.PartnerProductPriceMemory;
+import com.samhanair.logis.slip.price.repository.PartnerProductPriceMemoryBatchRepository;
+import com.samhanair.logis.slip.price.repository.PartnerProductPriceMemoryRepository;
+import com.samhanair.logis.slip.price.service.PartnerProductPriceMemoryCommand;
+import com.samhanair.logis.slip.price.service.PartnerProductPriceMemoryBulkItemResponse;
 import com.samhanair.logis.slip.price.service.PartnerProductPriceMemoryResponse;
 import com.samhanair.logis.slip.price.service.PartnerProductPriceMemoryService;
 import com.samhanair.logis.slip.repository.SlipRepository;
 import com.samhanair.logis.slip.service.SlipService;
 import com.samhanair.logis.slip.web.dto.CreateSlipRequest;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.Executor;
+import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -35,6 +47,9 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 /**
  * #809 거래처+품목 최근 수동단가 기억 실 DB 통합 테스트.
@@ -58,6 +73,24 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private PartnerProductPriceMemoryRepository priceMemoryRepository;
+
+    @Autowired
+    private PartnerProductPriceMemoryBatchRepository priceMemoryBatchRepository;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
+
+    @Autowired
+    private MeterRegistry meterRegistry;
+
+    @Autowired
+    private Clock clock;
+
+    @Autowired
+    private PartnerProductPriceMemoryProperties priceMemoryProperties;
 
     @MockBean
     private ProductClient productClient;
@@ -103,6 +136,31 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
         PartnerProductPriceMemoryResponse found = priceMemoryService.find(partnerId, productId)
                 .orElseThrow();
         assertThat(found.unitPrice()).isEqualByComparingTo(inputPrice);
+        assertThat(found.updatedAt()).isNotNull();
+    }
+
+    @Test
+    void bulkFind_matchesSingleValuesAndOmitsMissesInRequestOrder() {
+        UUID partnerId = UUID.randomUUID();
+        UUID firstProductId = UUID.randomUUID();
+        UUID missProductId = UUID.randomUUID();
+        UUID secondProductId = UUID.randomUUID();
+        priceMemoryService.remember(
+                partnerId, firstProductId, new BigDecimal("111000.00"), "actor-1");
+        priceMemoryService.remember(
+                partnerId, secondProductId, new BigDecimal("222000.00"),
+                PartnerProductPriceMemory.SOURCE_BUNDLE_SET, "actor-2");
+
+        List<PartnerProductPriceMemoryBulkItemResponse> bulk = priceMemoryService.findAll(
+                partnerId, List.of(firstProductId, missProductId, secondProductId));
+
+        assertThat(bulk).extracting(PartnerProductPriceMemoryBulkItemResponse::productId)
+                .containsExactly(firstProductId, secondProductId);
+        assertThat(bulk.get(0).unitPrice()).isEqualByComparingTo(
+                priceMemoryService.find(partnerId, firstProductId).orElseThrow().unitPrice());
+        assertThat(bulk.get(1).source()).isEqualTo("BUNDLE_SET");
+        assertThat(bulk.get(1).updatedAt()).isEqualTo(
+                priceMemoryService.find(partnerId, secondProductId).orElseThrow().updatedAt());
     }
 
     @Test
@@ -192,12 +250,16 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
         jdbcTemplate.update("DELETE FROM partner_product_price_memory");
         jdbcTemplate.execute("ALTER TABLE partner_product_price_memory ADD CONSTRAINT "
                 + FAIL_CONSTRAINT + " CHECK (unit_price < 0)");
+        double failedBefore = meterRegistry.get(PartnerProductPriceMemoryService.UPSERT_FAILED_COUNTER)
+                .counter().count();
         UUID createdSlipId = null;
         try {
             var response = slipService.create(request, "actor-fail-soft", "가격기억 실패 테스트");
             createdSlipId = response.id();
 
             assertThat(slipRepository.findById(createdSlipId)).isPresent();
+            awaitUntil(() -> meterRegistry.get(PartnerProductPriceMemoryService.UPSERT_FAILED_COUNTER)
+                    .counter().count() >= failedBefore + 1.0, "가격기억 실패 metric 증가");
             Integer memoryRows = jdbcTemplate.queryForObject("""
                     SELECT COUNT(*)
                       FROM partner_product_price_memory
@@ -230,8 +292,7 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
                 inboundSlipRequest(partnerId, bundleProductId, new BigDecimal("550000.00")),
                 "actor-bundle", "세트 기억 테스트");
         try {
-            PartnerProductPriceMemoryResponse memory = priceMemoryService.find(partnerId, bundleProductId)
-                    .orElseThrow();
+            PartnerProductPriceMemoryResponse memory = awaitPriceMemory(partnerId, bundleProductId);
             assertThat(memory.unitPrice()).isEqualByComparingTo("550000.00");
             assertThat(memory.source()).isEqualTo("BUNDLE_SET");
             assertThat(priceMemoryService.find(partnerId, componentProductId)).isEmpty();
@@ -256,6 +317,46 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
                 .isInstanceOf(BusinessException.class);
 
         assertThat(priceMemoryService.find(partnerId, bundleProductId)).isEmpty();
+    }
+
+    @Test
+    void afterCommitExecutionInversion_keepsLaterLogicalSave() {
+        UUID partnerId = UUID.randomUUID();
+        UUID productId = UUID.randomUUID();
+        List<Runnable> queuedTasks = new ArrayList<>();
+        Executor collectingExecutor = queuedTasks::add;
+        PartnerProductPriceMemoryService controlledService = new PartnerProductPriceMemoryService(
+                priceMemoryRepository,
+                priceMemoryBatchRepository,
+                clock,
+                transactionManager,
+                meterRegistry,
+                priceMemoryProperties,
+                collectingExecutor);
+
+        PartnerProductPriceMemoryCommand firstLogicalSave = new PartnerProductPriceMemoryCommand(
+                partnerId, productId, new BigDecimal("100000.00"),
+                PartnerProductPriceMemory.SOURCE_LINE_SAVE, "actor-a",
+                LocalDateTime.of(2026, 7, 15, 10, 0));
+        PartnerProductPriceMemoryCommand laterLogicalSave = new PartnerProductPriceMemoryCommand(
+                partnerId, productId, new BigDecimal("200000.00"),
+                PartnerProductPriceMemory.SOURCE_LINE_SAVE, "actor-b",
+                LocalDateTime.of(2026, 7, 15, 10, 1));
+
+        TransactionSynchronization firstAfterCommit = registerAfterCommit(
+                controlledService, firstLogicalSave, "first-logical-save");
+        TransactionSynchronization laterAfterCommit = registerAfterCommit(
+                controlledService, laterLogicalSave, "later-logical-save");
+
+        // 결함 재현 순서: 논리 저장은 A→B 였지만 afterCommit 실행/flush 는 B→A 로 역전한다.
+        laterAfterCommit.afterCommit();
+        firstAfterCommit.afterCommit();
+        assertThat(queuedTasks).hasSize(2);
+        queuedTasks.forEach(Runnable::run);
+
+        PartnerProductPriceMemoryResponse found = priceMemoryService.find(partnerId, productId).orElseThrow();
+        assertThat(found.unitPrice()).isEqualByComparingTo("200000.00");
+        assertThat(found.updatedAt()).isEqualTo(LocalDateTime.of(2026, 7, 15, 10, 1));
     }
 
     private ProductSummary product(UUID productId) {
@@ -314,12 +415,46 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
     private void rawInsert(UUID partnerId, UUID productId, BigDecimal unitPrice, String actor) {
         jdbcTemplate.update("""
                 INSERT INTO partner_product_price_memory
-                    (id, partner_id, product_id, unit_price, source,
+                    (id, partner_id, product_id, unit_price, source, remembered_at,
                      created_at, created_by, is_deleted)
                 VALUES
-                    (?, ?, ?, ?, 'LINE_SAVE',
+                    (?, ?, ?, ?, 'LINE_SAVE', CURRENT_TIMESTAMP,
                      CURRENT_TIMESTAMP, ?, FALSE)
                 """, UUID.randomUUID(), partnerId, productId, unitPrice, actor);
+    }
+
+    private TransactionSynchronization registerAfterCommit(
+            PartnerProductPriceMemoryService controlledService,
+            PartnerProductPriceMemoryCommand command,
+            String context) {
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            controlledService.rememberBatchAfterCommit(List.of(command), context);
+            return TransactionSynchronizationManager.getSynchronizations().get(0);
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+    }
+
+    private PartnerProductPriceMemoryResponse awaitPriceMemory(UUID partnerId, UUID productId) {
+        awaitUntil(() -> priceMemoryService.find(partnerId, productId).isPresent(), "가격기억 비동기 저장");
+        return priceMemoryService.find(partnerId, productId).orElseThrow();
+    }
+
+    private void awaitUntil(BooleanSupplier condition, String description) {
+        long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(5);
+        while (System.nanoTime() < deadline) {
+            if (condition.getAsBoolean()) {
+                return;
+            }
+            try {
+                Thread.sleep(25);
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+                throw new AssertionError(description + " 대기 중 interrupt", ex);
+            }
+        }
+        throw new AssertionError(description + " 5초 내 미완료");
     }
 
     private void cleanupSlip(UUID slipId) {

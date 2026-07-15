@@ -87,3 +87,92 @@ Codex 자가보고 "targeted 테스트 통과"가 **전체 스위트 실패를 �
 ① spec ⑤ **VAT 포함 승인** + 정정 ② BUNDLE **구성품 제외 + 세트 자체 기억**(PM 권고 대비 상향) ③ **'최근가' 마커 도입** ④ **수정·복사 전부 배선**(PM 권고 대비 상향).
 
 R1 findings 29건 전부 처리. Codex 가 `SlipFormPage.test.tsx` 작성 중 **구현 결함을 추가 발견해 보정**(자동채움 상태 라인이 새 품목 선택 시 재조회되지 않던 문제).
+
+## R3 BE fix (CH-8/CH-9/CH-2/CM-6/CM-1/CM-7/CL-1/CM-8)
+
+### bulk 조회 wire
+
+| 항목 | 계약 |
+|---|---|
+| Method/Path | `POST /slips/price-memory/bulk` |
+| Body | `{"partnerId":"UUID","productIds":["UUID", ...]}` |
+| 검증 | `partnerId` 필수, `productIds` 1~100개, 원소 null 금지 |
+| 성공 | `200 ApiResponse<List<...>>` |
+| hit item | `{productId, unitPrice, source, updatedAt}` |
+| 부분 hit | hit 만 최초 요청 순서로 반환. miss 와 중복 productId 는 생략 |
+| 전체 miss | `204`가 아니라 `200` + `data: []` |
+| 인가 | 단건과 동일한 `sales.slip.create:CREATE OR purchases.slip.edit:UPDATE OR estimates.list:CREATE/UPDATE`; 요청당 1회 결정 |
+
+최대 100 UUID 를 GET query 로 보내면 UUID 본문만 약 3,600자이고 parameter/separator 를 포함하면
+약 3.7KB 이상이다. Nginx/Netty 상한 안일 수는 있으나 보수적 2KB request-line 경계를 넘고 proxy마다
+상한이 다르므로 조회용 POST body 를 채택했다. D-R3-1 에 따라 UUID query string 노출 자체는 정책상
+허용이며, 선택 근거는 순수 URL 길이/운영 호환성이다. 단건 GET은 제거하지 않았다.
+
+### 최신성·set-based 저장
+
+- V58에 전용 `remembered_at TIMESTAMP NOT NULL`을 추가했다. command는 afterCommit 등록 전 원
+  전표/견적 트랜잭션의 논리 저장 시각을 담는다.
+- conflict 갱신은 `WHERE partner_product_price_memory.remembered_at <= EXCLUDED.remembered_at`일 때만
+  수행한다. 동시 저장 A→B 뒤 afterCommit B→A 역전 테스트가 실 PostgreSQL 최종값 B를 단언한다.
+- `modified_at`은 실제 DB flush 감사 시각으로 유지한다. 응답 `updatedAt`은 `remembered_at`으로
+  전환했으므로 FE 최근가 tooltip은 이제 실제 원 문서 저장 시각을 받는다.
+- N개 repository 호출을 동적 parameter의 단일 multi-row `INSERT ... ON CONFLICT` statement로
+  바꿨다. 같은 저장 단위의 pair는 statement 전에 마지막 command로 dedupe한다.
+
+### 라인/timeout/connection 판단
+
+- 전표 생성·출고/입고 direct PUT·견적 생성/수정·모바일 견적 라인에 `@Size(max=100)`을 적용했다.
+  실운영 문서가 보통 수십 라인이고 기존 설계 문서의 최대 예상은 20라인이며, 서비스 내부 bulk 표준도
+  100건이다. 100은 정상 대량 문서를 막지 않으면서 500행 무제한 입력과 DB lock convoy를 차단한다.
+- 가격기억 트랜잭션 전용 기본값은 `lock_timeout=1s`, `statement_timeout=3s`, transaction timeout=4s다.
+  100행 단일 statement 정상 여유를 주되 보조 기능이 사용자 응답/Hikari를 장기 점유하지 않는 값이다.
+- auth 동기 RestClient는 repo 표준과 같은 connect 2초/read 3초를 적용한다. 권한 4종 OR는 Java
+  short-circuit로 바꿔 앞 권한이 true면 나머지 auth 호출을 하지 않는다.
+
+CM-1은 TransactionTemplate timeout만 줄이는 안으로는 connection 획득 전 대기 시간을 완전히 제한할
+수 없어 bounded async(core 2/max 4/queue 100)를 함께 채택했다. afterCommit callback은 enqueue 후
+즉시 반환하므로 outer connection cleanup이 먼저 진행된다. 포화 시 caller-runs를 쓰지 않고 거부를
+fail-soft 계측한다. 대안 durable outbox는 프로세스 crash 유실 방지에는 우수하지만 보조 단가 기능에
+별도 테이블/worker/retention/backfill 운영을 도입하는 범위가 과해 이번에는 채택하지 않았다. bounded
+async는 커밋 후 프로세스가 즉시 종료되면 작업이 유실될 수 있다는 trade-off가 있으며 runbook의 원
+라인 기반 backfill로 복구한다. 또한 저장 직후 조회는 worker flush 전까지 짧게 이전 값/miss를 볼 수
+있다. 정상 시 수 ms 수준이며 과부하 시 queue 대기만큼 늘 수 있다는 eventual read 계약을 수용했다.
+
+### 계측·경보
+
+Micrometer 실제 Prometheus registry `scrape()` 테스트로 아래 export 이름을 고정했다.
+
+- `slip_price_memory_upsert_success_total`: 성공 statement의 command 수
+- `slip_price_memory_upsert_failed_total`: DB 실패 또는 queue 거부 command 수
+- `slip_price_memory_batch_size_{count,sum,max}`: batch 크기
+- `slip_price_memory_upsert_duration_seconds_{count,sum,max}`: REQUIRES_NEW 지연
+
+Prometheus `rule_files`에 `infrastructure/prometheus/rules/slip-price-memory.yml`을 배선하고
+`sum(increase(slip_price_memory_upsert_failed_total{job="slip-service"}[5m])) > 0` 경보를 추가했다.
+조치 절차는 `docs/runbooks/slip-price-memory-upsert-failure.md`다.
+
+### 정책·마이그레이션·배포 문구
+
+- D-R3-1: UUID는 화면 표시만 금지하며 API query/body는 유지한다.
+- D-R3-3: soft-delete 거래처/품목이 연결된 기존 문서에서도 가격기억을 반환한다. 외부 생존 조회는 없다.
+- CL-1: source schema를 `LINE_SAVE | BUNDLE_SET`으로 정정했다.
+- CM-6: 아직 미머지인 V58의 `CREATE TABLE IF NOT EXISTS`를 제거하여 drift 배포가 실패하게 했다.
+  **이미 구 V58을 적용한 로컬 dev DB는 checksum mismatch와 `remembered_at` 컬럼 부재가 함께 발생한다.
+  PM은 DB 재생성을 우선하고, 데이터를 보존해야 하면 스키마를 최종 V58과 수동 정렬한 뒤에만
+  `flyway repair`해야 한다. repair만 단독 실행하면 누락 컬럼이 생기지 않는다. 본 배치에서는 DB를
+  직접 변경하지 않았다.**
+- CM-8: 단일 `samhan-slip-service` compose 배포를 rolling이 아닌 recreate로 정정하고 readiness 대기,
+  예상 중단 30~120초, 향후 다중 인스턴스의 write quiesce/outbox/backfill 주의를 추가했다.
+
+### R3 BE 검증 실측
+
+| 검증 | 결과 |
+|---|---|
+| `compileJava + compileTestJava --no-daemon` | **BUILD SUCCESSFUL** (20초) |
+| 선별 단위/계약 5 suite | **19 tests, failure/error/skip 0** — bulk/4종 OR short-circuit/parity/100건/metric export/set-based 호출 |
+| `PartnerProductPriceMemoryIT` | **9 tests, failure/error/skip 0** — fresh V58, bulk 실쿼리, afterCommit B→A 역전 guard 포함 |
+| `SlipPermissionControllerIT` | **BUILD SUCCESSFUL** — 단건+bulk grant/deny enforcement 포함 |
+| `docker compose ... config --quiet` | exit 0 |
+| Prometheus v2.55.1 `promtool check config` | config valid, rule file 1개·rule 1개 SUCCESS |
+
+PM의 최종 genuine `--rerun-tasks --no-build-cache` 전체 회귀는 별도 수행한다.

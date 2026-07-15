@@ -2973,3 +2973,15 @@ D-AX-17 배송/검수 사진과 D-AX-18 전표 상세 bridge 이후, 운영자�
 | D-ECT-FOLD-06 | V60 마이그 = page-code 권한 정리(V59 패턴 동일). `cash-list` 권한 행은 `role_page_permissions` hard delete, `role_page_permission_templates`/`account_page_permissions`/`group_page_permissions`/`account_permission_overrides` soft delete. |
 | D-ECT-FOLD-07 | 슬4(PR #521): "회계 관리자"(MIG-18) 중첩 토글 그룹 완전 해체 → 멤버를 네이티브 카테고리 flat 편입(별도 silo 섹션 금지 — 에픽 원칙 "기존 회계 메뉴 편입"). 원장대조·운영대시보드·회계수정요청=회계 flat. route/page-code/RBAC seed/롤/BE 무변경(cutover 전 폐기 금지 — 메뉴 IA만). 슬5(토글그룹 해체) 흡수. |
 | D-ECT-FOLD-08 | 슬4(PR #521, 개발책임자 정정): 주문서 관리(eCount 이관 주문 silo)는 회계 아닌 **판매 도메인** → 판매 카테고리 flat 이동. 네이티브 주문서 관리(`/sales/partner-orders`)와 구분 위해 **"주문서 관리 (이관)"** 라벨(계약 박제). 슬6 partner_orders 이식 시 링크/route/page-code 제거. |
+
+---
+
+## #809 거래처+품목 최근단가 R3 BE 결정 (2026-07-15, PR #820)
+
+| 결정 코드 | 내용 |
+|---|---|
+| D-R3-1 | UUID 비공개 기준은 사용자 화면이다. 가격기억 단건 query string 및 bulk JSON payload의 `partnerId`/`productId`는 내부 API 식별자로 유지한다. UUID 회피용 재설계는 하지 않는다. |
+| D-R3-3 | soft-delete 된 거래처/품목이 걸린 기존 문서 편집에서도 가격기억을 반환한다. partner/product 생존 확인 호출은 추가하지 않는다. |
+| D-R3-4 | 조회 증폭 해소는 단건 유지 + `POST /slips/price-memory/bulk`(1~100, hit-only 배열) + 4종 권한 OR short-circuit + auth RestClient 2초 connect/3초 read timeout 조합으로 확정한다. |
+| D-R3-5 | 최대 라인 수는 전표/견적/모바일 견적 모두 100건이다. 가격기억은 단일 set-based upsert, `remembered_at` recency guard, 1초 lock/3초 statement/4초 transaction timeout을 사용한다. |
+| D-R3-6 | afterCommit REQUIRES_NEW 는 bounded async(core 2/max 4/queue 100)로 outer connection을 먼저 반환한다. durable outbox는 유실 방지는 우수하지만 보조 기능에 worker/table/backfill 운영비가 과도해 미채택한다. queue/DB 실패는 metric 후 fail-soft 한다. |

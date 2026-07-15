@@ -20,4 +20,15 @@ config.toml 모델은 **최신 CLI 를 전제**하는데 PATH 쪽이 뒤처져 �
 4. 🚫 **codex.exe kill 로 재시작 시도 금지** — MCP vendor 공유 바이너리까지 종료돼 세션 도구 레지스트리에서 이탈한다.
 5. 재시작 직후 **연결 테스트 1줄**(모델/effort 확인)로 반영 검증 후 본 작업 디스패치.
 
-**부수 교훈**: MCP tool **idle timeout 1800s** 로 대형 디스패치가 abort 돼도 **산출물은 디스크에 남는다**(#809 R1 fix 26파일 실증). `git status` + diff 해시 2회 비교로 **쓰기 종료(STABLE)** 를 확인하고 이어가면 된다 — abort=미수행으로 단정 금지([[feedback_codex_detached_write_settle]] 동일 원칙).
+**부수 교훈**: MCP tool **idle timeout 1800s** 로 대형 디스패치가 abort 돼도 **산출물은 디스크에 남고 Codex 는 계속 돈다**(#809 R1 fix 26파일 · R3 fix 28+9파일 실증). abort=미수행으로 단정 금지([[feedback_codex_detached_write_settle]] 동일 원칙).
+
+🚨 **정정 (2026-07-15 #809 R3 실증) — `git diff` 해시 2회 비교는 false-STABLE 을 준다**
+이전 판의 "diff 해시 2회 비교로 쓰기 종료(STABLE) 확인" 지침은 **틀렸다**. Codex 가 **검증/사고 중인 구간엔 파일을 안 쓰므로** 20초 간격 해시가 동일하게 나온다 → "종료" 오판. 실제로는 그 시점에 컴파일·IT 실행·promtool 검증이 진행 중이었고 이후에도 계속 썼다.
+
+**진짜 종료 신호 (이걸 쓸 것)**:
+1. **rollout 로그의 LastWriteTime** — `~/.codex/sessions/<yyyy>/<MM>/<dd>/rollout-<ts>-<threadId>.jsonl`. 이게 90초+ 무변동이어야 턴 종료.
+2. **codex PID 생존** — `Get-Process codex`. 디스패치 시각과 `StartTime` 이 맞는 PID 가 살아 있으면 아직 진행 중. (🚫 kill 금지 → [[feedback_codex_kill_shares_mcp_vendor]])
+3. 대기는 Bash `run_in_background` + `until [ $(( $(date +%s) - $(stat -c %Y "$f") )) -ge 90 ]` 로 **단발 통지**(Monitor 는 다건용).
+
+💡 **abort 로 잃은 threadId·최종보고는 rollout 로그에서 회수된다** — 파일명에 **threadId 가 박혀 있고**(`rollout-…-<threadId>.jsonl`) assistant 메시지 전문이 들어 있다. 회수 후 **`mcp__codex__codex-reply`(threadId)** 로 같은 세션을 이어받아 정식 보고를 받으면 된다(재디스패치 불필요).
+⚠️ 이 jsonl 은 **UTF-8** 인데 Windows PowerShell 5.1 `Get-Content` 기본 인코딩이 ANSI 라 **한글이 mojibake** 로 나온다 → `[System.IO.File]::ReadAllLines($f, [System.Text.Encoding]::UTF8)` 로 읽되 **codex 가 쓰는 중이면 파일 잠금**이라 실패하니 종료 후 읽을 것.

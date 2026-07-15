@@ -260,11 +260,30 @@ docker compose -f /opt/samhanlogis/docker-compose.prod.yml ps
 # SSM 세션에서:
 cd /opt/samhanlogis
 
-# 새 이미지 pull + 롤링 재시작
+# 새 이미지 pull + 단일 컨테이너 recreate
 docker compose -f docker-compose.prod.yml --env-file .env.production \
   pull && docker compose -f docker-compose.prod.yml --env-file .env.production \
   up -d --remove-orphans
+
+# readiness 대기 (slip-service 예시, 최대 3분). healthy 전에는 배포 완료로 판정하지 않는다.
+for attempt in $(seq 1 36); do
+  [ "$(docker inspect -f '{{.State.Health.Status}}' samhan-slip-service 2>/dev/null)" = "healthy" ] && break
+  if [ "$attempt" -eq 36 ]; then
+    docker logs --tail 200 samhan-slip-service
+    exit 1
+  fi
+  sleep 5
+done
+curl -fsS http://127.0.0.1:8086/actuator/health
 ```
+
+현재 공식 운영 compose 는 서비스별 `container_name` 하나만 두므로 위 절차는 rolling deploy 가 아니라
+기존 컨테이너를 새 이미지 컨테이너로 **recreate** 한다. 서비스별 예상 중단시간은 이미지 교체와 Spring
+기동을 합쳐 보통 **30~120초**이며, readiness 확인이 끝날 때까지 해당 서비스 요청은 중단될 수 있다.
+
+> 향후 서비스가 다중 인스턴스로 확장되면 가격기억처럼 afterCommit 보조 write 가 구버전 인스턴스에 남을
+> 수 있다. 그때는 write quiesce 또는 durable outbox/backfill 을 갖춘 뒤 인스턴스별 rolling 절차를
+> 설계해야 한다. 현재 단일 컨테이너 운영에는 해당 rolling 혼재 문제가 없다.
 
 ---
 

@@ -23,8 +23,13 @@ Samhan Public 전표(출고/입고), 견적, 배송 첨부, 발행, 감사 이�
 | Method | Path | 권한 |
 |---|---|---|
 | GET | `/api/v1/slips/price-memory?partnerId={uuid}&productId={uuid}` | `sales.slip.create` CREATE 또는 `purchases.slip.edit` UPDATE 또는 `estimates.list` CREATE/UPDATE |
+| POST | `/api/v1/slips/price-memory/bulk` | 단건과 동일. 요청당 1회 판정 |
 
 응답은 hit 시 `200 { unitPrice, source, updatedAt }`, miss 시 `204 No Content` 다. 이 endpoint 는 브라우저 호출용 사용자 대면 endpoint 이므로 `/internal` 과 `X-Internal-Token` 을 사용하지 않는다.
+
+bulk 요청은 `{"partnerId":"uuid","productIds":["uuid", ...]}`(최대 100개)다. 응답 `data` 는
+`[{productId, unitPrice, source, updatedAt}]` hit 배열이며 miss 는 생략하고 전체 miss 도 `200 data=[]`다.
+`updatedAt` 은 flush/audit 시각이 아니라 원 전표/견적 저장 시각인 `remembered_at` 이다.
 
 ## 내부 API
 

@@ -203,7 +203,7 @@ class SlipPermissionControllerIT {
                     eq(ID), eq(endpoint.secondaryPermission().page()), eq(endpoint.secondaryPermission().action())))
                     .thenReturn(false);
         }
-        if ("price memory".equals(endpoint.name())) {
+        if (endpoint.name().startsWith("price memory")) {
             when(dynamicPermissionClient.check(eq(ID), eq("estimates.list"), eq(PermissionAction.CREATE)))
                     .thenReturn(false);
             when(dynamicPermissionClient.check(eq(ID), eq("estimates.list"), eq(PermissionAction.UPDATE)))
@@ -264,6 +264,11 @@ class SlipPermissionControllerIT {
                         () -> get("/slips/price-memory")
                                 .param("partnerId", ID.toString())
                                 .param("productId", ID.toString())),
+                programmaticEndpoint("price memory bulk", "sales.slip.create", PermissionAction.CREATE,
+                        new PermissionKey("purchases.slip.edit", PermissionAction.UPDATE), "SALES",
+                        () -> post("/slips/price-memory/bulk")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"partnerId\":\"" + ID + "\",\"productIds\":[\"" + ID + "\"]}")),
                 endpoint("next day print data", "slip.print.next-day", PermissionAction.PRINT, "SALES",
                         () -> get("/slips/next-day-image-data")),
                 endpoint("cleanup report", "slip.cleanup", PermissionAction.VIEW, "SALES",

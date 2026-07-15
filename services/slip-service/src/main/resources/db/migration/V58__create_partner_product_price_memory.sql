@@ -1,12 +1,13 @@
 -- 거래처+품목 최근 수동단가 기억.
 -- 단가는 전표/견적 입력 필드와 동일한 VAT 포함 단가로 저장한다.
 
-CREATE TABLE IF NOT EXISTS partner_product_price_memory (
+CREATE TABLE partner_product_price_memory (
     id              UUID           PRIMARY KEY,
     partner_id      UUID           NOT NULL,
     product_id      UUID           NOT NULL,
     unit_price      NUMERIC(15, 2) NOT NULL,
     source          VARCHAR(30)    NOT NULL,
+    remembered_at   TIMESTAMP      NOT NULL,
 
     -- BaseEntity 7 audit
     created_at      TIMESTAMP      NOT NULL,
@@ -25,3 +26,6 @@ COMMENT ON TABLE partner_product_price_memory IS
 
 COMMENT ON COLUMN partner_product_price_memory.unit_price IS
     '전표/견적 입력 필드와 동일한 VAT 포함 단가. 자동채움 시 그대로 라운드트립한다';
+
+COMMENT ON COLUMN partner_product_price_memory.remembered_at IS
+    '원 전표/견적 트랜잭션의 논리 저장 시각. afterCommit 실행 순서와 무관한 최신성 판정 기준';

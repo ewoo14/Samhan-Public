@@ -29,7 +29,9 @@ public record SlipUpdateRequest(
         @Size(max = 20) @Pattern(regexp = "^[0-9-]*$", message = "인수자 번호는 숫자와 하이픈만 허용합니다")
         String recipientPhone,
         LocalDate paymentDueDate,
-        @Valid @NotEmpty List<LineRequest> lines
+        @Valid @NotEmpty
+        @Size(max = 100, message = "전표 라인은 최대 100건까지 저장할 수 있습니다")
+        List<LineRequest> lines
 ) {
 
     /**

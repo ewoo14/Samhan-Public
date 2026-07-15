@@ -1,6 +1,6 @@
 # #809 - 전표/견적 (거래처+품목) 최근 수동단가 자동채움
 
-- **상태**: 구현 및 R1 리뷰 보완 진행
+- **상태**: 구현 및 R3 BE 리뷰 보완 진행
 - **대상**: 전표(출고/입고) + 견적. 주문(partner-order)은 범위 밖이며 기존 DcConfig 규칙가를 유지한다.
 - **저장소**: `slip-service` 단일 테이블 `partner_product_price_memory`
 
@@ -37,6 +37,38 @@
 - 권한은 전표 생성/수정 또는 견적 생성/수정 권한 중 하나를 요구한다.
 - 조회 hit 시 기억단가를 자동채움하고 `최근가` 마커를 표시한다. miss 또는 조회 실패 시 catalog 정가로 폴백한다.
 - 거래처 변경 시 자동채움 라인만 새 거래처 기준으로 재조회한다. 사용자 override 라인은 보존한다.
+
+### R3 bulk wire 계약
+
+- 단건 endpoint 는 호환을 위해 유지한다.
+- bulk 는 `POST /slips/price-memory/bulk` + JSON body
+  `{"partnerId":"uuid","productIds":["uuid", ...]}` 를 사용한다. `productIds` 는 1~100개다.
+- 응답은 `ApiResponse<List<PartnerProductPriceMemoryBulkItemResponse>>` 이며 각 hit 는
+  `productId`, `unitPrice`, `source`, `updatedAt` 을 가진다. miss 는 배열에서 생략하고 전체 miss 도
+  `200` + `data: []` 로 반환한다. 중복 productId 는 제거하고 결과는 최초 요청 순서를 보존한다.
+- 최대 100 UUID query string 은 약 3.7KB 이상으로 보수적 2KB request-line 경계를 넘으므로 조회용
+  POST body 를 선택했다. UUID query string 노출 자체는 D-R3-1 에 따라 정책 위반이 아니다.
+- bulk 한 요청은 동일한 4종 OR 권한을 한 번만 판정한다. 단건과 bulk 의 값·인가 의미는 같다.
+
+### R3 저장/최신성 계약
+
+- 전표/견적 입력 라인은 최대 100개다. 실운영 예상 최대 20라인과 기존 내부 bulk 100건 표준을
+  기준으로, 정상 대량 문서는 허용하면서 무제한 DB 작업을 차단한다.
+- 원 전표/견적 트랜잭션에서 `remembered_at` 논리 저장 시각을 command 에 담는다. afterCommit
+  flush 가 역전돼도 `existing.remembered_at <= EXCLUDED.remembered_at` 인 경우만 갱신한다.
+- `modified_at` 은 실제 DB 변경 감사 시각으로 유지한다. API `updatedAt` 과 FE 최근가 tooltip 은
+  더 정확한 원 저장 시각인 `remembered_at` 을 사용한다.
+- 최대 100행은 단일 set-based `INSERT ... ON CONFLICT` 로 저장한다. 가격기억 전용 상한은
+  `lock_timeout=1s`, `statement_timeout=3s`, transaction timeout `4s` 다.
+- afterCommit callback 은 bounded async executor(core 2/max 4/queue 100)에 작업만 인계하여 outer
+  connection 을 먼저 반환한다. DB/queue 실패는 fail-soft 로 계측하고 원 전표/견적 저장은 성공시킨다.
+
+## R3 확정 정책
+
+- D-R3-1: UUID 는 사용자 **화면 표시만 금지**한다. query string/API payload 사용은 유지한다.
+- D-R3-3: soft-delete 된 거래처/품목이 연결된 기존 문서를 편집할 때도 활성 가격기억 row 를 반환한다.
+  거래처/품목 생존 확인 외부 호출은 추가하지 않는다.
+- D-R3-4: bulk endpoint + 권한 OR short-circuit + auth connect/read timeout 을 함께 적용한다.
 
 ## 테스트 기준
 

@@ -10,16 +10,14 @@ import java.time.LocalDateTime;
 public record PartnerProductPriceMemoryResponse(
         @Schema(description = "VAT 포함 입력 단가. 화면 단가 필드에 그대로 채운다.")
         BigDecimal unitPrice,
-        @Schema(description = "가격기억 출처. 현재는 LINE_SAVE")
+        @Schema(description = "가격기억 출처. LINE_SAVE | BUNDLE_SET")
         String source,
-        @Schema(description = "최근 갱신 시각")
+        @Schema(description = "원 전표/견적에서 이 단가가 저장된 논리 시각")
         LocalDateTime updatedAt) {
 
     /** 엔티티를 API 응답으로 변환한다. */
     public static PartnerProductPriceMemoryResponse from(PartnerProductPriceMemory memory) {
-        LocalDateTime updatedAt = memory.getModifiedAt() != null
-                ? memory.getModifiedAt()
-                : memory.getCreatedAt();
-        return new PartnerProductPriceMemoryResponse(memory.getUnitPrice(), memory.getSource(), updatedAt);
+        return new PartnerProductPriceMemoryResponse(
+                memory.getUnitPrice(), memory.getSource(), memory.getRememberedAt());
     }
 }

@@ -8,6 +8,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -51,6 +52,14 @@ public class PartnerProductPriceMemory extends BaseEntity {
     @Column(name = "source", nullable = false, length = 30)
     private String source;
 
+    /**
+     * 원 전표/견적 트랜잭션에서 라인 단가가 저장된 논리 시각.
+     *
+     * <p>{@code modified_at} 은 실제 DB 변경 감사 시각으로 유지하고 최신성 판정에는 사용하지 않는다.
+     */
+    @Column(name = "remembered_at", nullable = false)
+    private LocalDateTime rememberedAt;
+
     /** 최근 라인 저장 출처. */
     public static final String SOURCE_LINE_SAVE = "LINE_SAVE";
 
@@ -59,12 +68,14 @@ public class PartnerProductPriceMemory extends BaseEntity {
 
     /** 신규 가격기억 엔티티를 만든다. */
     public static PartnerProductPriceMemory create(
-            UUID partnerId, UUID productId, BigDecimal unitPrice, String source) {
+            UUID partnerId, UUID productId, BigDecimal unitPrice, String source,
+            LocalDateTime rememberedAt) {
         PartnerProductPriceMemory memory = new PartnerProductPriceMemory();
         memory.partnerId = partnerId;
         memory.productId = productId;
         memory.unitPrice = unitPrice;
         memory.source = source;
+        memory.rememberedAt = rememberedAt;
         return memory;
     }
 }
