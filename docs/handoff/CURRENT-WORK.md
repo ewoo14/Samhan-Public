@@ -4,7 +4,82 @@
 
 ---
 
-## 🔄 2026-07-15 (집PC) — #809 **Codex 적대 3/5 지점에서 세션 재시작** (codex CLI 업그레이드 반영용)
+## 🔄 2026-07-15 (집PC 저녁) — #809 **R3 완주+30건 fix 완료 · R4 착수 지점**에서 세션 정리 (집PC 재개 예정)
+
+> **다음 세션 첫 읽기(최우선).** codex CLI 0.144.4 업그레이드 + 세션 재시작으로 **`gpt-5.6-sol` 400 차단 해소 확인**(연결 테스트 통과). 그 뒤 R3 완주 → 30건 fix → 검증 green → push 까지 완료. **R4 는 디스패치했으나 세션 정리로 유실 → 재디스패치 필요.**
+
+### 상태 (전부 디스크/git/PR 보존)
+- **브랜치** `feat/809-partner-product-price-memory` · **HEAD `71a6f0412`** · **원격 동기화됨(push 완료)** · PR **#820 OPEN**·MERGEABLE·base=main
+- **R3 = 5/5 차원 완주** — 미실행이던 **DevOps·QA 2개 차원** 실행해 **신규 15건**(BLOCKING 1·HIGH 5·MEDIUM 7·LOW 2) 포착 → **R3 최종 30건**(BLOCKING 3·HIGH 12·MEDIUM 12·LOW 3)
+- **30건 전부 fix 완료** (Codex 3배치·PM 커밋 대행): `77ea69c77`(BE 39파일) → `9ff6387f1`(FE 14파일) → `71a6f0412`(QA/문서 8파일). **누계 59파일 +2944/−398**
+- **PM genuine 검증 green**: slip-service **1265**(`--rerun-tasks --no-build-cache`·3m49s·0 fail/error/**skip**·1241→+24) · desktop **726**(708→+18)+`typecheck exit 0` · design-system **41** · partner-service 314(이번 라운드 무변경)
+
+### 🟢 라이브 QA 준비 = **이미 완료** (다음 세션은 바로 실행 가능)
+- Docker 스택 가동 중(게이트웨이 :8080 · slip-service :8086 · postgres :5432 healthy)
+- **slip-service 재배포 + 신규 V58 적용 실측 확인**: checksum **`1743979716`**(구 `1238323700` 아님) · **`remembered_at TIMESTAMP NOT NULL` 생성됨** · unique `ux_partner_product_price_memory_pair (partner_id, product_id)` 존재
+- **V58 외과 재적용 절차(수행함·재현용)**: V58 이 **최신 마이그**(58>57>56)라 out-of-order 없음 → `DROP TABLE partner_product_price_memory; DELETE FROM flyway_schema_history WHERE version='58';` → `docker compose -f infrastructure/docker-compose.yml -f infrastructure/docker-compose.local-all.yml up -d --build slip-service`. **전면 DB 재생성 금지**(slip_db 에 전표 21·견적 3 등 타 QA 픽스처 존재)
+- `partner_product_price_memory` **현재 0행** — 경화된 스펙이 자기 데이터 seed
+- 고아 vite **정리 완료**(5190~5299 리스닝 0)
+
+### 🔴 재개 지점 = **R4 Opus 5-agent (전부 재디스패치 필요)**
+5개 다 띄웠으나 세션 정리로 kill. **findings 미수집 = 처음부터.** 각 차원 초점:
+1. **BE** — recency guard `<=` 등호 경계·**등록시점 캡처 vs 커밋순서 역전**(Codex 스스로 "엄격히는 DB sequence 가 정답"이라 인정)·clock skew · set-based upsert 의 `modified_at = EXCLUDED.created_at` 트릭 · **soft-delete+오래된 remembered_at 조합에서 revive 막힘이 의도인가** · **dedup 이 모든 진입경로에 선행되나**(중복 conflict 키=PG 하드에러→fail-soft 로 배치 전체 조용히 死) · executor **shutdown/drain**·큐100 초과 · `set_config(is_local)` 가 `upsertAll` 과 **같은 커넥션**인가 · bulk↔단건 parity · short-circuit 이 인가 의미 유지하나
+2. **FE** — **`localAutoPriceWritesRef` pending map**(CH-5 핵심·Codex 자기지목 최우선): provider callback 순서·**leak**·**같은 값 재입력 시 USER 승격 누락**·정리 · **닫힌 판정 `CATALOG|REMEMBERED` 가 "조회 전 null 신규라인"을 영구 배제하지 않나** · 요청 token 무효화 시점 · **bulk 요청 자체 실패 시 CATALOG 강등으로 사용자 단가 덮나**(견적도 대칭인가)
+3. **Design** — 🔑 **진행 중 단서**: Codex 의 AA 2건(**7.149 / 15.083**)은 **실토큰 기준 정확함이 검증됨**. 그러나 **"Codex 가 확인하지 않은 대비 1건" 을 발견**하고 **다크모드 도달 가능성 확인 중**에 끊김 → **여기부터 이어갈 것** · 협소 폭 `거래처 최근단가`(7자, 기존 3자) 줄바꿈 · **마커 `aria-live` 가 라인 50개서 스크린리더 폭주?** · `aria-describedby` 가 `CollaborativeSlipInput` wrapper 통과하나 · **`정가` 용어가 기존 라벨과 일치하나**(grep 대조)
+4. **DevOps** — 🔴 **CI allowlist 1:1 대조 최우선**(신규: `PriceMemoryRequestSizeValidationTest`·`PartnerProductPriceMemoryMetricsTest`·`MobilePartnerOrderServiceTest`·`slip.test.ts`·`LineRow.test.tsx`. **design-system vitest 가 CI 잡에 있나?**) · **Micrometer 이름 변환**(`Counter.builder("…_total")` → 실제 `…_total_total` 로 export 되지 않나?) · rule 파일이 컨테이너에 **마운트**되나 · **executor shutdown 없으면 배포마다 큐 유실** · `@ConfigurationProperties` prefix 바인딩
+5. **QA** — 라이브 실행(아래 절차). 🔑 **진행 흔적: 렌더러 200 + `dev_manager` 실 토큰 로그인까지 성공, 스위트 실행 직전에 끊김**
+
+### 🧪 라이브 QA 실행 절차 (스펙 R4 메타 갱신 = 이번 커밋에 포함됨)
+```powershell
+# 1) 렌더러 (mock OFF·신규포트·strictPort — 고아 vite=false-RED 원천)
+cd clients/desktop
+$env:VITE_API_BASE_URL="http://localhost:8080"; npx vite --config vite.web.config.ts --port 5216 --strictPort
+# 2) 실행 (node_modules/.bin 직접·desktop cwd)
+$env:QA_BASE_URL="http://localhost:5216"
+node_modules\.bin\playwright test --config=playwright.real-qa.config.ts --reporter=line --timeout=60000
+```
+- 계정 **`dev_manager` / `dev_p05_pass!`** (⚠️ `dev_master` 는 `sales.slip.create` 없어 전표생성 403 — 알려진 사실·#809 회귀 아님)
+- 스샷 → `docs/qa/809-partner-product-price-memory/r4/` (r2/ 는 **superseded 이나 이력 보존**·덮어쓰기 금지)
+- **R3 fix 신규 UI 실증 필수**: 마커가 `최근가`→**`거래처 최근단가`** · miss 에 **`정가`** · 거래처 변경 시 **배너+변경행 강조** · 네트워크에 **`POST /slips/price-memory/bulk` 1건**(품목수만큼 GET 아님)
+- 🚫 **스펙 단언 약화 금지** — 깨지면 깨진 대로 보고(R3 이 잡은 false-green 부활 금지)
+
+### 📌 개발책임자 결정 (이번 세션 확정·[PR 박제](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4977514774))
+- **D-R3-1** UUID 쿼리스트링 = **현행 유지**(기준="화면"만·DevTools 는 개발자도구). 코드변경 0·문서 명시로 close
+- **D-R3-2** CH-7 = **현행 유지 + 변경행 강조/배너**. `USER_CONFIRMED` 보존안 **기각**(focus 오승격 위험)
+- **D-R3-3** soft-delete 기억값 = **반환 유지**(삭제 엔티티 걸린 기존 문서 편집 시 단가 보존). 생존확인 RPC 추가 금지(CH-8 악화)
+- **D-R3-4** CH-8 = **bulk endpoint + OR short-circuit + timeout**
+
+### 📮 이번 세션 게시 (PR #820)
+[R3 완주(DevOps/QA)](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4977464830) · [개발책임자 결정](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4977514774) · [R3 fix 완료](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4978782435)
+
+### 🔴 정직 고지 (승계)
+- **R2 라이브 QA "7/7 PASS" = superseded** — R3 QA(CB-3)가 **스펙 자체의 false-green** 적발(견적 저장 POST 500 이어도 통과·임의 기존 견적 조회·productId 존재만 단언). **R4 실행이 #809 첫 유효 라이브 증거**
+- **R2 리포트 자기모순 확정** — "미해소 4건"(상단) vs "6건"(하단) → **6건이 정답**(§6 열거 = B-3·BLOCKING-1·B-1·B-2·H-2·H-6). 정정하되 **과장 사실은 이력으로 보존**
+- **의도된 trade-off** — 가격기억 flush 가 **bounded async** 라 저장 직후 짧은 창에서 이전값/miss 가능·프로세스 종료 시 유실 가능. 원 저장 fail-soft 우선. FE 는 서버결과 그대로 표시·자동재시도 없음
+- **실 브라우저/스크린리더 수동 QA 미수행** (CH-6/CH-7 a11y 는 자동테스트 수준까지만)
+
+### 🔵 남은 워크플로우
+**R4 Opus 5-agent+라이브QA → 게시 → Codex 적대 5-agent → 0수렴까지 반복 → PM 종합 9-게이트 → CI green → 머지**
+
+### ⚙️ 이번 세션 환경 교훈 (메모리 박제 완료)
+- **codex CLI 이중설치 400 해소 실증** — `npm i -g @openai/codex@latest`(0.144.4) + **세션 재시작**으로 반영. 연결 테스트 1줄로 검증
+- 🚨 **MCP 1800s abort 복구법 정정** — `git diff` 해시 2회 비교는 **false-STABLE**(Codex 가 검증/사고 중엔 파일을 안 씀). **진짜 신호 = rollout 로그 LastWriteTime 90s 무변동 + codex PID**. **abort 가 턴을 자를 때도 있고 안 자를 때도 있다**(배치A=abort 후 3분 더 돌아 완주 / 배치B=즉시 잘림)
+- 💡 **abort 로 잃은 threadId·최종보고는 rollout jsonl 에서 회수** — `~/.codex/sessions/<y>/<M>/<d>/rollout-<ts>-<threadId>.jsonl` (파일명에 threadId·본문에 assistant 전문). **`codex-reply` 로 이어받기 가능**(이번에 2회 성공). ⚠️ UTF-8 명시(`Get-Content -Encoding UTF8`)·MCP 가 잠그므로 `[System.IO.File]::ReadAllLines` 실패
+- **promtool 이 PM 브리프 오타 포착** — `rules_files`(오타) vs **`rule_files`**(정식). 그대로 뒀으면 Prometheus 설정 로드 실패
+- **dedup 이 load-bearing 이 됨** — 단일 multi-row `INSERT..ON CONFLICT` 는 중복 conflict 키 시 PG 하드에러(*"cannot affect row a second time"*) → fail-soft 라 배치 전체가 조용히 死. CM-9 테스트가 가드
+- **gradle `:test` 는 foreground 만**(백그라운드 killed) — 3m49s. **bootJar 는 백그라운드 정상**
+
+### 🔴 백로그 (승계·#809 완주 후 순차)
+1. **레거시 GAS 통합 점검** — 레거시 코드 신규 재수신(`tools/legacy-gas/` 갱신)+전메뉴 계승 재검증. **OCR 제외**
+2. **'주문서 관리' + '주문서 관리(이관)' → 하나로 통합**
+3. **전역 입력 UX** — 전 메뉴 자동완성+모달 복수선택(캡슐). 🔴 **단수 강제 필드 구분 필수**
+4. **품목행 공급가액·부가세 열** — 자동계산 우선·편집 가능. 🔴 착수 전 역산방향·합계강제·면세/영세 확정
+- **전표 거래처 필수화**(별도 슬라이스·기존 null 전표 조사 선행) · **매출전표 배분 거래처 불일치 검증 부재 이슈 미등록**(초안 `scratchpad/issue-sales-allocation.md` = **구세션 scratchpad·유실 가능** → `docs/handoff/DRAFT-issue-sales-allocation-partner-mismatch.md` 에 보존본 있음)
+- #773 잔여(S3 무결성편집·S1.5 다서비스·S1d Google자격·totalDiscount) · #816 후속(DELAYED 실배선·실 벤더 발송 W10-2)
+
+---
+
+## 🔄 2026-07-15 (집PC) — #809 **Codex 적대 3/5 지점에서 세션 재시작** (codex CLI 업그레이드 반영용) ✅ 해소됨
 
 > **다음 세션 첫 읽기(최우선).** 재시작 사유 = **codex CLI 버전 불일치**. 개발책임자 지시로 `~/.codex/config.toml` 이 `model = "gpt-5.6-sol"` 로 갱신됐는데 MCP 가 쓰는 npm 전역 codex 가 **0.131.0 구버전**이라 `400 The 'gpt-5.6-sol' model requires a newer version of Codex` 로 전 호출 차단. **`npm i -g @openai/codex@latest` 로 0.144.4 업그레이드 완료**했으나 **MCP 서버가 구버전 프로세스로 상주** → 재시작 필요. (⚠️ codex.exe kill 금지 — MCP vendor 공유 종료됨 → [[feedback_codex_kill_shares_mcp_vendor]])
 

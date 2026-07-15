@@ -1,9 +1,13 @@
 /**
- * #809 (거래처+품목) 최근단가 자동채움 — R1 fix 후 라이브 재검증 (R2 라운드, mock OFF).
+ * #809 (거래처+품목) 최근단가 자동채움 — R3 Codex 적대 fix 후 라이브 재검증 (R4 라운드, mock OFF).
  *
- * 대상 HEAD: ca3eee819 (R1 리뷰 fix — BLOCKING 4 · HIGH 6 · MEDIUM 11 · LOW 8 + 개발책임자 결정 4건)
- * 실 게이트웨이(:8080) → 재빌드 slip-service/partner-service(이미지 --build) → 실 Postgres.
+ * 대상 HEAD: 71a6f0412 (R3 Codex 적대 fix 30건 — BE 77ea69c77 · FE 9ff6387f1 · QA/문서 71a6f0412)
+ * 실 게이트웨이(:8080) → 재배포 slip-service(V58 적용 실측) → 실 Postgres.
  * 합성/fixture 없음. 판정은 전부 실 GUI, DB 는 뒷받침 실측용.
+ *
+ * ⚠️ R2 의 "라이브 QA 7/7 PASS" 는 superseded — R3 QA(CB-3)가 스펙 자체의 false-green 을 적발했다.
+ * (견적 저장 POST 가 500 이어도 통과 · 방금 만든 견적이 아니라 임의 기존 견적 조회 · 단가가 아니라
+ *  productId 존재만 단언). 본 스펙은 R3 에서 경화됐고 R4 실행이 #809 의 첫 유효 라이브 증거다.
  *
  * ⚠️ 계정: `dev_master` 는 auth_db 상 "마스터" 권한그룹에 `sales.slip.create` 행이 없어
  * 전표 생성 자체가 403 이다(R1 INFO-1, #809 회귀 아님). 본 QA 는 `sales.slip.create` +
@@ -19,7 +23,7 @@
  *
  * 시나리오: A 견적 자동채움 · B BUNDLE_SET · C 거래처 변경 재조회 · D 최근가 마커 ·
  *          E 수정경로 ×1.1 정규화 · F 전표 회귀
- * 단계별 캡처 → docs/qa/809-partner-product-price-memory/r2/
+ * 단계별 캡처 → docs/qa/809-partner-product-price-memory/r4/ (r2/ 는 superseded 이나 이력 보존)
  */
 import { expect, test, type Page } from '@playwright/test'
 import * as path from 'path'
@@ -33,7 +37,7 @@ const BASE_URL = process.env['QA_BASE_URL'] ?? 'http://localhost:5211'
 const API_BASE = process.env['API_BASE'] ?? 'http://localhost:8080'
 const PASSWORD = process.env['DEV_PASSWORD'] ?? 'dev_p05_pass!'
 const ACCOUNT = 'dev_manager'
-const SHOTS = path.resolve(_dirname, '../../../../docs/qa/809-partner-product-price-memory/r2')
+const SHOTS = path.resolve(_dirname, '../../../../docs/qa/809-partner-product-price-memory/r4')
 fs.mkdirSync(SHOTS, { recursive: true })
 
 const PARTNER_A = { name: '한울냉열시스템', query: '한울냉열', id: '44f0cfc1-4a5f-4206-85cd-04ad5fa70922' }
@@ -253,7 +257,7 @@ async function saveSlipAndWait(page: Page): Promise<string> {
   return slipId
 }
 
-test.describe.serial('#809 R2 — R1 fix 후 라이브 재검증', () => {
+test.describe.serial('#809 R4 — R3 Codex 적대 fix 후 라이브 재검증', () => {
   test.beforeAll(() => {
     // 재실행 안전성 — "최초 = miss" 를 실제로 만들기 위해 본 스펙이 쓰는 (거래처,품목) 쌍만
     // 좁혀서 정리한다. 무조건부 전체 삭제는 하지 않는다(무관 데이터 보존).
@@ -269,7 +273,7 @@ test.describe.serial('#809 R2 — R1 fix 후 라이브 재검증', () => {
       `SELECT COUNT(*) FROM partner_product_price_memory
        WHERE partner_id IN (${partners}) AND product_id IN (${products})`.replace(/\s+/g, ' '),
     )
-    console.log('[#809 R2] 테스트 대상 쌍 초기화 — 잔여행:', left)
+    console.log('[#809 R4] 테스트 대상 쌍 초기화 — 잔여행:', left)
     expect(left, '테스트 대상 기억행 초기화 실패').toBe('0')
   })
 
@@ -297,11 +301,11 @@ test.describe.serial('#809 R2 — R1 fix 후 라이브 재검증', () => {
     await capture(page, '02-slip-manual-price-888000-entered')
 
     await saveSlipAndWait(page)
-    console.log('[#809 R2] 01 price-memory 호출:', JSON.stringify(net.responses))
+    console.log('[#809 R4] 01 price-memory 호출:', JSON.stringify(net.responses))
 
     await expectMemoryRowEventually(PARTNER_A.id, PRODUCT_X.id, PRICE_P)
     const row = memoryRow(PARTNER_A.id, PRODUCT_X.id)
-    console.log('[#809 R2] 01 DB 기억행 (A,X):', row)
+    console.log('[#809 R4] 01 DB 기억행 (A,X):', row)
     expect(row, 'DB 기억행 미생성 = WRITE 훅 죽음').toBe(`${PRICE_P}.00|LINE_SAVE`)
     await ctx.close()
   })
@@ -324,14 +328,14 @@ test.describe.serial('#809 R2 — R1 fix 후 라이브 재검증', () => {
     const marker = recentMarkers(page).first()
     await expect(marker, 'hit 라인에 최근가 마커 미표시').toBeVisible({ timeout: 10000 })
     const tooltip = await marker.getAttribute('title')
-    console.log('[#809 R2] 02 최근가 tooltip:', tooltip)
+    console.log('[#809 R4] 02 최근가 tooltip:', tooltip)
     expect(tooltip, '거래처 최근단가 tooltip 에 저장일 누락').toMatch(
       /이 거래처에 마지막으로 저장된 단가 · \d{4}-\d{2}-\d{2} 저장/,
     )
     await capture(page, '03-KEY-slip-autofill-888000-with-recent-marker')
 
     expect(net.responses.some((r) => r.startsWith('200')), 'price-memory 200 미관측').toBeTruthy()
-    console.log('[#809 R2] 02 price-memory 응답:', JSON.stringify(net.responses))
+    console.log('[#809 R4] 02 price-memory 응답:', JSON.stringify(net.responses))
     await ctx.close()
   })
 
@@ -364,8 +368,8 @@ test.describe.serial('#809 R2 — R1 fix 후 라이브 재검증', () => {
     // ⓑ 단가 = 기억단가 P (정가 아님)
     await expectUnitPriceDigits(page, PRICE_P, 1, '견적 기억단가 자동채움')
     // ⓒ price-memory 요청에 productId 가 실려 200
-    console.log('[#809 R2] 03 견적 price-memory 요청:', JSON.stringify(net.calls))
-    console.log('[#809 R2] 03 견적 price-memory 응답:', JSON.stringify(net.responses))
+    console.log('[#809 R4] 03 견적 price-memory 요청:', JSON.stringify(net.calls))
+    console.log('[#809 R4] 03 견적 price-memory 응답:', JSON.stringify(net.responses))
     expect(net.calls.some((u) => u.includes(`productId=${PRODUCT_X.id}`)), 'price-memory 요청에 productId 누락(R1 결함 잔존)').toBeTruthy()
     expect(net.responses.some((r) => r.startsWith('200')), 'price-memory 200 미관측').toBeTruthy()
     expect(net.responses.some((r) => r.startsWith('400')), 'price-memory 400 = R1 결함 잔존').toBeFalsy()
@@ -427,7 +431,7 @@ test.describe.serial('#809 R2 — R1 fix 후 라이브 재검증', () => {
     // 세트 parent = BUNDLE_SET 기억행
     await expectMemoryRowEventually(PARTNER_A.id, BUNDLE.id, PRICE_BUNDLE, 'BUNDLE_SET')
     const parent = memoryRow(PARTNER_A.id, BUNDLE.id)
-    console.log('[#809 R2] 04 DB 세트 parent 기억행:', parent)
+    console.log('[#809 R4] 04 DB 세트 parent 기억행:', parent)
     expect(parent, '세트 parent 기억행이 BUNDLE_SET 로 생성되지 않음').toBe(`${PRICE_BUNDLE}.00|BUNDLE_SET`)
 
     // 구성품 productId 로는 기억행이 생기면 안 된다(납품가 각인 방지)
@@ -435,7 +439,7 @@ test.describe.serial('#809 R2 — R1 fix 후 라이브 재검증', () => {
       `SELECT COUNT(*) FROM partner_product_price_memory
        WHERE partner_id='${PARTNER_A.id}' AND product_id IN (${BUNDLE_COMPONENT_IDS.map((i) => `'${i}'`).join(',')})`.replace(/\s+/g, ' '),
     )
-    console.log('[#809 R2] 04 DB 구성품 기억행 수(0 이어야 함):', compRows)
+    console.log('[#809 R4] 04 DB 구성품 기억행 수(0 이어야 함):', compRows)
     expect(compRows, '구성품 productId 로 기억행이 생성됨 = 납품가 각인 방지 실패').toBe('0')
 
     // 같은 거래처에 세트 재선택 → 저장단가 자동채움
@@ -509,7 +513,7 @@ test.describe.serial('#809 R2 — R1 fix 후 라이브 재검증', () => {
     await pickAutocomplete(page, '라인 1 품목', '품목 목록', PRODUCT_X.model)
     await page.waitForTimeout(1200)
     const slipId = await saveSlipAndWait(page)
-    console.log('[#809 R2] 06 수정 대상 전표:', slipId)
+    console.log('[#809 R4] 06 수정 대상 전표:', slipId)
 
     await page.goto(`${BASE_URL}/sales/${slipId}`)
     await page.getByTestId('sales-slip-edit-button').click()
@@ -533,7 +537,7 @@ test.describe.serial('#809 R2 — R1 fix 후 라이브 재검증', () => {
     // DB: ×1.1 정규화 확인
     await expectMemoryRowEventually(PARTNER_A.id, PRODUCT_X.id, EDIT_Q_INCL_VAT)
     const row = memoryRow(PARTNER_A.id, PRODUCT_X.id)
-    console.log('[#809 R2] 06 수정 후 DB 기억행 (A,X):', row, `— 기대 ${EDIT_Q_INCL_VAT}.00`)
+    console.log('[#809 R4] 06 수정 후 DB 기억행 (A,X):', row, `— 기대 ${EDIT_Q_INCL_VAT}.00`)
     expect(row, '수정경로 기억 미반영 또는 ×1.1 정규화 오류').toBe(`${EDIT_Q_INCL_VAT}.00|LINE_SAVE`)
 
     // 새 전표에서 VAT 포함 단가로 자동채움
@@ -580,7 +584,7 @@ test.describe.serial('#809 R2 — R1 fix 후 라이브 재검증', () => {
       `SELECT COUNT(*) FROM partner_product_price_memory
        WHERE partner_id='${PARTNER_A.id}' AND product_id='${PRODUCT_X.id}'`.replace(/\s+/g, ' '),
     )
-    console.log('[#809 R2] 07 (A,X) 행 수(1 이어야 함):', rows, '· 값:', memoryRow(PARTNER_A.id, PRODUCT_X.id))
+    console.log('[#809 R4] 07 (A,X) 행 수(1 이어야 함):', rows, '· 값:', memoryRow(PARTNER_A.id, PRODUCT_X.id))
     expect(rows, 'upsert 인데 중복행 발생').toBe('1')
     expect(memoryRow(PARTNER_A.id, PRODUCT_X.id), '선입력 저장값 미반영').toBe('123456.00|LINE_SAVE')
     await ctx.close()
