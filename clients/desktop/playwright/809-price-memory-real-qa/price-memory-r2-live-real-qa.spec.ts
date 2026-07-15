@@ -1,5 +1,5 @@
 /**
- * #809 (거래처+품목) 최근단가 자동채움 — R4 FABLE5 적대 fix 후 라이브 재검증 (R4-postfix 라운드, mock OFF).
+ * #809 (거래처+품목) 최근단가 자동채움 — R5 CODEX SOL 5.6 QA fix 후 라이브 재검증 (R5-postfix, mock OFF).
  *
  * 대상: R4 적대검증 27건 fix 6개 배치(BE·DevOps·FE·Design·통합·sweep) 적용 워킹트리
  * (base 71a6f0412 — R3 fix 3커밋 위). 실 게이트웨이(:8080) → 재배포 slip-service(V58 적용 실측)
@@ -51,10 +51,18 @@
  *    SlipFormPage.test.tsx 'keeps the remembered unit price and only releases the marker …' ·
  *    LineRow.test.tsx 'REMEMBERED without a partner hides the marker …'.
  *
- * 단계별 캡처 → docs/qa/809-partner-product-price-memory/r4-postfix/
+ * R5-postfix 신규 강화(기존 단언 삭제/약화 없음, R4 false-green 커버리지 구멍만 추가):
+ *  - 11 [R5-H6]: 실제 legacy QUOTE_DRAFT 견적 무수정 저장 → PUT 2xx + unit_price /
+ *                 unit_price_with_vat / price-memory 완전 불변
+ *  - 12 [R5-H7]: 전표·견적 각각 신규 BUNDLE 저장 → 상세 재진입 무수정 PUT → 세트 계보 보존,
+ *                 구성품 기억행 0, parent BUNDLE_SET 정확히 1행
+ *  - 13 [R5-H8]: 모델 lookup 2xx 뒤 단건 price-memory 실응답만 지연 → 중간 저장 disabled /
+ *                 0원 POST 없음 → 응답 뒤 정확한 기억단가 적용·저장
+ *
+ * 단계별 캡처 → docs/qa/809-partner-product-price-memory/r5-postfix/
  * (r4/ 는 pre-fix 상태 증거로 보존 — R4 적대리뷰가 검증한 대상. r2/ 는 superseded 이나 이력 보존)
  */
-import { expect, test, type Page } from '@playwright/test'
+import { expect, test, type Page, type Response } from '@playwright/test'
 import * as path from 'path'
 import * as fs from 'fs'
 import { execSync } from 'child_process'
@@ -66,7 +74,7 @@ const BASE_URL = process.env['QA_BASE_URL'] ?? 'http://localhost:5211'
 const API_BASE = process.env['API_BASE'] ?? 'http://localhost:8080'
 const PASSWORD = process.env['DEV_PASSWORD'] ?? 'dev_p05_pass!'
 const ACCOUNT = 'dev_manager'
-const SHOTS = path.resolve(_dirname, '../../../../docs/qa/809-partner-product-price-memory/r4-postfix')
+const SHOTS = path.resolve(_dirname, '../../../../docs/qa/809-partner-product-price-memory/r5-postfix')
 fs.mkdirSync(SHOTS, { recursive: true })
 
 const PARTNER_A = { name: '부산냉난방테크', query: '부산냉난방', id: 'e8ae9c86-afe1-3364-b484-1f5a2bf31313' }
@@ -332,6 +340,103 @@ async function saveSlipAndWait(page: Page): Promise<string> {
   )
   await page.waitForURL('**/sales', { timeout: 30000 })
   return slipId
+}
+
+interface LegacyEstimateTarget {
+  id: string
+  estimateNo: string
+  status: string
+  partnerName: string
+  productId: string
+  productName: string
+  modelName: string
+  unitPrice: string
+}
+
+/** 실 DB 의 편집 가능 legacy 견적 중 단일라인 1건을 동적으로 선택한다(합성/seed 없음). */
+function findLegacyEstimateTarget(): LegacyEstimateTarget {
+  const raw = psql(
+    `SELECT row_to_json(target)::text FROM (
+       SELECT e.id, e.estimate_no AS \"estimateNo\", e.status,
+              e.partner_name AS \"partnerName\", el.product_id AS \"productId\",
+              el.product_name AS \"productName\", el.model_name AS \"modelName\",
+              el.unit_price::text AS \"unitPrice\"
+       FROM estimates e
+       JOIN estimate_lines el ON el.estimate_id=e.id
+       WHERE e.is_deleted=false AND el.is_deleted=false
+         AND e.status IN ('QUOTE_DRAFT','QUOTE_SENT')
+         AND e.partner_id IS NULL
+         AND e.partner_name='${PARTNER_A.name}'
+         AND el.unit_price_with_vat IS NULL
+         AND (SELECT COUNT(*) FROM estimate_lines active
+              WHERE active.estimate_id=e.id AND active.is_deleted=false)=1
+       ORDER BY e.created_at DESC
+       LIMIT 1
+     ) target`.replace(/\s+/g, ' '),
+  )
+  expect(raw, '실 DB 에 편집 가능한 단일라인 legacy 견적이 없음').not.toBe('')
+  return JSON.parse(raw) as LegacyEstimateTarget
+}
+
+function estimatePriceSnapshot(estimateId: string): string {
+  return psql(
+    `SELECT string_agg(
+       product_id::text || '|' || unit_price::text || '|' ||
+       COALESCE(unit_price_with_vat::text, 'NULL'), ',' ORDER BY line_no)
+     FROM estimate_lines
+     WHERE estimate_id='${estimateId}' AND is_deleted=false`.replace(/\s+/g, ' '),
+  )
+}
+
+/** 대상 품목의 가격기억 값/출처/시각/삭제상태 전체 스냅샷 — 행 추가·갱신·soft-delete 모두 감지. */
+function memorySnapshotForProduct(productId: string): string {
+  return psql(
+    `SELECT COALESCE(string_agg(
+       partner_id::text || '|' || unit_price::text || '|' || source || '|' ||
+       remembered_at::text || '|' || is_deleted::text, ',' ORDER BY partner_id::text), '')
+     FROM partner_product_price_memory
+     WHERE product_id='${productId}'`.replace(/\s+/g, ' '),
+  )
+}
+
+type BundleLineTable = 'slip_lines' | 'estimate_lines'
+
+function bundleLineageSnapshot(table: BundleLineTable, ownerId: string): string {
+  const ownerColumn = table === 'slip_lines' ? 'slip_id' : 'estimate_id'
+  return psql(
+    `SELECT COALESCE(string_agg(
+       product_id::text || '|' || set_head::text || '|' || COALESCE(parent_set_model, 'NULL') || '|' ||
+       unit_price::text || '|' || COALESCE(unit_price_with_vat::text, 'NULL'),
+       ',' ORDER BY product_id::text), '')
+     FROM ${table}
+     WHERE ${ownerColumn}='${ownerId}' AND is_deleted=false`.replace(/\s+/g, ' '),
+  )
+}
+
+function bundleLineageSummary(table: BundleLineTable, ownerId: string): string {
+  const ownerColumn = table === 'slip_lines' ? 'slip_id' : 'estimate_id'
+  return psql(
+    `SELECT COUNT(*) || '|' || COUNT(*) FILTER (WHERE set_head) || '|' ||
+            COUNT(*) FILTER (WHERE parent_set_model='${BUNDLE.model}') || '|' ||
+            string_agg(product_id::text, ',' ORDER BY product_id::text)
+     FROM ${table}
+     WHERE ${ownerColumn}='${ownerId}' AND is_deleted=false`.replace(/\s+/g, ' '),
+  )
+}
+
+function memoryRowCount(partnerId: string, productId: string): string {
+  return psql(
+    `SELECT COUNT(*) FROM partner_product_price_memory
+     WHERE partner_id='${partnerId}' AND product_id='${productId}'`.replace(/\s+/g, ' '),
+  )
+}
+
+function bundleComponentMemoryCount(partnerId: string): string {
+  return psql(
+    `SELECT COUNT(*) FROM partner_product_price_memory
+     WHERE partner_id='${partnerId}'
+       AND product_id IN (${BUNDLE_COMPONENT_IDS.map((id) => `'${id}'`).join(',')})`.replace(/\s+/g, ' '),
+  )
 }
 
 test.describe.serial('#809 R4-postfix — R4 적대 fix 후 라이브 재검증', () => {
@@ -980,5 +1085,307 @@ test.describe.serial('#809 R4-postfix — R4 적대 fix 후 라이브 재검증'
     await expect(estimateHighlightedRows(page), '사후 선택 강조가 정확히 1행이 아님').toHaveCount(1)
     await capture(page, '23-KEY-estimate-late-partner-select-rehit-888000-banner-highlight')
     await ctx.close()
+  })
+})
+
+test.describe('#809 R5-postfix — R4 false-green 커버리지 구멍 실서버 재검증', () => {
+  test('11 [R5-H6] 🔴 실제 legacy 견적 무수정 저장 — PUT 2xx + 단가 2필드·price-memory 완전 불변', async ({ browser }) => {
+    test.slow()
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
+    const page = await ctx.newPage()
+    await login(page)
+
+    try {
+      const legacyEditableCount = psql(
+        `SELECT COUNT(*) FROM estimates e
+         JOIN estimate_lines el ON el.estimate_id=e.id
+         WHERE e.is_deleted=false AND el.is_deleted=false
+           AND e.status IN ('QUOTE_DRAFT','QUOTE_SENT')
+           AND el.unit_price_with_vat IS NULL`.replace(/\s+/g, ' '),
+      )
+      console.log('[#809 R5-postfix] 11 편집 가능 legacy 라인 실측:', legacyEditableCount)
+      expect(legacyEditableCount, 'R5 브리프의 편집 가능 legacy 1,926건 실측과 다름').toBe('1926')
+
+      const target = findLegacyEstimateTarget()
+      expect(target.status, 'legacy 대상이 편집 가능 상태가 아님').toMatch(/^QUOTE_(DRAFT|SENT)$/)
+      expect(target.id, 'legacy estimateId 형식 불일치').toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+      )
+      const priceBefore = estimatePriceSnapshot(target.id)
+      const memoryBefore = memorySnapshotForProduct(target.productId)
+      expect(priceBefore, 'legacy DB 사전값이 unit_price_with_vat=NULL 계약과 다름').toBe(
+        `${target.productId}|${target.unitPrice}|NULL`,
+      )
+
+      await page.goto(`${BASE_URL}/sales/estimates/${target.id}/edit`)
+      await expect(page.getByLabel('라인 1 모델명'), 'legacy 견적 편집 폼 미표시').toHaveValue(target.modelName, {
+        timeout: 30000,
+      })
+      await expect(page.getByLabel('라인 1 품목명')).toHaveValue(target.productName)
+      await expectUnitPriceDigits(page, target.unitPrice, 1, 'legacy 공급단가 hydrate')
+      const saveButton = page.getByTestId('estimate-form-save-button')
+      await expect(saveButton, 'legacy 견적 저장 버튼 미활성').toBeEnabled({ timeout: 20000 })
+      await capture(page, '24-legacy-estimate-draft-before-nochange-save')
+
+      let resolveUpdate!: (response: Response) => void
+      const updateObserved = new Promise<Response>((resolve) => { resolveUpdate = resolve })
+      const onResponse = (response: Response) => {
+        if (
+          response.request().method() === 'PUT'
+          && response.url().includes(`/slips/estimates/${target.id}`)
+        ) {
+          resolveUpdate(response)
+        }
+      }
+      page.on('response', onResponse)
+      await saveButton.click()
+      const updateResponse = await Promise.race([
+        updateObserved,
+        page.waitForTimeout(10000).then(() => null),
+      ])
+      page.off('response', onResponse)
+
+      // PUT 성공 여부와 무관하게 DB 불변을 먼저 실측해 9.1% 하락/기억오염을 놓치지 않는다.
+      const priceAfter = estimatePriceSnapshot(target.id)
+      const memoryAfter = memorySnapshotForProduct(target.productId)
+      console.log('[#809 R5-postfix] 11 legacy DB before/after:', priceBefore, '/', priceAfter)
+      console.log('[#809 R5-postfix] 11 legacy price-memory before/after:', memoryBefore, '/', memoryAfter)
+      expect(priceAfter, 'legacy 무수정 저장으로 unit_price 또는 unit_price_with_vat 변형').toBe(priceBefore)
+      expect(memoryAfter, 'legacy 무수정 저장으로 대상 품목 price-memory 변형').toBe(memoryBefore)
+      await capture(page, '25-legacy-estimate-after-nochange-save-attempt')
+
+      const validationMessage = await page.getByRole('alert').textContent().catch(() => null)
+      expect(
+        updateResponse?.status() ?? 0,
+        `PUT /estimates/{id} 미관측(폼 오류: ${validationMessage ?? '없음'})`,
+      ).toBeGreaterThanOrEqual(200)
+      expect(updateResponse?.status() ?? 999, 'PUT /estimates/{id} 가 2xx 아님').toBeLessThan(300)
+    } finally {
+      await ctx.close()
+    }
+  })
+
+  test('12a [R5-H7] 🔴 전표 BUNDLE — 신규 POST → 상세 무수정 PUT → 계보 보존·구성품 0·parent 1', async ({ browser }) => {
+    test.slow()
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
+    const page = await ctx.newPage()
+    await login(page)
+    resetMemoryPair(PARTNER_A.id, BUNDLE.id)
+    BUNDLE_COMPONENT_IDS.forEach((productId) => resetMemoryPair(PARTNER_A.id, productId))
+
+    try {
+      await openSlipForm(page)
+      await pickAutocomplete(page, '거래처', '거래처 목록', PARTNER_A.query)
+      await pickWarehouse(page)
+      await pickAutocomplete(page, '라인 1 품목', '품목 목록', BUNDLE.model)
+      await page.waitForTimeout(1200)
+      await expectUnitPriceDigits(page, BUNDLE.sellingPrice, 1, '전표 BUNDLE 판매가')
+      await unitPriceInput(page).fill(PRICE_BUNDLE)
+      const slipId = await saveSlipAndWait(page)
+      await expectMemoryRowEventually(PARTNER_A.id, BUNDLE.id, PRICE_BUNDLE, 'BUNDLE_SET')
+
+      const componentIds = [...BUNDLE_COMPONENT_IDS].sort().join(',')
+      const expectedSummary = `2|1|2|${componentIds}`
+      const lineageBefore = bundleLineageSnapshot('slip_lines', slipId)
+      console.log('[#809 R5-postfix] 12a 전표 POST 계보:', lineageBefore)
+      expect(bundleLineageSummary('slip_lines', slipId), '전표 POST 세트 메타 불일치').toBe(expectedSummary)
+      expect(bundleComponentMemoryCount(PARTNER_A.id), '전표 POST 구성품 기억행 오염').toBe('0')
+      expect(memoryRowCount(PARTNER_A.id, BUNDLE.id), '전표 POST parent 기억행이 정확히 1건이 아님').toBe('1')
+      expect(memoryRow(PARTNER_A.id, BUNDLE.id), '전표 POST parent source/단가 불일치').toBe(
+        `${PRICE_BUNDLE}.00|BUNDLE_SET`,
+      )
+
+      await page.goto(`${BASE_URL}/sales/${slipId}`)
+      await page.getByTestId('sales-slip-edit-button').click()
+      const editModal = page.getByTestId('sales-slip-edit-modal')
+      await expect(editModal, '전표 BUNDLE 상세 편집 모달 미표시').toBeVisible({ timeout: 20000 })
+      await expect(editModal.getByLabel('단가(VAT제외) 1')).toBeVisible()
+      await capture(page, '26-slip-bundle-detail-before-nochange-put')
+      const updateResponsePromise = page.waitForResponse(
+        (response) => response.request().method() === 'PUT' && response.url().includes(`/slips/${slipId}`),
+        { timeout: 30000 },
+      )
+      await page.getByTestId('sales-slip-edit-save').click()
+      const updateResponse = await updateResponsePromise
+      expect(updateResponse.ok(), `전표 BUNDLE PUT 실패: HTTP ${updateResponse.status()}`).toBeTruthy()
+
+      await expect.poll(() => bundleLineageSnapshot('slip_lines', slipId), {
+        timeout: 5000,
+        message: '전표 BUNDLE PUT 후 세트 계보/가격이 POST 직후와 다름',
+      }).toBe(lineageBefore)
+      expect(bundleLineageSummary('slip_lines', slipId), '전표 PUT 세트 메타 불일치').toBe(expectedSummary)
+      expect(bundleComponentMemoryCount(PARTNER_A.id), '전표 PUT 구성품 기억행 오염(R5-H1 잔존)').toBe('0')
+      expect(memoryRowCount(PARTNER_A.id, BUNDLE.id), '전표 PUT parent 기억행이 정확히 1건이 아님').toBe('1')
+      expect(memoryRow(PARTNER_A.id, BUNDLE.id), '전표 PUT parent BUNDLE_SET 유실').toBe(
+        `${PRICE_BUNDLE}.00|BUNDLE_SET`,
+      )
+      await capture(page, '27-slip-bundle-after-nochange-put')
+    } finally {
+      await ctx.close()
+    }
+  })
+
+  test('12b [R5-H7] 🔴 견적 BUNDLE — 신규 POST → 상세 무수정 PUT → 계보 보존·구성품 0·parent 1', async ({ browser }) => {
+    test.slow()
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
+    const page = await ctx.newPage()
+    await login(page)
+    resetMemoryPair(PARTNER_B.id, BUNDLE.id)
+    BUNDLE_COMPONENT_IDS.forEach((productId) => resetMemoryPair(PARTNER_B.id, productId))
+
+    try {
+      await openEstimateForm(page)
+      await pickAutocomplete(page, '거래처 검색', '거래처 목록', PARTNER_B.query)
+      await expect(page.getByLabel('거래처명')).toHaveValue(PARTNER_B.name, { timeout: 15000 })
+      await fillEstimateModel(page, 1, BUNDLE.model)
+      await expectUnitPriceDigits(page, BUNDLE.sellingPrice, 1, '견적 BUNDLE 판매가')
+      await unitPriceInput(page).fill(PRICE_BUNDLE)
+      const estimateId = await saveEstimateDraftAndGetId(page)
+      await expectMemoryRowEventually(PARTNER_B.id, BUNDLE.id, PRICE_BUNDLE, 'BUNDLE_SET')
+
+      const componentIds = [...BUNDLE_COMPONENT_IDS].sort().join(',')
+      const expectedSummary = `2|1|2|${componentIds}`
+      const lineageBefore = bundleLineageSnapshot('estimate_lines', estimateId)
+      console.log('[#809 R5-postfix] 12b 견적 POST 계보:', lineageBefore)
+      expect(bundleLineageSummary('estimate_lines', estimateId), '견적 POST 세트 메타 불일치').toBe(expectedSummary)
+      expect(bundleComponentMemoryCount(PARTNER_B.id), '견적 POST 구성품 기억행 오염').toBe('0')
+      expect(memoryRowCount(PARTNER_B.id, BUNDLE.id), '견적 POST parent 기억행이 정확히 1건이 아님').toBe('1')
+      expect(memoryRow(PARTNER_B.id, BUNDLE.id), '견적 POST parent source/단가 불일치').toBe(
+        `${PRICE_BUNDLE}.00|BUNDLE_SET`,
+      )
+
+      await page.goto(`${BASE_URL}/sales/estimates/${estimateId}/edit`)
+      const saveButton = page.getByTestId('estimate-form-save-button')
+      await expect(page.getByLabel('라인 1 모델명'), '견적 BUNDLE 편집 폼 미표시').toBeVisible({ timeout: 30000 })
+      await expect(page.getByLabel('라인 2 모델명'), '견적 BUNDLE 구성품 2행 미표시').toBeVisible()
+      await expect(saveButton, '견적 BUNDLE 저장 버튼 미활성').toBeEnabled({ timeout: 20000 })
+      await capture(page, '28-estimate-bundle-detail-before-nochange-put')
+      const updateResponsePromise = page.waitForResponse(
+        (response) => response.request().method() === 'PUT'
+          && response.url().includes(`/slips/estimates/${estimateId}`),
+        { timeout: 30000 },
+      )
+      await saveButton.click()
+      const updateResponse = await updateResponsePromise
+      expect(updateResponse.ok(), `견적 BUNDLE PUT 실패: HTTP ${updateResponse.status()}`).toBeTruthy()
+
+      await expect.poll(() => bundleLineageSnapshot('estimate_lines', estimateId), {
+        timeout: 5000,
+        message: '견적 BUNDLE PUT 후 세트 계보/가격이 POST 직후와 다름',
+      }).toBe(lineageBefore)
+      expect(bundleLineageSummary('estimate_lines', estimateId), '견적 PUT 세트 메타 불일치').toBe(expectedSummary)
+      expect(bundleComponentMemoryCount(PARTNER_B.id), '견적 PUT 구성품 기억행 오염(R5-H1 잔존)').toBe('0')
+      expect(memoryRowCount(PARTNER_B.id, BUNDLE.id), '견적 PUT parent 기억행이 정확히 1건이 아님').toBe('1')
+      expect(memoryRow(PARTNER_B.id, BUNDLE.id), '견적 PUT parent BUNDLE_SET 유실').toBe(
+        `${PRICE_BUNDLE}.00|BUNDLE_SET`,
+      )
+      await capture(page, '29-estimate-bundle-after-nochange-put')
+    } finally {
+      await ctx.close()
+    }
+  })
+
+  /**
+   * R5-H8 지연 주입: 모델 lookup 은 실 2xx 응답을 먼저 관측한다. 이어지는 단건 price-memory
+   * 요청은 route.fetch() 로 실서버 응답을 그대로 받은 뒤 gate 동안만 hold 하고,
+   * route.fulfill({ response }) 로 원본 status/header/body 를 무변조 전달한다. 합성/내용 변조 없음.
+   */
+  test('13 [R5-H8] 🔴 lookup→price 중간상태 — 저장 disabled·0원 POST 없음 → 실응답 후 기억단가 정확 적용', async ({ browser }) => {
+    test.slow()
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
+    const page = await ctx.newPage()
+    await login(page)
+    seedMemoryRow(PARTNER_A.id, PRODUCT_X.id, PRICE_P)
+
+    let releasePriceResponse!: () => void
+    let released = false
+    const priceGate = new Promise<void>((resolve) => {
+      releasePriceResponse = () => {
+        if (released) return
+        released = true
+        resolve()
+      }
+    })
+    let resolveUpstreamReady!: () => void
+    const upstreamReady = new Promise<void>((resolve) => { resolveUpstreamReady = resolve })
+    let upstreamStatus = 0
+    let estimatePostCount = 0
+    page.on('request', (request) => {
+      if (request.method() === 'POST' && /\/estimates(\?|$)/.test(request.url())) estimatePostCount += 1
+    })
+
+    await page.route('**/slips/price-memory?*', async (route) => {
+      const response = await route.fetch() // 실서버 실응답 — 내용 변조/합성 금지
+      upstreamStatus = response.status()
+      resolveUpstreamReady()
+      await priceGate
+      await route.fulfill({ response })
+    })
+
+    try {
+      await openEstimateForm(page)
+      await pickAutocomplete(page, '거래처 검색', '거래처 목록', PARTNER_A.query)
+      await expect(page.getByLabel('거래처명')).toHaveValue(PARTNER_A.name, { timeout: 15000 })
+
+      const lookupResponsePromise = page.waitForResponse(
+        (response) => response.request().method() === 'GET'
+          && response.url().includes('/slips/lookup-product')
+          && response.url().includes(`modelName=${encodeURIComponent(PRODUCT_X.model)}`),
+        { timeout: 30000 },
+      )
+      const priceResponsePromise = page.waitForResponse(
+        (response) => response.request().method() === 'GET'
+          && response.url().includes('/slips/price-memory?'),
+        { timeout: 30000 },
+      )
+      const model = page.getByLabel('라인 1 모델명')
+      await model.fill(PRODUCT_X.model)
+      await model.blur()
+
+      const lookupResponse = await lookupResponsePromise
+      expect(lookupResponse.ok(), `실 모델 lookup 실패: HTTP ${lookupResponse.status()}`).toBeTruthy()
+      await upstreamReady
+      expect(upstreamStatus, 'hold 대상 price-memory 실 upstream 이 2xx 아님').toBeGreaterThanOrEqual(200)
+      expect(upstreamStatus, 'hold 대상 price-memory 실 upstream 이 2xx 아님').toBeLessThan(300)
+
+      // lookup 2xx 완료 + price-memory upstream 완료, 브라우저 전달 전의 정확한 중간 창.
+      const busy = page.getByTestId('estimate-form-price-refresh-busy')
+      const saveButton = page.getByTestId('estimate-form-save-button')
+      await expect(busy, 'lookup→price 중간 창 busy 단서 미표시').toHaveText('최근단가 확인 중…')
+      await expect(saveButton, 'lookup→price 중간 창 저장 미차단').toBeDisabled()
+      await expectUnitPriceDigits(page, '0', 1, 'price-memory 응답 전 중간 단가')
+      await saveButton.click({ force: true })
+      await page.waitForTimeout(400)
+      expect(estimatePostCount, 'disabled 상태에서 0원 견적 POST 발생').toBe(0)
+      await capture(page, '30-KEY-estimate-model-lookup-done-price-memory-held-save-disabled-zero')
+
+      releasePriceResponse()
+      const priceResponse = await priceResponsePromise
+      expect(priceResponse.ok(), `전달된 실 price-memory 응답 실패: HTTP ${priceResponse.status()}`).toBeTruthy()
+      await expect(busy, 'price-memory 응답 후 busy 고착').toHaveText('', { timeout: 15000 })
+      await expect(saveButton, 'price-memory 응답 후 저장 버튼 미복구').toBeEnabled()
+      await expect(page.getByLabel('라인 1 품목명')).toHaveValue(PRODUCT_X.name, { timeout: 10000 })
+      await expectUnitPriceDigits(page, PRICE_P, 1, 'price-memory 응답 후 기억단가')
+      await expect(recentMarkers(page), 'price-memory 응답 후 최근단가 마커 미표시').toHaveCount(1)
+      await capture(page, '31-KEY-estimate-price-memory-resolved-888000-save-enabled')
+
+      const estimateId = await saveEstimateDraftAndGetId(page)
+      expect(estimatePostCount, '응답 완료 뒤 견적 POST 가 정확히 1건이 아님').toBe(1)
+      const savedLine = estimatePriceSnapshot(estimateId)
+      console.log('[#809 R5-postfix] 13 저장 DB:', savedLine)
+      expect(savedLine, '응답 후 저장된 견적 단가가 888000(VAT포함)이 아님').toBe(
+        // 수량1: round(888000 / 1.1)=807273 (HALF_UP). 기존 807272.50 행은 수량2의
+        // round(1776000 / 1.1)=1614545 를 2로 나눈 값 — R5 실코드/실DB 대조 완료.
+        `${PRODUCT_X.id}|807273.00|${PRICE_P}.00`,
+      )
+      expect(memoryRow(PARTNER_A.id, PRODUCT_X.id), 'H8 저장 후 price-memory 값 변형').toBe(
+        `${PRICE_P}.00|LINE_SAVE`,
+      )
+      await capture(page, '32-estimate-price-memory-resolved-888000-saved')
+    } finally {
+      releasePriceResponse()
+      await page.unroute('**/slips/price-memory?*')
+      await ctx.close()
+    }
   })
 })
