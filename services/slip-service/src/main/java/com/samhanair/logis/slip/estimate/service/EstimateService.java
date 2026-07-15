@@ -28,8 +28,11 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -78,7 +81,7 @@ public class EstimateService {
     private int addEstimateLines(Estimate estimate, int lineNo, UUID productId, ProductSummary summary,
                                  String reqName, String reqModel, String specification, int quantity,
                                  BigDecimal unitPrice, String note, BundleSetOptions setOptions,
-                                 boolean priceVatInclusive, String actor,
+                                 boolean priceVatInclusive, UUID sourceLineId, String actor,
                                  List<PartnerProductPriceMemoryCommand> priceMemoryCommands,
                                  List<PendingPlainLine> pendingPlainLines) {
         boolean bundle = summary != null && "BUNDLE".equals(summary.productType())
@@ -93,11 +96,10 @@ public class EstimateService {
                     : EstimateLine.create(estimate, lineNo, productId, productName, modelName,
                             specification, quantity, unitPrice, note);
             estimate.addLine(line);
-            // [R6-H1] PUT 에서는 전개 구성품 productId 가 단품 summary 로 조회된다. 계보 복원은
-            // per-line greedy 가 아니라 전 라인 선구성 후 2-패스 전역 매칭으로 수행해야 하므로,
-            // LINE_SAVE 기억 수집(복원 결과 의존)과 함께 pendingPlainLines 로 지연한다
+            // PUT 의 기존 라인은 sourceLineId 로 계보를 복원해야 하므로, 전 라인 저장 후
+            // lineId 기반 복원 결과를 반영할 수 있도록 LINE_SAVE 기억 수집과 함께 지연한다
             // — {@link #resolveLineageAndCollectPlainLineMemory}.
-            pendingPlainLines.add(new PendingPlainLine(line, unitPrice, priceVatInclusive));
+            pendingPlainLines.add(new PendingPlainLine(line, unitPrice, priceVatInclusive, sourceLineId));
             return lineNo + 1;
         }
         collectPriceMemory(priceMemoryCommands, estimate.getPartnerId(), productId, unitPrice,
@@ -181,7 +183,7 @@ public class EstimateService {
                     byId.get(lineReq.productId()), lineReq.productName(), lineReq.modelName(),
                     lineReq.specification(), lineReq.quantity(), lineReq.unitPrice(),
                     lineReq.note(), lineReq.setOptions(),
-                    Boolean.TRUE.equals(lineReq.priceVatInclusive()), requesterId, priceMemoryCommands,
+                    Boolean.TRUE.equals(lineReq.priceVatInclusive()), null, requesterId, priceMemoryCommands,
                     pendingPlainLines);
         }
         // 신규 생성은 승계할 기존 계보가 없다 — 빈 resolver 로 기억 수집만 수행.
@@ -210,6 +212,7 @@ public class EstimateService {
             // 기존 라인 모두 제거 (orphan removal)
             estimate.requireEditable();
             List<EstimateLine> existing = List.copyOf(estimate.getLines());
+            validateLineIds(existing, req.lines());
             BundleLineageResolver bundleLineage = BundleLineageResolver.fromEstimateLines(existing);
             for (EstimateLine line : existing) {
                 estimate.removeLine(line);
@@ -234,10 +237,11 @@ public class EstimateService {
                         byId.get(lineReq.productId()), lineReq.productName(), lineReq.modelName(),
                         lineReq.specification(), lineReq.quantity(), lineReq.unitPrice(),
                         lineReq.note(), lineReq.setOptions(),
-                        Boolean.TRUE.equals(lineReq.priceVatInclusive()), callerId, priceMemoryCommands,
+                        Boolean.TRUE.equals(lineReq.priceVatInclusive()), lineReq.lineId(), callerId,
+                        priceMemoryCommands,
                         pendingPlainLines);
             }
-            // [R6-H1] 전 라인 구성 완료 후 2-패스 전역 매칭으로 기존 계보 복원 + 비구성품만 기억 수집.
+            // 전 라인 구성 완료 후 sourceLineId 로 기존 계보를 복원하고 비구성품만 기억 수집.
             resolveLineageAndCollectPlainLineMemory(bundleLineage, pendingPlainLines,
                     estimate.getPartnerId(), callerId, priceMemoryCommands);
             priceMemoryService.rememberBatchAfterCommit(priceMemoryCommands, "estimate.update");
@@ -479,12 +483,12 @@ public class EstimateService {
      * 같은 값을 저장한다. legacy 공급단가 입력은 1.1 배로 정규화한다.
      */
     /**
-     * 지연된 일반(비세트전개) 라인 전량에 기존 세트 계보를 2-패스 전역 매칭으로 복원한 뒤,
-     * 복원 결과 비구성품으로 남은 라인만 LINE_SAVE 기억 후보로 수집한다 (R6-H1).
+     * 지연된 일반(비세트전개) 라인에 요청의 sourceLineId 로 기존 세트 계보를 복원한 뒤,
+     * 복원 결과 비구성품으로 남은 라인만 LINE_SAVE 기억 후보로 수집한다.
      *
-     * <p>per-line greedy 복원은 요청 앞쪽의 수정/신규 라인이 뒤쪽 무수정 라인의 계보(특히
-     * head)를 선소비해 오귀속을 만들었다 — 반드시 전 라인 구성 완료 후 1회 호출한다.
-     * 세트 전개 경로에서 직접 계보가 부여된 구성품 라인은 본 대상에 포함하지 않는다.
+     * <p>lineId 는 문서 서비스가 소유권을 검증한 기존 라인 ID이거나 신규 라인을 뜻하는
+     * {@code null} 이다. 세트 전개 경로에서 직접 계보가 부여된 구성품 라인은 본 대상에
+     * 포함하지 않는다.
      *
      * @param bundleLineage replace 전 캡처한 기존 라인 계보 (신규 생성은 {@code empty()})
      * @param pendingPlainLines 비세트전개 경로로 생성된 라인 + 원 요청 단가/부가세포함 여부
@@ -497,7 +501,8 @@ public class EstimateService {
             UUID partnerId, String actor, List<PartnerProductPriceMemoryCommand> priceMemoryCommands) {
         bundleLineage.restoreEstimateLines(pendingPlainLines.stream()
                 .map(PendingPlainLine::line)
-                .toList());
+                .toList(),
+                pendingPlainLines.stream().map(PendingPlainLine::sourceLineId).toList());
         for (PendingPlainLine pending : pendingPlainLines) {
             if (!BundleLineageResolver.isBundleComponent(pending.line())) {
                 collectPriceMemory(priceMemoryCommands, partnerId, pending.line().getProductId(),
@@ -511,7 +516,34 @@ public class EstimateService {
      * 계보 복원 대기 중인 일반 라인 1건 — 복원 결과에 따라 LINE_SAVE 기억 여부가 갈리므로
      * 원 요청 단가(부가세포함 여부 포함)를 함께 보존한다.
      */
-    private record PendingPlainLine(EstimateLine line, BigDecimal unitPrice, boolean priceVatInclusive) {
+    private record PendingPlainLine(EstimateLine line, BigDecimal unitPrice, boolean priceVatInclusive,
+                                    UUID sourceLineId) {
+    }
+
+    /**
+     * 요청 lineId 가 현재 견적의 활성 라인인지 검증한다.
+     *
+     * <p>타 견적 UUID 주입은 400 INVALID_INPUT 으로 통일해 다른 문서 존재 여부를 노출하지
+     * 않는다. lineId 미전송은 구 클라이언트 호환을 위해 신규 평면 라인으로 처리하고
+     * fingerprint 휴리스틱 폴백은 사용하지 않는다.
+     */
+    private void validateLineIds(List<EstimateLine> existingLines,
+                                 List<UpdateEstimateRequest.EstimateLineUpdate> requestedLines) {
+        Set<UUID> ownedLineIds = existingLines.stream()
+                .map(EstimateLine::getId)
+                .filter(Objects::nonNull)
+                .collect(java.util.stream.Collectors.toSet());
+        Set<UUID> requestedLineIds = new HashSet<>();
+        for (UpdateEstimateRequest.EstimateLineUpdate line : requestedLines) {
+            UUID lineId = line.lineId();
+            if (lineId == null) {
+                continue;
+            }
+            if (!ownedLineIds.contains(lineId) || !requestedLineIds.add(lineId)) {
+                throw new BusinessException(ErrorCode.INVALID_INPUT,
+                        "lineId 는 현재 견적의 활성 라인에서 중복 없이 지정해야 합니다");
+            }
+        }
     }
 
     private void collectPriceMemory(List<PartnerProductPriceMemoryCommand> commands,

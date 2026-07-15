@@ -5,174 +5,142 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.samhanair.logis.slip.domain.SlipLine;
 import com.samhanair.logis.slip.estimate.domain.EstimateLine;
 import java.math.BigDecimal;
+import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
 
 /**
- * BundleLineageResolver 2-패스 전역 매칭 단위 테스트 (R6-H1).
+ * lineId 기반 BundleLineageResolver 계약 테스트.
  *
- * <p>라이브 CONFIRMED 오귀속 2변형(신규 라인의 head 탈취 / 단품의 head 오귀속)을 도메인
- * 레벨에서 그대로 재현하고, per-line greedy 에서 불가능했던 요청 순서 비의존성·head exact
- * 전용·빈 계보 tie-break 를 고정한다.
+ * <p>수정된 값은 fingerprint 로 추정하지 않고 요청 lineId 로 기존 영속 라인과 직접 연결한다.
+ * lineId 가 없는 라인은 신규 라인이므로 계보를 승계하지 않는다. UUID 는 payload 전용이며
+ * 이 테스트도 화면 표시가 아닌 내부 요청 매핑만 검증한다.
  */
 class BundleLineageResolverTest {
 
     private static final UUID PRODUCT_A = UUID.randomUUID();
     private static final UUID PRODUCT_B = UUID.randomUUID();
-    private static final String SET_MODEL = "QA797-SET-01";
+    private static final String SET_MODEL = "QA809-SET-01";
 
-    /**
-     * [BE 변형 재현] 신규 A qty3 라인이 요청 맨 앞에 와도 head 를 탈취하지 못하고,
-     * 무수정 재전송된 진짜 구성품 A/B 가 계보를 보존해야 한다.
-     */
     @Test
-    void newLineFirst_doesNotStealHeadFromUnchangedComponents() {
-        SlipLine headComponent = slipLine(PRODUCT_A, "구성품A", 2, "80000");
-        headComponent.assignBundleComponent(SET_MODEL, true);
-        SlipLine component = slipLine(PRODUCT_B, "구성품B", 1, "50000");
-        component.assignBundleComponent(SET_MODEL, false);
-        BundleLineageResolver resolver =
-                BundleLineageResolver.fromSlipLines(List.of(headComponent, component));
+    void modifiedSetHead_quantityOnly_stillPreservesLineageByLineId() {
+        UUID headId = UUID.randomUUID();
+        SlipLine persistedHead = slipLine(headId, PRODUCT_A, "구성품A", 2, "80000");
+        persistedHead.assignBundleComponent(SET_MODEL, true);
+        BundleLineageResolver resolver = BundleLineageResolver.fromSlipLines(List.of(persistedHead));
 
-        SlipLine newLine = slipLine(PRODUCT_A, "구성품A", 3, "123000");
-        SlipLine resentHead = slipLine(PRODUCT_A, "구성품A", 2, "80000");
-        SlipLine resentComponent = slipLine(PRODUCT_B, "구성품B", 1, "50000");
-        resolver.restoreSlipLines(List.of(newLine, resentHead, resentComponent));
+        SlipLine editedHead = slipLine(null, PRODUCT_A, "구성품A", 3, "80000");
+        resolver.restoreSlipLines(List.of(editedHead), List.of(headId));
+
+        assertThat(editedHead.isSetHead()).isTrue();
+        assertThat(editedHead.getParentSetModel()).isEqualTo(SET_MODEL);
+    }
+
+    @Test
+    void sameProductComponentAndPlainLine_keepTheirOwnLineageRegardlessOfRequestOrder() {
+        UUID componentId = UUID.randomUUID();
+        UUID plainId = UUID.randomUUID();
+        SlipLine component = slipLine(componentId, PRODUCT_A, "같은품목", 1, "80000");
+        component.assignBundleComponent(SET_MODEL, false);
+        SlipLine plain = slipLine(plainId, PRODUCT_A, "같은품목", 3, "120000");
+        BundleLineageResolver resolver = BundleLineageResolver.fromSlipLines(List.of(component, plain));
+
+        SlipLine editedPlain = slipLine(null, PRODUCT_A, "같은품목", 4, "120000");
+        SlipLine editedComponent = slipLine(null, PRODUCT_A, "같은품목", 2, "80000");
+        resolver.restoreSlipLines(List.of(editedPlain, editedComponent), List.of(plainId, componentId));
+
+        assertThat(editedPlain.getParentSetModel()).isNull();
+        assertThat(editedComponent.getParentSetModel()).isEqualTo(SET_MODEL);
+    }
+
+    @Test
+    void swappingRequestOrder_doesNotChangeLineageAssignment() {
+        UUID firstId = UUID.randomUUID();
+        UUID secondId = UUID.randomUUID();
+        SlipLine first = slipLine(firstId, PRODUCT_A, "A", 1, "10000");
+        first.assignBundleComponent(SET_MODEL, true);
+        SlipLine second = slipLine(secondId, PRODUCT_B, "B", 1, "20000");
+        second.assignBundleComponent(SET_MODEL, false);
+
+        SlipLine firstEdited = slipLine(null, PRODUCT_A, "A", 9, "99999");
+        SlipLine secondEdited = slipLine(null, PRODUCT_B, "B", 8, "88888");
+        BundleLineageResolver resolver = BundleLineageResolver.fromSlipLines(List.of(first, second));
+        resolver.restoreSlipLines(List.of(secondEdited, firstEdited), List.of(secondId, firstId));
+
+        assertThat(firstEdited.isSetHead()).isTrue();
+        assertThat(secondEdited.isSetHead()).isFalse();
+        assertThat(secondEdited.getParentSetModel()).isEqualTo(SET_MODEL);
+    }
+
+    @Test
+    void nullLineId_isAlwaysTreatedAsNewPlainLine() {
+        UUID persistedId = UUID.randomUUID();
+        SlipLine persisted = slipLine(persistedId, PRODUCT_A, "품목A", 1, "50000");
+        persisted.assignBundleComponent(SET_MODEL, true);
+        BundleLineageResolver resolver = BundleLineageResolver.fromSlipLines(List.of(persisted));
+
+        SlipLine newLine = slipLine(null, PRODUCT_A, "품목A", 1, "50000");
+        resolver.restoreSlipLines(List.of(newLine), Arrays.asList((UUID) null));
 
         assertThat(newLine.isSetHead()).isFalse();
         assertThat(newLine.getParentSetModel()).isNull();
-        assertThat(resentHead.isSetHead()).isTrue();
-        assertThat(resentHead.getParentSetModel()).isEqualTo(SET_MODEL);
-        assertThat(resentComponent.isSetHead()).isFalse();
-        assertThat(resentComponent.getParentSetModel()).isEqualTo(SET_MODEL);
     }
 
-    /**
-     * [QA 변형 재현] 세트 head 삭제 + 같은 품목 단품 단가 수정(77,000→88,000) 시,
-     * 단품이 head 로 오귀속되지 않고 일반 라인으로 남아야 한다 (head 는 exact 전용).
-     */
     @Test
-    void editedStandalone_afterHeadDeletion_staysPlainInsteadOfInheritingHead() {
-        EstimateLine head = estimateLine(PRODUCT_A, "PART-01", 1, "60000");
-        head.assignBundleComponent(SET_MODEL, true);
-        EstimateLine component = estimateLine(PRODUCT_B, "PART-02", 1, "40000");
-        component.assignBundleComponent(SET_MODEL, false);
-        EstimateLine standalone = estimateLine(PRODUCT_A, "PART-01", 1, "77000");
-        BundleLineageResolver resolver =
-                BundleLineageResolver.fromEstimateLines(List.of(head, component, standalone));
+    void unknownLineId_doesNotInventLineage() {
+        BundleLineageResolver resolver = BundleLineageResolver.empty();
+        SlipLine newLine = slipLine(null, PRODUCT_A, "품목A", 1, "50000");
 
-        EstimateLine resentComponent = estimateLine(PRODUCT_B, "PART-02", 1, "40000");
-        EstimateLine editedStandalone = estimateLine(PRODUCT_A, "PART-01", 1, "88000");
-        resolver.restoreEstimateLines(List.of(resentComponent, editedStandalone));
+        resolver.restoreSlipLines(List.of(newLine), List.of(UUID.randomUUID()));
 
-        assertThat(resentComponent.getParentSetModel()).isEqualTo(SET_MODEL);
-        assertThat(resentComponent.isSetHead()).isFalse();
-        assertThat(editedStandalone.isSetHead()).isFalse();
-        assertThat(editedStandalone.getParentSetModel()).isNull();
-    }
-
-    /**
-     * [전역 매칭 순서 비의존] 수정된 구성품과 신규 라인이 공존하면, 요청 순서와 무관하게
-     * fingerprint 거리가 가까운 수정 구성품이 계보를 승계해야 한다 (per-line greedy 는
-     * 앞선 라인이 무조건 선소비했다).
-     */
-    @Test
-    void fallbackAssignsClosestLineRegardlessOfRequestOrder() {
-        SlipLine component = slipLine(PRODUCT_A, "구성품A", 2, "80000");
-        component.assignBundleComponent(SET_MODEL, false);
-
-        // 신규 라인이 먼저 오는 순서
-        BundleLineageResolver resolver = BundleLineageResolver.fromSlipLines(List.of(component));
-        SlipLine newLine = slipLine(PRODUCT_A, "구성품A", 1, "100000");
-        SlipLine editedComponent = slipLine(PRODUCT_A, "구성품A", 3, "80000");
-        resolver.restoreSlipLines(List.of(newLine, editedComponent));
+        assertThat(newLine.isSetHead()).isFalse();
         assertThat(newLine.getParentSetModel()).isNull();
-        assertThat(editedComponent.getParentSetModel()).isEqualTo(SET_MODEL);
-
-        // 반대 순서에서도 동일 결과
-        BundleLineageResolver reversed = BundleLineageResolver.fromSlipLines(List.of(component));
-        SlipLine editedFirst = slipLine(PRODUCT_A, "구성품A", 3, "80000");
-        SlipLine newSecond = slipLine(PRODUCT_A, "구성품A", 1, "100000");
-        reversed.restoreSlipLines(List.of(editedFirst, newSecond));
-        assertThat(editedFirst.getParentSetModel()).isEqualTo(SET_MODEL);
-        assertThat(newSecond.getParentSetModel()).isNull();
     }
 
-    /** [head exact 전용] 값이 수정된 라인은 head 엔트리를 fallback 으로 승계할 수 없다. */
     @Test
-    void headEntry_isNeverConsumedByFallback() {
-        SlipLine head = slipLine(PRODUCT_A, "구성품A", 2, "80000");
-        head.assignBundleComponent(SET_MODEL, true);
-        BundleLineageResolver resolver = BundleLineageResolver.fromSlipLines(List.of(head));
+    void estimateLine_usesTheSameLineIdContract() {
+        UUID lineId = UUID.randomUUID();
+        EstimateLine persisted = estimateLine(lineId, PRODUCT_A, "구성품A", 2, "60000");
+        persisted.assignBundleComponent(SET_MODEL, true);
+        BundleLineageResolver resolver = BundleLineageResolver.fromEstimateLines(List.of(persisted));
 
-        SlipLine editedLine = slipLine(PRODUCT_A, "구성품A", 5, "80000");
-        resolver.restoreSlipLines(List.of(editedLine));
+        EstimateLine edited = estimateLine(null, PRODUCT_A, "구성품A", 3, "60000");
+        resolver.restoreEstimateLines(List.of(edited), List.of(lineId));
 
-        assertThat(editedLine.isSetHead()).isFalse();
-        assertThat(editedLine.getParentSetModel()).isNull();
+        assertThat(edited.isSetHead()).isTrue();
+        assertThat(edited.getParentSetModel()).isEqualTo(SET_MODEL);
     }
 
-    /**
-     * [빈 계보 tie-break] 거리 동률(동일 fingerprint 의 구성품/단품 엔트리 공존)이면
-     * 빈 계보 엔트리를 우선 소비해 수정 라인이 구성품으로 오귀속되지 않는다.
-     */
     @Test
-    void equalDistanceCandidates_preferPlainEntryOverComponent() {
-        SlipLine component = slipLine(PRODUCT_A, "품목A", 1, "50000");
-        component.assignBundleComponent(SET_MODEL, false);
-        SlipLine plain = slipLine(PRODUCT_A, "품목A", 1, "50000");
-        BundleLineageResolver resolver = BundleLineageResolver.fromSlipLines(List.of(component, plain));
+    void emptyResolver_keepsAllLinesFlat() {
+        SlipLine first = slipLine(null, PRODUCT_A, "A", 1, "10000");
+        SlipLine second = slipLine(null, PRODUCT_B, "B", 1, "20000");
 
-        SlipLine editedLine = slipLine(PRODUCT_A, "품목A", 1, "60000");
-        resolver.restoreSlipLines(List.of(editedLine));
+        BundleLineageResolver.empty().restoreSlipLines(List.of(first, second),
+                Arrays.asList(null, null));
 
-        assertThat(editedLine.getParentSetModel()).isNull();
+        assertThat(first.getParentSetModel()).isNull();
+        assertThat(second.getParentSetModel()).isNull();
     }
 
-    /** [무수정 보존] 재전송 순서를 뒤섞어도 exact 1-패스가 각 라인의 계보를 정확히 되돌린다. */
-    @Test
-    void unchangedResend_preservesAllLineagesEvenWhenReordered() {
-        SlipLine head = slipLine(PRODUCT_A, "구성품A", 2, "80000");
-        head.assignBundleComponent(SET_MODEL, true);
-        SlipLine component = slipLine(PRODUCT_B, "구성품B", 1, "50000");
-        component.assignBundleComponent(SET_MODEL, false);
-        SlipLine plain = slipLine(PRODUCT_A, "품목A단품", 1, "70000");
-        BundleLineageResolver resolver =
-                BundleLineageResolver.fromSlipLines(List.of(head, component, plain));
-
-        SlipLine resentPlain = slipLine(PRODUCT_A, "품목A단품", 1, "70000");
-        SlipLine resentComponent = slipLine(PRODUCT_B, "구성품B", 1, "50000");
-        SlipLine resentHead = slipLine(PRODUCT_A, "구성품A", 2, "80000");
-        resolver.restoreSlipLines(List.of(resentPlain, resentComponent, resentHead));
-
-        assertThat(resentPlain.getParentSetModel()).isNull();
-        assertThat(resentComponent.getParentSetModel()).isEqualTo(SET_MODEL);
-        assertThat(resentHead.isSetHead()).isTrue();
-        assertThat(resentHead.getParentSetModel()).isEqualTo(SET_MODEL);
-    }
-
-    /** [신규 productId] 기존 엔트리에 없는 품목은 어떤 계보도 승계하지 않는다. */
-    @Test
-    void unknownProduct_neverInheritsLineage() {
-        SlipLine head = slipLine(PRODUCT_A, "구성품A", 2, "80000");
-        head.assignBundleComponent(SET_MODEL, true);
-        BundleLineageResolver resolver = BundleLineageResolver.fromSlipLines(List.of(head));
-
-        SlipLine unknown = slipLine(UUID.randomUUID(), "신규품목", 2, "80000");
-        resolver.restoreSlipLines(List.of(unknown));
-
-        assertThat(unknown.isSetHead()).isFalse();
-        assertThat(unknown.getParentSetModel()).isNull();
-    }
-
-    private static SlipLine slipLine(UUID productId, String name, int quantity, String unitPrice) {
-        return SlipLine.create(null, productId, name, name, null,
+    private static SlipLine slipLine(UUID id, UUID productId, String name, int quantity, String unitPrice) {
+        SlipLine line = SlipLine.create(null, productId, name, name, null,
                 quantity, new BigDecimal(unitPrice), null);
+        if (id != null) {
+            ReflectionTestUtils.setField(line, "id", id);
+        }
+        return line;
     }
 
-    private static EstimateLine estimateLine(UUID productId, String name, int quantity, String unitPrice) {
-        return EstimateLine.create(null, 1, productId, name, name, null,
+    private static EstimateLine estimateLine(UUID id, UUID productId, String name,
+                                             int quantity, String unitPrice) {
+        EstimateLine line = EstimateLine.create(null, 1, productId, name, name, null,
                 quantity, new BigDecimal(unitPrice), null);
+        if (id != null) {
+            ReflectionTestUtils.setField(line, "id", id);
+        }
+        return line;
     }
 }

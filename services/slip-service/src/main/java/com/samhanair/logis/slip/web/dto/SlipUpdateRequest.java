@@ -46,7 +46,19 @@ public record SlipUpdateRequest(
             @Size(max = 50) String specification,
             Integer quantity,
             BigDecimal unitPrice,
-            @Size(max = 200) String note
+            @Size(max = 200) String note,
+            /**
+             * 기존 상세 응답 라인의 영속 UUID 왕복값. payload 전용이며 화면에 표시하지 않는다.
+             * null 이면 신규 라인으로 처리하고 세트 계보를 승계하지 않는다.
+             */
+            UUID lineId
     ) {
+
+        /** 기존 7개 필드 호출 호환 생성자 — lineId 미전송은 신규 평면 라인으로 처리한다. */
+        public LineRequest(UUID productId, String productName, String modelName,
+                           String specification, Integer quantity, BigDecimal unitPrice,
+                           String note) {
+            this(productId, productName, modelName, specification, quantity, unitPrice, note, null);
+        }
     }
 }

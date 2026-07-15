@@ -9,6 +9,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.samhanair.logis.common.exception.BusinessException;
+import com.samhanair.logis.common.exception.ErrorCode;
 import com.samhanair.logis.slip.client.ExpandedLineDto;
 import com.samhanair.logis.slip.SlipServiceApplication;
 import com.samhanair.logis.slip.client.InventoryClient;
@@ -37,6 +38,8 @@ import com.samhanair.logis.slip.service.SlipService;
 import com.samhanair.logis.slip.service.SalesSlipUpdateService;
 import com.samhanair.logis.slip.service.SlipUpdateService;
 import com.samhanair.logis.slip.web.dto.CreateSlipRequest;
+import com.samhanair.logis.slip.web.dto.SlipDetailResponse;
+import com.samhanair.logis.slip.web.dto.SlipLineResponse;
 import com.samhanair.logis.slip.web.dto.SlipUpdateRequest;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.math.BigDecimal;
@@ -44,6 +47,7 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -395,7 +399,7 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
                             created.lines().stream()
                                     .map(line -> new SlipUpdateRequest.LineRequest(
                                             line.productId(), line.productName(), line.modelName(),
-                                            line.specification(), line.quantity(), line.unitPrice(), line.note()))
+                                            line.specification(), line.quantity(), line.unitPrice(), line.note(), line.id()))
                                     .toList()),
                     UUID.randomUUID(),
                     "세트 매출 수정자");
@@ -450,7 +454,7 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
                                             line.specification(), line.quantity(),
                                             line.unitPriceWithVat() == null
                                                     ? line.unitPrice() : line.unitPriceWithVat(),
-                                            line.note(), null, line.unitPriceWithVat() != null))
+                                            line.note(), null, line.unitPriceWithVat() != null, line.id()))
                                     .toList()),
                     "actor-bundle-estimate", "세트 견적 수정자");
             awaitPriceMemoryExecutorIdle();
@@ -460,6 +464,176 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
                     firstComponentId, secondComponentId);
         } finally {
             cleanupEstimate(created.id());
+        }
+    }
+
+    /**
+     * [R7-1 실 PostgreSQL 회귀] 세트 head 구성품의 수량만 수정해도 lineId 로 계보가 유지되고,
+     * 구성품 배분가는 LINE_SAVE 가격기억으로 각인되지 않는다.
+     */
+    @Test
+    void lineIdModifiedSetHead_quantityOnly_preservesLineageAndSkipsComponentMemory() {
+        UUID partnerId = UUID.randomUUID();
+        UUID bundleProductId = UUID.randomUUID();
+        UUID firstComponentId = UUID.randomUUID();
+        UUID secondComponentId = UUID.randomUUID();
+        ProductSummary bundle = bundleProduct(bundleProductId);
+        when(productClient.lookup(anyList())).thenAnswer(inv -> {
+            List<UUID> productIds = inv.getArgument(0);
+            return productIds.stream()
+                    .map(productId -> productId.equals(bundleProductId) ? bundle : product(productId))
+                    .toList();
+        });
+        when(productClient.expand(any(), any(), any(), any())).thenReturn(List.of(
+                new ExpandedLineDto(firstComponentId, "COMP-1", "COMP-1", "구성품A",
+                        new BigDecimal("2"), new BigDecimal("80000.00"), "COMPONENT", true),
+                new ExpandedLineDto(secondComponentId, "COMP-2", "COMP-2", "구성품B",
+                        new BigDecimal("1"), new BigDecimal("40000.00"), "COMPONENT", false)));
+
+        var created = slipService.create(
+                slipRequest(SlipType.OUTBOUND, partnerId, bundleProductId,
+                        new BigDecimal("120000.00")),
+                "actor-r7-head", "R7 head 수량 수정");
+        try {
+            awaitPriceMemory(partnerId, bundleProductId);
+            var updated = salesSlipUpdateService.update(
+                    created.id(),
+                    new SlipUpdateRequest(
+                            currentSlipUpdatedAt(created.id()),
+                            created.partnerName(), created.partnerCode(), created.memo(),
+                            created.businessNumber(), created.deliveryAddress(),
+                            created.supervisionAddress(), created.projectName(),
+                            created.recipientPhone(), created.paymentDueDate(),
+                            created.lines().stream()
+                                    .map(line -> new SlipUpdateRequest.LineRequest(
+                                            line.productId(), line.productName(), line.modelName(),
+                                            line.specification(), line.setHead() ? 3 : line.quantity(),
+                                            line.unitPrice(), line.note(), line.id()))
+                                    .toList()),
+                    UUID.randomUUID(), "R7 head 수정자");
+            awaitPriceMemoryExecutorIdle();
+
+            assertThat(updated.lines()).anySatisfy(line -> {
+                assertThat(line.productId()).isEqualTo(firstComponentId);
+                assertThat(line.quantity()).isEqualTo(3);
+                assertThat(line.setHead()).isTrue();
+                assertThat(line.parentSetModel()).isEqualTo("SET-809");
+            });
+            assertThat(priceMemoryService.find(partnerId, firstComponentId)).isEmpty();
+            assertThat(priceMemoryService.find(partnerId, secondComponentId)).isEmpty();
+        } finally {
+            cleanupSlip(created.id());
+        }
+    }
+
+    /**
+     * [R7-2·3 실 PostgreSQL 회귀] 같은 productId 의 세트 구성품(qty=1)과 단품(qty=3)을
+     * 각각 2·4로 수정해도 lineId 계보가 뒤바뀌지 않으며, 요청 순서를 바꾼 재저장도 동일하다.
+     */
+    @Test
+    void lineIdSameProductComponentAndPlainLine_areStableAcrossRequestOrder() {
+        UUID partnerId = UUID.randomUUID();
+        UUID bundleProductId = UUID.randomUUID();
+        UUID sharedProductId = UUID.randomUUID();
+        UUID secondComponentId = UUID.randomUUID();
+        ProductSummary bundle = bundleProduct(bundleProductId);
+        when(productClient.lookup(anyList())).thenAnswer(inv -> {
+            List<UUID> productIds = inv.getArgument(0);
+            return productIds.stream()
+                    .map(productId -> productId.equals(bundleProductId) ? bundle : product(productId))
+                    .toList();
+        });
+        when(productClient.expand(any(), any(), any(), any())).thenReturn(List.of(
+                new ExpandedLineDto(sharedProductId, "SHARED", "SHARED", "공유 구성품",
+                        new BigDecimal("1"), new BigDecimal("80000.00"), "COMPONENT", true),
+                new ExpandedLineDto(secondComponentId, "COMP-2", "COMP-2", "구성품B",
+                        new BigDecimal("1"), new BigDecimal("40000.00"), "COMPONENT", false)));
+
+        var created = slipService.create(
+                slipRequestWithLines(SlipType.OUTBOUND, partnerId, List.of(
+                        new CreateSlipRequest.SlipLineRequest(
+                                bundleProductId, "세트", "SET-809", null, 1,
+                                new BigDecimal("120000.00"), "세트", null, true),
+                        new CreateSlipRequest.SlipLineRequest(
+                                sharedProductId, "단품", "SHARED", null, 3,
+                                new BigDecimal("120000.00"), "단품", null, true))),
+                "actor-r7-order", "R7 요청순서 테스트");
+        try {
+            awaitPriceMemory(partnerId, bundleProductId);
+            var head = created.lines().stream().filter(line -> line.setHead()).findFirst().orElseThrow();
+            var plain = created.lines().stream()
+                    .filter(line -> sharedProductId.equals(line.productId()) && !line.setHead()
+                            && line.parentSetModel() == null)
+                    .findFirst().orElseThrow();
+            var otherComponent = created.lines().stream()
+                    .filter(line -> secondComponentId.equals(line.productId())).findFirst().orElseThrow();
+
+            var firstUpdate = salesSlipUpdateService.update(
+                    created.id(),
+                    updateRequest(created.id(), created, List.of(
+                            lineRequest(plain, 4, new BigDecimal("120000.00")),
+                            lineRequest(head, 2, head.unitPrice()),
+                            lineRequest(otherComponent, 1, otherComponent.unitPrice()))),
+                    UUID.randomUUID(), "R7 순서1 수정자");
+            awaitPriceMemoryExecutorIdle();
+            assertThat(lineageQuantityRows(created.id())).containsExactlyInAnyOrder(
+                    new LineageQuantityRow(sharedProductId, 2, true, "SET-809"),
+                    new LineageQuantityRow(sharedProductId, 4, false, null),
+                    new LineageQuantityRow(secondComponentId, 1, false, "SET-809"));
+            assertThat(awaitPriceMemoryValue(partnerId, sharedProductId,
+                    new BigDecimal("132000.00")).source())
+                    .isEqualTo(PartnerProductPriceMemory.SOURCE_LINE_SAVE);
+            assertThat(priceMemoryService.find(partnerId, secondComponentId)).isEmpty();
+
+            // 같은 값을 반대 순서로 다시 PUT — 결과가 요청 순서에 의존하지 않아야 한다.
+            salesSlipUpdateService.update(
+                    created.id(),
+                    updateRequest(created.id(), firstUpdate,
+                            reversedLines(firstUpdate.lines().stream().map(line -> line.setHead()
+                                    ? lineRequest(line, 2, line.unitPrice())
+                                    : line.parentSetModel() == null
+                                            ? lineRequest(line, 4, new BigDecimal("120000.00"))
+                                            : lineRequest(line, 1, line.unitPrice())
+                            ).toList())),
+                    UUID.randomUUID(), "R7 순서2 수정자");
+            awaitPriceMemoryExecutorIdle();
+            assertThat(lineageQuantityRows(created.id())).containsExactlyInAnyOrder(
+                    new LineageQuantityRow(sharedProductId, 2, true, "SET-809"),
+                    new LineageQuantityRow(sharedProductId, 4, false, null),
+                    new LineageQuantityRow(secondComponentId, 1, false, "SET-809"));
+        } finally {
+            cleanupSlip(created.id());
+        }
+    }
+
+    @Test
+    void lineIdFromAnotherSlip_isRejectedAsBadRequestBeforeReplacement() {
+        UUID partnerId = UUID.randomUUID();
+        var first = slipService.create(
+                inboundSlipRequest(partnerId, UUID.randomUUID(), new BigDecimal("10000.00")),
+                "actor-r7-owner-1", "소유권 전표1");
+        var second = slipService.create(
+                inboundSlipRequest(partnerId, UUID.randomUUID(), new BigDecimal("20000.00")),
+                "actor-r7-owner-2", "소유권 전표2");
+        try {
+            assertThatThrownBy(() -> slipUpdateService.update(
+                    first.id(),
+                    updateRequest(first.id(), first, List.of(
+                            new SlipUpdateRequest.LineRequest(
+                                    first.lines().get(0).productId(),
+                                    first.lines().get(0).productName(),
+                                    first.lines().get(0).modelName(),
+                                    first.lines().get(0).specification(),
+                                    first.lines().get(0).quantity(),
+                                    first.lines().get(0).unitPrice(),
+                                    first.lines().get(0).note(),
+                                    second.lines().get(0).id()))),
+                    UUID.randomUUID(), "소유권 공격자"))
+                    .isInstanceOfSatisfying(BusinessException.class, ex ->
+                            assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
+        } finally {
+            cleanupSlip(first.id());
+            cleanupSlip(second.id());
         }
     }
 
@@ -504,7 +678,7 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
                     3, new BigDecimal("123000.00"), "신규 단품"));
             created.lines().forEach(line -> putLines.add(new SlipUpdateRequest.LineRequest(
                     line.productId(), line.productName(), line.modelName(),
-                    line.specification(), line.quantity(), line.unitPrice(), line.note())));
+                    line.specification(), line.quantity(), line.unitPrice(), line.note(), line.id())));
 
             salesSlipUpdateService.update(
                     created.id(),
@@ -603,10 +777,10 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
                                                     ? componentLine.unitPrice()
                                                     : componentLine.unitPriceWithVat(),
                                             componentLine.note(), null,
-                                            componentLine.unitPriceWithVat() != null),
+                                            componentLine.unitPriceWithVat() != null, componentLine.id()),
                                     new UpdateEstimateRequest.EstimateLineUpdate(
                                             firstComponentId, "COMP-1", "COMP-1", null, 1,
-                                            new BigDecimal("88000.00"), "단품 라인", null, true))),
+                                            new BigDecimal("88000.00"), "단품 라인", null, true, null))),
                     "actor-qa-variant", "QA 변형 수정자");
             awaitPriceMemoryExecutorIdle();
 
@@ -683,7 +857,7 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
                             created.lines().stream()
                                     .map(line -> new SlipUpdateRequest.LineRequest(
                                             line.productId(), line.productName(), line.modelName(),
-                                            line.specification(), line.quantity(), line.unitPrice(), line.note()))
+                                            line.specification(), line.quantity(), line.unitPrice(), line.note(), line.id()))
                                     .toList()),
                     UUID.randomUUID(),
                     "세트 매입 수정자");
@@ -753,7 +927,7 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
                             restored.lines().stream()
                                     .map(line -> new SlipUpdateRequest.LineRequest(
                                             line.productId(), line.productName(), line.modelName(),
-                                            line.specification(), line.quantity(), line.unitPrice(), line.note()))
+                                            line.specification(), line.quantity(), line.unitPrice(), line.note(), line.id()))
                                     .toList()),
                     UUID.randomUUID(),
                     "복원 후 수정자");
@@ -818,7 +992,7 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
                                             line.specification(), line.quantity(),
                                             line.unitPriceWithVat() == null
                                                     ? line.unitPrice() : line.unitPriceWithVat(),
-                                            line.note(), null, line.unitPriceWithVat() != null))
+                                            line.note(), null, line.unitPriceWithVat() != null, line.id()))
                                     .toList()),
                     "actor-restore-estimate", "복원 후 수정자");
             awaitPriceMemoryExecutorIdle();
@@ -1075,6 +1249,34 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
 
     private CreateSlipRequest inboundSlipRequest(UUID partnerId, UUID productId, BigDecimal unitPrice) {
         return slipRequest(SlipType.INBOUND, partnerId, productId, unitPrice);
+    }
+
+    private LocalDateTime currentSlipUpdatedAt(UUID slipId) {
+        return slipRepository.findById(slipId)
+                .map(slip -> slip.getModifiedAt() == null ? slip.getCreatedAt() : slip.getModifiedAt())
+                .orElseThrow();
+    }
+
+    private SlipUpdateRequest updateRequest(UUID slipId, SlipDetailResponse detail,
+                                            List<SlipUpdateRequest.LineRequest> lines) {
+        return new SlipUpdateRequest(
+                currentSlipUpdatedAt(slipId), detail.partnerName(), detail.partnerCode(), detail.memo(),
+                detail.businessNumber(), detail.deliveryAddress(), detail.supervisionAddress(),
+                detail.projectName(), detail.recipientPhone(), detail.paymentDueDate(), lines);
+    }
+
+    private SlipUpdateRequest.LineRequest lineRequest(SlipLineResponse line, int quantity,
+                                                       BigDecimal unitPrice) {
+        return new SlipUpdateRequest.LineRequest(
+                line.productId(), line.productName(), line.modelName(), line.specification(),
+                quantity, unitPrice, line.note(), line.id());
+    }
+
+    private List<SlipUpdateRequest.LineRequest> reversedLines(
+            List<SlipUpdateRequest.LineRequest> lines) {
+        List<SlipUpdateRequest.LineRequest> reversed = new ArrayList<>(lines);
+        Collections.reverse(reversed);
+        return reversed;
     }
 
     private CreateSlipRequest slipRequest(

@@ -287,6 +287,8 @@ export function toApiBundleSetOptions(
 
 /** 라인 input — BE `CreateSlipRequest.SlipLineRequest`. */
 export interface SlipLineInput {
+  /** 상세 응답 `id` 왕복값 — payload 전용, 화면 미표시. 신규 라인은 null/미지정. */
+  lineId?: string | null
   productId: string
   productName?: string
   modelName?: string

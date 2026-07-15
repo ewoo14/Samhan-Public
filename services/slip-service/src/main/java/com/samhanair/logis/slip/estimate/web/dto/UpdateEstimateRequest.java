@@ -36,19 +36,34 @@ public record UpdateEstimateRequest(
             @Size(max = 200) String note,
             BundleSetOptions setOptions,
             /** 단가 부가세포함 여부 — true 면 unitPrice 가 VAT 포함 단가(라인 단위 분해). 2026-06-09. */
-            Boolean priceVatInclusive) {
+            Boolean priceVatInclusive,
+            /**
+             * 기존 상세 응답 라인의 영속 UUID 왕복값. payload 전용이며 화면에 표시하지 않는다.
+             * null 이면 신규 라인으로 처리하고 세트 계보를 승계하지 않는다.
+             */
+            UUID lineId) {
+
+        /** 호환 생성자 — lineId 미제공(기존 9-arg 호출자). */
+        public EstimateLineUpdate(UUID productId, String productName, String modelName,
+                                  String specification, Integer quantity, BigDecimal unitPrice,
+                                  String note, BundleSetOptions setOptions, Boolean priceVatInclusive) {
+            this(productId, productName, modelName, specification, quantity, unitPrice, note,
+                    setOptions, priceVatInclusive, null);
+        }
 
         /** 호환 생성자 — priceVatInclusive 미제공(8-arg). */
         public EstimateLineUpdate(UUID productId, String productName, String modelName,
                                   String specification, Integer quantity, BigDecimal unitPrice, String note,
                                   BundleSetOptions setOptions) {
-            this(productId, productName, modelName, specification, quantity, unitPrice, note, setOptions, null);
+            this(productId, productName, modelName, specification, quantity, unitPrice, note,
+                    setOptions, null, null);
         }
 
         /** 호환 생성자 — setOptions/priceVatInclusive 미제공(기존 7-arg 호출자/테스트). */
         public EstimateLineUpdate(UUID productId, String productName, String modelName,
                                   String specification, Integer quantity, BigDecimal unitPrice, String note) {
-            this(productId, productName, modelName, specification, quantity, unitPrice, note, null, null);
+            this(productId, productName, modelName, specification, quantity, unitPrice, note,
+                    null, null, null);
         }
     }
 }

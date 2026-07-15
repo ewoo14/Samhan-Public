@@ -52,6 +52,8 @@ const UUID_PATTERN =
 
 interface DraftLine {
   uid: string
+  /** 상세 응답 라인 UUID 왕복값 — payload 전용, 화면 미표시. 신규 라인은 null. */
+  lineId: string | null
   /** lookup 성공 시 채워지는 product UUID — 화면 미노출. */
   productId: string | null
   modelName: string
@@ -85,6 +87,7 @@ interface DraftLine {
 
 const emptyLine = (): DraftLine => ({
   uid: nextLineUid(),
+  lineId: null,
   productId: null,
   modelName: '',
   productName: '',
@@ -181,6 +184,7 @@ function toDraftLinesFromEstimate(estimate: EstimateDetail): DraftLine[] {
         )
         return {
           uid: nextLineUid(),
+          lineId: line.id,
           productId: line.productId,
           modelName: line.modelName ?? '',
           productName: line.productName ?? '',
@@ -246,6 +250,7 @@ function coeditLinesToDraftLines(
     )
     return {
       uid: previous?.uid ?? nextLineUid(),
+      lineId: previous?.lineId ?? null,
       productId: provider.getItemValue(index, 'productId') || null,
       modelName: provider.getItemValue(index, 'modelName'),
       productName: provider.getItemValue(index, 'productName'),
@@ -996,6 +1001,7 @@ export function EstimateFormPage() {
         setOptions: toApiBundleSetOptions(l.productType, l.setOptions),
         // 단가 부가세포함 — BE 가 라인 단위로 공급가액/부가세 분리(eCount). legacy 미수정 라인만 예외.
         priceVatInclusive: !keepsLegacySupplyPrice,
+        lineId: isEdit ? l.lineId : undefined,
       }
     })
     return {

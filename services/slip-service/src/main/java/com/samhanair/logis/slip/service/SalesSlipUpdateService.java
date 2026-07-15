@@ -17,11 +17,13 @@ import jakarta.persistence.OptimisticLockException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.OptimisticLockingFailureException;
@@ -74,15 +76,16 @@ public class SalesSlipUpdateService {
         verifyVersion(slip, request.updatedAt());
         // validateLines 는 BusinessException(SLIP_UPDATE_INVALID_LINE) 을 던지므로 try 외부에서 처리
         validateLines(request.lines());
+        validateLineIds(slip.getLines(), request.lines());
 
         String before = summarize(slip);
         BundleLineageResolver bundleLineage = BundleLineageResolver.fromSlipLines(slip.getLines());
         List<SlipLine> replacementLines = request.lines().stream()
                 .map(line -> toLine(slip, line))
                 .toList();
-        // [R6-H1] per-line greedy 는 요청 앞쪽의 수정/신규 라인이 뒤쪽 무수정 라인의 계보(특히
-        // head)를 선소비해 오귀속을 만들었다. 전 라인 선구성 후 2-패스 전역 매칭 1회로 복원한다.
-        bundleLineage.restoreSlipLines(replacementLines);
+        bundleLineage.restoreSlipLines(replacementLines, request.lines().stream()
+                .map(SlipUpdateRequest.LineRequest::lineId)
+                .toList());
         List<PartnerProductPriceMemoryCommand> priceMemoryCommands = collectPriceMemory(
                 slip, replacementLines, actorId == null ? null : actorId.toString());
         try {
@@ -157,6 +160,32 @@ public class SalesSlipUpdateService {
             }
             if (line.unitPrice() == null || line.unitPrice().signum() < 0) {
                 throw invalidLine("단가는 0 이상이어야 합니다.");
+            }
+        }
+    }
+
+    /**
+     * 요청 lineId 가 현재 매출 전표의 활성 라인인지 검증한다.
+     *
+     * <p>타 문서 UUID 주입은 400 INVALID_INPUT 으로 통일해 다른 문서 존재 여부를
+     * 노출하지 않는다. lineId 미전송은 구 클라이언트 호환을 위해 신규 평면 라인으로
+     * 처리하며 fingerprint 휴리스틱으로 되돌아가지 않는다.
+     */
+    private void validateLineIds(List<SlipLine> existingLines,
+                                 List<SlipUpdateRequest.LineRequest> requestedLines) {
+        Set<UUID> ownedLineIds = existingLines.stream()
+                .map(SlipLine::getId)
+                .filter(Objects::nonNull)
+                .collect(java.util.stream.Collectors.toSet());
+        Set<UUID> requestedLineIds = new HashSet<>();
+        for (SlipUpdateRequest.LineRequest line : requestedLines) {
+            UUID lineId = line.lineId();
+            if (lineId == null) {
+                continue;
+            }
+            if (!ownedLineIds.contains(lineId) || !requestedLineIds.add(lineId)) {
+                throw new BusinessException(ErrorCode.INVALID_INPUT,
+                        "lineId 는 현재 전표의 활성 라인에서 중복 없이 지정해야 합니다");
             }
         }
     }

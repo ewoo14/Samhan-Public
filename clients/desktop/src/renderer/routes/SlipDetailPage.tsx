@@ -280,6 +280,7 @@ function createEditLineKey() {
 function toPurchaseEditLines(slip: SlipDetail): PurchaseEditLine[] {
   return slip.lines.map((line) => ({
     key: createEditLineKey(),
+    lineId: line.id,
     productId: line.productId,
     productName: line.productName ?? '',
     modelName: line.modelName ?? '',
@@ -325,6 +326,7 @@ function coeditLinesToEditLines(
     const quantityValue = provider.getItemValue(index, 'quantity')
     return {
       key: previous?.key ?? createEditLineKey(),
+      lineId: previous?.lineId ?? null,
       productId: provider.getItemValue(index, 'productId') || previous?.productId || '',
       productName: provider.getItemValue(index, 'productName'),
       modelName: provider.getItemValue(index, 'modelName'),
@@ -1323,6 +1325,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
       recipientPhone: purchaseRecipientPhone.trim() || null,
       paymentDueDate: purchasePaymentDueDate || null,
       lines: purchaseEditLines.map((line) => ({
+        lineId: line.lineId ?? null,
         productId: line.productId,
         productName: line.productName?.trim() || undefined,
         modelName: line.modelName?.trim() || undefined,
@@ -1347,6 +1350,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
       recipientPhone: salesRecipientPhone.trim() || null,
       paymentDueDate: salesPaymentDueDate || null,
       lines: salesEditLines.map((line) => ({
+        lineId: line.lineId ?? null,
         productId: line.productId,
         productName: line.productName?.trim() || undefined,
         modelName: line.modelName?.trim() || undefined,

@@ -65,6 +65,10 @@ export interface EstimateLine {
   note: string | null
   /** VAT 포함 단가 — 단가 부가세포함 전환(2026-06-09). 화면 '단가' 표시값. nullable(legacy). */
   unitPriceWithVat?: string | null
+  /** 세트 전개 첫 구성품 여부 — payload hydrate 용도, 화면 식별자로 표시하지 않는다. */
+  setHead: boolean
+  /** 세트 구성품 부모 modelCode — payload hydrate 용도, 일반 라인은 null. */
+  parentSetModel: string | null
 }
 
 /** 견적서 헤더 (요약) — 페이지 조회용. BE {@code EstimateResponse}. */
@@ -132,6 +136,8 @@ function normalizeEstimateDetail(estimate: EstimateDetail): EstimateDetail {
 
 /** 견적 라인 1건 생성/수정 요청. */
 export interface EstimateLineRequest {
+  /** 상세 응답 `id` 왕복값 — payload 전용, 화면 미표시. 신규 라인은 null/미지정. */
+  lineId?: string | null
   productId: string
   productName?: string
   modelName?: string
