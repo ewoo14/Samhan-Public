@@ -54,7 +54,12 @@ describe('LineRow price source marker', () => {
     expect(note.textContent).toBe('거래처 최근단가')
     expect(note.getAttribute('title')).toContain('2026-07-10 저장')
     expect(screen.getByLabelText('라인 1 단가').getAttribute('aria-describedby')).toBe(note.id)
-    expect(screen.getByRole('row').className).toContain('priceRefreshed')
+    const row = screen.getByRole('row')
+    expect(row.className).toContain('priceRefreshed')
+    const changedStatus = screen.getByText('단가 변경')
+    expect(changedStatus.querySelector('svg')).not.toBeNull()
+    expect(changedStatus.hasAttribute('aria-live')).toBe(false)
+    expect(row.getAttribute('aria-describedby')).toBe(changedStatus.id)
   })
 
   // D-R4-1: 자동채움 실체 = 제품 등록 화면 '판매가'(sellingPrice) — '정가' 라벨 금지(출고가 별칭 오도).

@@ -86,7 +86,7 @@ describe('mock price memory contract', () => {
     }) as MockEnvelope<Record<string, unknown>>
 
     expect(response.data).toMatchObject({
-      id: 'p-aj040',
+      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaa040',
       name: '시스템에어컨 4Way 4HP',
       modelName: 'AJ040RXH4BC1',
     })
@@ -95,12 +95,16 @@ describe('mock price memory contract', () => {
   })
 
   it('single/bulk price memory handlers preserve hit-only partial response semantics', () => {
+    const partnerA = '11111111-1111-4111-8111-111111111111'
+    const partnerB = '22222222-2222-4222-8222-222222222222'
+    const productA = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaa040'
+    const productB = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb010'
     const single = mockRequest({
       method: 'GET',
       url: '/slips/price-memory',
       params: {
-        partnerId: '11111111-1111-4111-8111-111111111111',
-        productId: 'p-aj040',
+        partnerId: partnerA,
+        productId: productA,
       },
     }) as MockEnvelope<{ unitPrice: number; updatedAt: string }>
     expect(single.data).toMatchObject({ unitPrice: 2035000, updatedAt: '2026-05-04T10:30:00+09:00' })
@@ -109,13 +113,31 @@ describe('mock price memory contract', () => {
       method: 'POST',
       url: '/slips/price-memory/bulk',
       data: {
-        partnerId: '11111111-1111-4111-8111-111111111111',
-        productIds: ['p-aj040', 'p-mwr10'],
+        partnerId: partnerA,
+        productIds: [productA, productB],
       },
     }) as MockEnvelope<Array<{ productId: string; unitPrice: number }>>
     expect(bulk.data).toEqual([
-      expect.objectContaining({ productId: 'p-aj040', unitPrice: 2035000 }),
+      expect.objectContaining({ productId: productA, unitPrice: 2035000 }),
     ])
+
+    const isolatedMiss = mockRequest({
+      method: 'GET',
+      url: '/slips/price-memory',
+      params: { partnerId: partnerB, productId: productA },
+    }) as { __mockStatus: number; body: null }
+    expect(isolatedMiss).toEqual({ __mockStatus: 204, body: null })
+  })
+
+  it.each([
+    ['single missing partnerId', { method: 'GET', url: '/slips/price-memory', params: { productId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaa040' } }],
+    ['single invalid product UUID', { method: 'GET', url: '/slips/price-memory', params: { partnerId: '11111111-1111-4111-8111-111111111111', productId: 'not-uuid' } }],
+    ['bulk empty products', { method: 'POST', url: '/slips/price-memory/bulk', data: { partnerId: '11111111-1111-4111-8111-111111111111', productIds: [] } }],
+    ['bulk over 100 products', { method: 'POST', url: '/slips/price-memory/bulk', data: { partnerId: '11111111-1111-4111-8111-111111111111', productIds: Array.from({ length: 101 }, (_, index) => `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`) } }],
+  ])('%s mirrors the real wire validation', (_name, config) => {
+    const response = mockRequest(config) as { __mockStatus: number; body: { code: string } }
+    expect(response.__mockStatus).toBe(400)
+    expect(response.body.code).toBe('INVALID_INPUT')
   })
 
   it('mockEstimateDetail_partnerIdIsUuidAndEnablesPriceMemoryLookup', () => {

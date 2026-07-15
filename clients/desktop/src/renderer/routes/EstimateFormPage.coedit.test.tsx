@@ -178,7 +178,7 @@ function makeEstimate(overrides: Partial<EstimateDetail> = {}): EstimateDetail {
         modelName: 'MODEL-1',
         specification: '스펙 1',
         quantity: 2,
-        unitPrice: '10000',
+        unitPrice: 10000 as unknown as string,
         unitPriceWithVat: '11000',
         supplyAmount: '20000',
         vatAmount: '2000',
@@ -270,7 +270,7 @@ afterEach(() => {
 
 beforeEach(() => {
   mocks.getPriceMemory.mockResolvedValue(null)
-  mocks.getPriceMemories.mockResolvedValue([])
+  mocks.getPriceMemories.mockResolvedValue({ hits: [], failedProductIds: [] })
   mocks.createEstimate.mockResolvedValue({ id: 'estimate-created' })
   mocks.updateEstimate.mockResolvedValue({ id: 'estimate-1' })
 })
@@ -485,6 +485,8 @@ describe('EstimateFormPage 견적 편집 full-form coedit 배선', () => {
       updatedAt: '2026-07-10T09:00:00',
     })
     renderPage('/sales/estimates/new')
+    const status = screen.getByTestId('estimate-price-refresh-banner')
+    expect(status.textContent).toBe('')
 
     fireEvent.click(screen.getByTestId('estimate-select-partner-a'))
     fireEvent.change(estimateModel(), { target: { value: 'MODEL-NEW' } })
@@ -498,6 +500,8 @@ describe('EstimateFormPage 견적 편집 full-form coedit 배선', () => {
     expect(estimateUnitPrice().getAttribute('aria-describedby')).toBe(note.id)
     // R4-D2: 라인 칩에 aria-live 금지 — 라인 N개 flip 시 N회 낭독 폭주(전역 고지는 배너 1곳).
     expect(note.hasAttribute('aria-live')).toBe(false)
+    // R5-M4: 최초 lookup 결과도 기존 페이지 status 한 곳에서 1회 묶어 고지한다.
+    expect(status.textContent).toBe('라인 1 거래처 최근단가 적용')
   })
 
   it('CB-1 edit hydrate preserves the persisted price when partner changes', async () => {
@@ -527,12 +531,12 @@ describe('EstimateFormPage 견적 편집 full-form coedit 배선', () => {
       source: 'LINE_SAVE',
       updatedAt: '2026-07-10T09:00:00',
     })
-    mocks.getPriceMemories.mockResolvedValue([{
+    mocks.getPriceMemories.mockResolvedValue({ hits: [{
       productId: 'product-session',
       unitPrice: 99000,
       source: 'LINE_SAVE',
       updatedAt: '2026-07-11T09:00:00',
-    }])
+    }], failedProductIds: [] })
     renderPage()
 
     await waitFor(() => expect((screen.getByTestId('estimate-form-add-line') as HTMLButtonElement).disabled).toBe(false))
@@ -544,7 +548,7 @@ describe('EstimateFormPage 견적 편집 full-form coedit 배선', () => {
     // R4-D9: 배너 live region 은 활성 전에도 빈 컨테이너로 선존재해야 SR 낭독이 신뢰된다.
     const banner = screen.getByTestId('estimate-price-refresh-banner')
     expect(banner.getAttribute('role')).toBe('status')
-    expect(banner.textContent).toBe('')
+    expect(banner.textContent).toBe('라인 2 거래처 최근단가 적용')
 
     fireEvent.click(screen.getByTestId('estimate-select-partner-b'))
 
@@ -556,6 +560,11 @@ describe('EstimateFormPage 견적 편집 full-form coedit 배선', () => {
     // R4-D9: 동일 DOM 노드 유지(재마운트 아님) + 텍스트만 토글.
     expect(screen.getByTestId('estimate-price-refresh-banner')).toBe(banner)
     expect(banner.textContent).toContain('거래처 변경으로 최근단가 재적용')
+    const changedRow = screen.getByTestId('estimate-form-line-1')
+    const changedStatus = screen.getByText('단가 변경')
+    expect(changedStatus.querySelector('svg')).not.toBeNull()
+    expect(changedStatus.hasAttribute('aria-live')).toBe(false)
+    expect(changedRow.getAttribute('aria-describedby')).toBe(changedStatus.id)
   })
 
   it('estimate_ignoresStaleMemoryResponse', async () => {
@@ -566,7 +575,13 @@ describe('EstimateFormPage 견적 편집 full-form coedit 배선', () => {
       productType: 'SINGLE',
       sellingPrice: '33000',
     })
-    mocks.getPriceMemory.mockReturnValueOnce(pending.promise)
+    mocks.getPriceMemory
+      .mockReturnValueOnce(pending.promise)
+      .mockResolvedValueOnce({
+        unitPrice: 66000,
+        source: 'LINE_SAVE',
+        updatedAt: '2026-07-11T09:00:00',
+      })
     renderPage('/sales/estimates/new')
 
     fireEvent.click(screen.getByTestId('estimate-select-partner-a'))
@@ -579,18 +594,17 @@ describe('EstimateFormPage 견적 편집 full-form coedit 배선', () => {
       await pending.promise
     })
 
-    // 가격 3필드는 stale 게이트로 폐기(기존 단언 유지) — 이전 거래처(A) 기억단가 미적용.
-    expect(estimateUnitPrice().value).toBe('0')
-    expect(screen.getByTestId('estimate-form-line-0').getAttribute('data-price-source')).toBe('')
-    // R4-F3: 품목 바인딩(lookup 결과)은 보존 — 기존에는 통째 폐기돼 productId 미설정으로
-    // 저장이 사유 없이 차단됐다.
+    // R5-H3: A 가격 응답은 폐기하되 품목을 바인딩한 뒤 현재 거래처 B로 가격을 다시 resolve한다.
+    await waitFor(() => expect(mocks.getPriceMemory).toHaveBeenCalledWith(mocks.partnerB.id, 'product-stale'))
+    await waitFor(() => expect(estimateUnitPrice().value).toBe('66000'))
+    expect(screen.getByTestId('estimate-form-line-0').getAttribute('data-price-source')).toBe('REMEMBERED')
     expect((screen.getByTestId('estimate-coedit-items-0-productName') as HTMLInputElement).value).toBe('스테일 제품')
 
     fireEvent.click(screen.getByTestId('estimate-form-save-button'))
     await waitFor(() => expect(mocks.createEstimate).toHaveBeenCalledTimes(1))
     expect(mocks.createEstimate).toHaveBeenCalledWith(expect.objectContaining({
       partnerId: mocks.partnerB.id,
-      lines: [expect.objectContaining({ productId: 'product-stale', unitPrice: '0' })],
+      lines: [expect.objectContaining({ productId: 'product-stale', unitPrice: '66000' })],
     }))
   })
 
@@ -689,7 +703,7 @@ describe('EstimateFormPage 견적 편집 full-form coedit 배선', () => {
     expect(screen.getByTestId('estimate-form-line-0').getAttribute('data-price-source')).toBe('REMEMBERED')
 
     // 거래처 재선택 시 자동 라인 재조회 자격 보존 — miss 면 판매가 마커로 격리
-    mocks.getPriceMemories.mockResolvedValueOnce([])
+    mocks.getPriceMemories.mockResolvedValueOnce({ hits: [], failedProductIds: [] })
     fireEvent.click(screen.getByTestId('estimate-select-partner-b'))
     await waitFor(() => expect(mocks.getPriceMemories).toHaveBeenCalledWith(mocks.partnerB.id, ['product-new']))
     await waitFor(() => expect(estimateUnitPrice().value).toBe('33000'))
@@ -700,13 +714,21 @@ describe('EstimateFormPage 견적 편집 full-form coedit 배선', () => {
   // R4-F2: legacy(unitPriceWithVat=null) 라인 편집-저장 시 원 공급단가 + priceVatInclusive=false —
   // BE 의 /1.1 재분리로 인한 약 9.1% 단가 하락·가격기억 오염 방지(전표 복사와 동일 semantics).
   it('estimate_legacyLine_unmodifiedSave_keepsSupplyPriceVatExclusive', async () => {
+    const provider = makeProvider()
     mocks.getEstimate.mockResolvedValue(makeEstimate({
-      lines: [{ ...makeEstimate().lines[0], unitPriceWithVat: null, unitPrice: '10000' }],
+      lines: [{
+        ...makeEstimate().lines[0],
+        unitPriceWithVat: null,
+        // BE BigDecimal JSON runtime 은 number — string DTO fixture 로 결함을 우회하지 않는다.
+        unitPrice: '10000',
+      }],
     }))
-    mocks.createDocCoeditProvider.mockRejectedValue(new Error('coedit unavailable'))
+    mocks.createDocCoeditProvider.mockResolvedValue(provider)
     renderPage()
-    await waitFor(() => expect((screen.getByTestId('estimate-form-save-button') as HTMLButtonElement).disabled).toBe(false))
-    expect(estimateUnitPrice().value).toBe('10000')
+    // R5-B1: 버튼 활성은 hydration 완료 증거가 아니다. 실 데이터 값/coedit seed 완료를 기다린다.
+    await waitFor(() => expect(mocks.getEstimate).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(provider.subscribeDoc).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(estimateUnitPrice().value).toBe('10000'))
 
     fireEvent.click(screen.getByTestId('estimate-form-save-button'))
 
@@ -720,21 +742,28 @@ describe('EstimateFormPage 견적 편집 full-form coedit 배선', () => {
   })
 
   it('estimate_legacyLine_userEditedSave_sendsVatInclusive', async () => {
+    const provider = makeProvider()
     mocks.getEstimate.mockResolvedValue(makeEstimate({
-      lines: [{ ...makeEstimate().lines[0], unitPriceWithVat: null, unitPrice: '10000' }],
+      lines: [{
+        ...makeEstimate().lines[0],
+        unitPriceWithVat: null,
+        unitPrice: '10000',
+      }],
     }))
-    mocks.createDocCoeditProvider.mockRejectedValue(new Error('coedit unavailable'))
+    mocks.createDocCoeditProvider.mockResolvedValue(provider)
     renderPage()
-    await waitFor(() => expect((screen.getByTestId('estimate-form-save-button') as HTMLButtonElement).disabled).toBe(false))
+    await waitFor(() => expect(provider.subscribeDoc).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(estimateUnitPrice().value).toBe('10000'))
 
-    // 사용자가 단가를 수정하면 '단가(VAT포함)' 입력 semantics — 기존대로 VAT 포함 전송.
+    // 값 비교가 아니라 provenance로 판정한다. 10000→99000→10000 되돌려도 실제 사용자 편집이다.
     fireEvent.change(estimateUnitPrice(), { target: { value: '99000' } })
+    fireEvent.change(estimateUnitPrice(), { target: { value: '10000' } })
     fireEvent.click(screen.getByTestId('estimate-form-save-button'))
 
     await waitFor(() => expect(mocks.updateEstimate).toHaveBeenCalledTimes(1))
     expect(mocks.updateEstimate).toHaveBeenCalledWith('estimate-1', expect.objectContaining({
       lines: [expect.objectContaining({
-        unitPrice: '99000',
+        unitPrice: '10000',
         priceVatInclusive: true,
       })],
     }))
@@ -743,7 +772,7 @@ describe('EstimateFormPage 견적 편집 full-form coedit 배선', () => {
   // R4-F4: 거래처 변경 최근단가 재조회 in-flight 동안 저장/발송 차단 + busy 단서 —
   // 이전 거래처 단가가 새 partnerId 로 저장돼 가격기억이 교차 오염되는 것을 방지.
   it('estimate_partnerSwitch_blocksSaveWhileRefreshInFlight', async () => {
-    const pendingBulk = deferred<Array<{ productId: string; unitPrice: number; source: string; updatedAt: string }>>()
+    const pendingBulk = deferred<{ hits: Array<{ productId: string; unitPrice: number; source: string; updatedAt: string }>; failedProductIds: string[] }>()
     mocks.lookupProductByModelName.mockResolvedValue({
       productId: 'product-busy',
       productName: 'busy 제품',
@@ -786,12 +815,12 @@ describe('EstimateFormPage 견적 편집 full-form coedit 배선', () => {
     expect(mocks.createEstimate).not.toHaveBeenCalled()
 
     await act(async () => {
-      pendingBulk.resolve([{
+      pendingBulk.resolve({ hits: [{
         productId: 'product-busy',
         unitPrice: 99000,
         source: 'LINE_SAVE',
         updatedAt: '2026-07-11T09:00:00',
-      }])
+      }], failedProductIds: [] })
       await pendingBulk.promise
     })
 
@@ -892,7 +921,8 @@ describe('EstimateFormPage 견적 편집 full-form coedit 배선', () => {
     mocks.getEstimate.mockResolvedValue(makeEstimate())
     mocks.createDocCoeditProvider.mockRejectedValue(new Error('coedit unavailable'))
     renderPage()
-    await waitFor(() => expect((screen.getByTestId('estimate-form-save-button') as HTMLButtonElement).disabled).toBe(false))
+    await waitFor(() => expect(mocks.getEstimate).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(estimateUnitPrice().value).toBe('11000'))
     fireEvent.change(estimateUnitPrice(), { target: { value: '100000' } })
     fireEvent.click(screen.getByTestId('estimate-form-save-button'))
 

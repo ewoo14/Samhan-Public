@@ -246,7 +246,7 @@ beforeEach(() => {
   harness.lookupPartnerForAutoFill.mockResolvedValue({})
   harness.createSlip.mockResolvedValue({})
   harness.getPriceMemory.mockResolvedValue(null)
-  harness.getPriceMemories.mockResolvedValue([])
+  harness.getPriceMemories.mockResolvedValue({ hits: [], failedProductIds: [] })
 })
 
 describe('SlipFormPage price memory autofill', () => {
@@ -257,6 +257,8 @@ describe('SlipFormPage price memory autofill', () => {
       updatedAt: '2026-07-10T09:00:00',
     })
     renderPage()
+    const status = screen.getByTestId('slip-price-refresh-banner')
+    expect(status.textContent).toBe('')
     await selectPartnerA()
 
     fireEvent.click(screen.getByTestId('select-product-a-1'))
@@ -269,6 +271,7 @@ describe('SlipFormPage price memory autofill', () => {
     )
     await waitFor(() => expect(unitPrice().value).toBe('999000'))
     expect(unitPrice().value).not.toBe(harness.productA.sellingPrice)
+    expect(status.textContent).toBe('라인 1 거래처 최근단가 적용')
   })
 
   it('falls back to catalog selling price when price memory misses', async () => {
@@ -303,7 +306,7 @@ describe('SlipFormPage price memory autofill', () => {
 
   it('ignores a late response when partner changes during lookup', async () => {
     const first = deferred<{ unitPrice: number; source: string; updatedAt: string } | null>()
-    const second = deferred<Array<{ productId: string; unitPrice: number; source: string; updatedAt: string }>>()
+    const second = deferred<{ hits: Array<{ productId: string; unitPrice: number; source: string; updatedAt: string }>; failedProductIds: string[] }>()
     harness.getPriceMemory.mockReturnValueOnce(first.promise)
     harness.getPriceMemories.mockReturnValueOnce(second.promise)
     renderPage()
@@ -316,12 +319,12 @@ describe('SlipFormPage price memory autofill', () => {
     await waitFor(() => expect(harness.getPriceMemories).toHaveBeenCalledWith(harness.partnerB.id, [harness.productA.id]))
 
     await act(async () => {
-      second.resolve([{
+      second.resolve({ hits: [{
         productId: harness.productA.id,
         unitPrice: 222000,
         source: 'LINE_SAVE',
         updatedAt: '2026-07-11T09:00:00',
-      }])
+      }], failedProductIds: [] })
       await second.promise
     })
     await waitFor(() => expect(unitPrice().value).toBe('222000'))
@@ -388,12 +391,12 @@ describe('SlipFormPage price memory autofill', () => {
       source: 'LINE_SAVE',
       updatedAt: '2026-07-10T09:00:00',
     })
-    harness.getPriceMemories.mockResolvedValueOnce([{
+    harness.getPriceMemories.mockResolvedValueOnce({ hits: [{
       productId: harness.productA.id,
       unitPrice: 200000,
       source: 'LINE_SAVE',
       updatedAt: '2026-07-11T09:00:00',
-    }])
+    }], failedProductIds: [] })
     renderPage()
     await selectPartnerA()
     fireEvent.click(screen.getByTestId('select-product-a-1'))
@@ -420,12 +423,12 @@ describe('SlipFormPage price memory autofill', () => {
   })
 
   it('partner change uses one bulk call and maps omitted products to catalog miss', async () => {
-    harness.getPriceMemories.mockResolvedValueOnce([{
+    harness.getPriceMemories.mockResolvedValueOnce({ hits: [{
       productId: harness.productA.id,
       unitPrice: 555000,
       source: 'LINE_SAVE',
       updatedAt: '2026-07-11T09:00:00',
-    }])
+    }], failedProductIds: [] })
     renderPage()
     await selectPartnerA()
     fireEvent.click(screen.getByTestId('select-product-a-1'))
@@ -507,7 +510,7 @@ describe('SlipFormPage price memory autofill', () => {
   })
 
   it('bulk refresh failure does not overwrite a user edit made while the request is pending', async () => {
-    const pending = deferred<Array<{ productId: string; unitPrice: number; source: string; updatedAt: string }>>()
+    const pending = deferred<{ hits: Array<{ productId: string; unitPrice: number; source: string; updatedAt: string }>; failedProductIds: string[] }>()
     harness.getPriceMemory.mockResolvedValueOnce({
       unitPrice: 100000,
       source: 'LINE_SAVE',
@@ -593,12 +596,12 @@ describe('SlipFormPage price memory autofill', () => {
   // R4-D9: 배너 live region 은 빈 컨테이너로 상시 마운트되고 텍스트만 토글 — 내용과 함께
   // 조건부 마운트하면 일부 SR 이 낭독하지 않는다. 동일 DOM 노드 유지(재마운트 아님)까지 고정.
   it('keeps the price refresh banner live region mounted before and after activation', async () => {
-    harness.getPriceMemories.mockResolvedValueOnce([{
+    harness.getPriceMemories.mockResolvedValueOnce({ hits: [{
       productId: harness.productA.id,
       unitPrice: 200000,
       source: 'LINE_SAVE',
       updatedAt: '2026-07-11T09:00:00',
-    }])
+    }], failedProductIds: [] })
     renderPage()
 
     const banner = screen.getByTestId('slip-price-refresh-banner')
@@ -619,7 +622,7 @@ describe('SlipFormPage price memory autofill', () => {
   // R4-F4: 거래처 변경 최근단가 재조회 in-flight 동안 저장 차단 + busy 단서 —
   // 이전 거래처 단가가 새 partnerId 로 저장돼 가격기억이 교차 오염되는 것을 방지.
   it('blocks submit and shows a busy note while the partner price refresh is in flight', async () => {
-    const pending = deferred<Array<{ productId: string; unitPrice: number; source: string; updatedAt: string }>>()
+    const pending = deferred<{ hits: Array<{ productId: string; unitPrice: number; source: string; updatedAt: string }>; failedProductIds: string[] }>()
     harness.getPriceMemories.mockReturnValueOnce(pending.promise)
     renderPage()
     await selectPartnerA()
@@ -649,12 +652,12 @@ describe('SlipFormPage price memory autofill', () => {
     expect(harness.createSlip).not.toHaveBeenCalled()
 
     await act(async () => {
-      pending.resolve([{
+      pending.resolve({ hits: [{
         productId: harness.productA.id,
         unitPrice: 222000,
         source: 'LINE_SAVE',
         updatedAt: '2026-07-11T09:00:00',
-      }])
+      }], failedProductIds: [] })
       await pending.promise
     })
 

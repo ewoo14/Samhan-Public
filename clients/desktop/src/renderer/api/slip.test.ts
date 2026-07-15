@@ -88,7 +88,7 @@ describe('slip price contract', () => {
     await expect(getPriceMemories(
       '11111111-1111-1111-1111-111111111111',
       [hit.productId, hit.productId, 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'],
-    )).resolves.toEqual([hit])
+    )).resolves.toEqual({ hits: [hit], failedProductIds: [] })
     expect(apiClientMock.post).toHaveBeenCalledWith('/slips/price-memory/bulk', {
       partnerId: '11111111-1111-1111-1111-111111111111',
       productIds: [hit.productId, 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'],
@@ -114,10 +114,10 @@ describe('slip price contract', () => {
       .mockResolvedValueOnce({ data: { data: [hitFirstChunk] } })
       .mockResolvedValueOnce({ data: { data: [hitSecondChunk] } })
 
-    await expect(getPriceMemories('partner-1', ids)).resolves.toEqual([
-      hitFirstChunk,
-      hitSecondChunk,
-    ])
+    await expect(getPriceMemories('partner-1', ids)).resolves.toEqual({
+      hits: [hitFirstChunk, hitSecondChunk],
+      failedProductIds: [],
+    })
 
     expect(apiClientMock.post).toHaveBeenCalledTimes(2)
     expect(apiClientMock.post).toHaveBeenNthCalledWith(1, '/slips/price-memory/bulk', {
@@ -130,15 +130,23 @@ describe('slip price contract', () => {
     })
   })
 
-  it('bulk lookup rejects when any chunk call fails so callers fall back uniformly', async () => {
-    // 부분 실패 시 반쪽 결과를 돌려주지 않고 throw — 호출자 catch(판매가 fallback) 일관 처리.
-    // 사용자(USER) 단가 라인은 재조회 후보에서 제외되므로 어떤 경우에도 불가침(R4-F5).
+  it('bulk lookup preserves successful chunk hits and reports only failed chunk productIds', async () => {
+    // R5-M2: 후반 chunk 실패가 앞 chunk 정상 hit 를 버리면 기억단가가 판매가로 오염된다.
     const ids = Array.from({ length: 101 }, (_, i) => `product-${i}`)
+    const firstChunkHit = {
+      productId: ids[0],
+      unitPrice: 123000,
+      source: 'LINE_SAVE',
+      updatedAt: '2099-01-01T09:00:00',
+    }
     apiClientMock.post
-      .mockResolvedValueOnce({ data: { data: [] } })
+      .mockResolvedValueOnce({ data: { data: [firstChunkHit] } })
       .mockRejectedValueOnce(new Error('bulk chunk failed'))
 
-    await expect(getPriceMemories('partner-1', ids)).rejects.toThrow('bulk chunk failed')
+    await expect(getPriceMemories('partner-1', ids)).resolves.toEqual({
+      hits: [firstChunkHit],
+      failedProductIds: [ids[100]],
+    })
     expect(apiClientMock.post).toHaveBeenCalledTimes(2)
   })
 

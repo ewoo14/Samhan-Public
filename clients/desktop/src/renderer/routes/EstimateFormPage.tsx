@@ -71,6 +71,8 @@ interface DraftLine {
    * 신규 라인/VAT포함 저장 라인은 null.
    */
   legacySupplyUnitPrice?: string | null
+  /** legacy 공급단가를 사용자/원격 편집이 건드리지 않았는지 나타내는 명시적 provenance. */
+  legacyPriceUntouched?: boolean
   note: string
   lookupError: string | null
   lookupLoading: boolean
@@ -93,6 +95,7 @@ const emptyLine = (): DraftLine => ({
   priceMemoryUpdatedAt: null,
   priceRefreshChanged: false,
   legacySupplyUnitPrice: null,
+  legacyPriceUntouched: false,
   note: '',
   lookupError: null,
   lookupLoading: false,
@@ -153,6 +156,17 @@ function priceSourceStatus(line: DraftLine, hasPartner: boolean): {
   return null
 }
 
+function PriceChangeIndicator({ id }: { id: string }) {
+  return (
+    <span id={id} className="price-change-indicator">
+      <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+        <path d="M3 2v7m0 0L1.5 7.5M3 9l1.5-1.5M9 10V3m0 0L7.5 4.5M9 3l1.5 1.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+      단가 변경
+    </span>
+  )
+}
+
 function toDraftLinesFromEstimate(estimate: EstimateDetail): DraftLine[] {
   return estimate.lines.length > 0
     ? estimate.lines.map((line) => {
@@ -160,6 +174,9 @@ function toDraftLinesFromEstimate(estimate: EstimateDetail): DraftLine[] {
         // 원 공급단가를 legacySupplyUnitPrice 에 박제 — 저장 시 미수정 라인만
         // priceVatInclusive=false 로 원값 전송(R4-F2, slip.ts duplicateSlip 과 동일 패턴).
         const hasVatInclusivePrice = line.unitPriceWithVat != null
+        const canonicalUnitPrice = String(
+          hasVatInclusivePrice ? line.unitPriceWithVat : line.unitPrice,
+        )
         return {
           uid: nextLineUid(),
           productId: line.productId,
@@ -168,13 +185,14 @@ function toDraftLinesFromEstimate(estimate: EstimateDetail): DraftLine[] {
           specification: line.specification ?? '',
           quantity: String(line.quantity),
           // 단가 부가세포함: 폼 단가 입력은 VAT 포함값. 편집 hydrate/coedit seed 모두 같은 값으로 보존.
-          unitPrice: hasVatInclusivePrice ? line.unitPriceWithVat! : line.unitPrice,
+          unitPrice: canonicalUnitPrice,
           // 서버에서 hydrate 된 저장 단가는 사용자 확정값으로 취급해 거래처 변경 자동재조회에서 보호한다.
           priceSource: 'USER',
           catalogUnitPrice: null,
           priceMemoryUpdatedAt: null,
           priceRefreshChanged: false,
-          legacySupplyUnitPrice: hasVatInclusivePrice ? null : line.unitPrice,
+          legacySupplyUnitPrice: hasVatInclusivePrice ? null : String(line.unitPrice),
+          legacyPriceUntouched: !hasVatInclusivePrice,
           note: line.note ?? '',
           lookupError: null,
           lookupLoading: false,
@@ -248,9 +266,12 @@ function coeditLinesToDraftLines(
         : isRemoteUnitPriceChange
           ? false
           : previous?.priceRefreshChanged ?? false,
-      // legacy 공급단가 박제는 라인 identity(uid) 에 따라 보존 — 원격 단가 변경 시에도 유지되며,
-      // buildBody 의 값 비교(unitPrice===legacySupplyUnitPrice)가 수정 여부를 판정한다(R4-F2).
+      // legacy 공급단가 박제/provenance 는 라인 identity(uid) 에 따라 보존한다. 값 자체를 원값으로
+      // 되돌려도 원격 편집이 있었으면 untouched 로 복귀하지 않는다(R5-H2).
       legacySupplyUnitPrice: previous?.legacySupplyUnitPrice ?? null,
+      legacyPriceUntouched: isRemoteUnitPriceChange
+        ? false
+        : previous?.legacyPriceUntouched ?? false,
       note: previous?.note ?? '',
       // 원격 doc 변경마다 재빌드되므로 진행 중 lookup 상태는 previous 에서 보존(스피너 조기소멸 방지, 리뷰 MED).
       lookupError: previous?.lookupError ?? null,
@@ -281,14 +302,17 @@ function EstimateMobileLineCard(props: {
   const lineNumber = props.index + 1
   const priceStatus = priceSourceStatus(props.line, props.hasPartner)
   const priceStatusId = `estimate-mobile-price-status-${props.line.uid}`
+  const priceChangedStatusId = `estimate-mobile-price-changed-${props.line.uid}`
   return (
     <div
       className={`mobile-line-card${props.line.priceRefreshChanged ? ' price-memory-refreshed-row' : ''}`}
+      aria-describedby={props.line.priceRefreshChanged ? priceChangedStatusId : undefined}
       data-testid={`estimate-form-line-${props.index}`}
       data-price-source={props.line.priceSource ?? ''}
     >
       <div className="mobile-line-card-header">
         <span className="mobile-line-card-index">{lineNumber}</span>
+        {props.line.priceRefreshChanged ? <PriceChangeIndicator id={priceChangedStatusId} /> : null}
         <button
           type="button"
           className="mobile-line-remove-button"
@@ -378,6 +402,7 @@ function EstimateMobileLineCard(props: {
             priceMemoryUpdatedAt: null,
             priceRefreshChanged: false,
             lookupLoading: false,
+            legacyPriceUntouched: false,
           })}
           // doc-sync 유래 값 반영은 분류(priceSource) 를 건드리지 않는다 — 자동채움 provider write
           // 가 pending REMEMBERED/CATALOG 분류를 USER 로 덮어 마커가 소멸하는 것을 차단(R4-F6).
@@ -449,6 +474,7 @@ export function EstimateFormPage() {
   const [lineLookupOpen, setLineLookupOpen] = useState(false)
   const [estimateFormCoeditProvider, setEstimateFormCoeditProvider] = useState<DocCoeditProvider | null>(null)
   const [estimateFormCoeditPending, setEstimateFormCoeditPending] = useState(false)
+  const [priceLookupAnnouncement, setPriceLookupAnnouncement] = useState('')
   const selectedPartnerIdRef = useRef<string>('')
   const priceRefreshRequestRef = useRef(0)
   const modelLookupRequestRef = useRef(new Map<string, number>())
@@ -640,6 +666,7 @@ export function EstimateFormPage() {
   }
 
   const refreshAutoPricesForPartner = async (effectivePartnerId: string) => {
+    setPriceLookupAnnouncement('')
     const requestId = ++priceRefreshRequestRef.current
     const candidates = linesRef.current
       .map((line, index) => ({ line, index }))
@@ -700,7 +727,7 @@ export function EstimateFormPage() {
     }
 
     try {
-      const memories = await getPriceMemories(
+      const { hits: memories } = await getPriceMemories(
         effectivePartnerId,
         candidates.map(({ line }) => line.productId!),
       )
@@ -747,7 +774,7 @@ export function EstimateFormPage() {
     if (!line || !modelName) return
     const requestId = (modelLookupRequestRef.current.get(line.uid) ?? 0) + 1
     modelLookupRequestRef.current.set(line.uid, requestId)
-    const effectivePartnerId = selectedPartnerIdRef.current
+    setPriceLookupAnnouncement('')
     updateLine(index, { lookupLoading: true, lookupError: null })
 
     // R4-F3: 품목 바인딩과 가격 적용의 신선도 게이트 분리.
@@ -759,14 +786,6 @@ export function EstimateFormPage() {
       modelLookupRequestRef.current.get(line.uid) === requestId
       && current.uid === line.uid
       && (current.modelName || '').trim() === modelName
-
-    // 가격 게이트 — 단가 3필드(unitPrice/priceSource/priceMemoryUpdatedAt)는 blur 시점의
-    // 출처·품목·거래처가 그대로일 때만 적용(사용자 수정·거래처 변경 보호).
-    const isPriceApplyCurrent = (current: DraftLine): boolean =>
-      isProductBindCurrent(current)
-      && current.productId === line.productId
-      && current.priceSource === line.priceSource
-      && selectedPartnerIdRef.current === effectivePartnerId
 
     const finishStaleRequest = () => {
       // 최신 요청이 따로 시작됐다면(requestId 불일치) 그 요청이 스피너를 관리한다. 모델명
@@ -792,23 +811,37 @@ export function EstimateFormPage() {
       // R4-F1: 전표(applyProductSelection)와 동일 semantics(공유 헬퍼) — 빈 단가뿐 아니라 이전
       // 품목의 자동채움(CATALOG/REMEMBERED) 단가도 새 품목 기준으로 재채움 + 가격기억 재조회.
       const shouldAutoFill = shouldAutoFillPrice(line.priceSource, line.unitPrice)
-      let nextUnitPrice = result.sellingPrice
+      let nextUnitPrice = String(result.sellingPrice)
       let nextPriceSource: DraftLine['priceSource'] = 'CATALOG'
       let nextPriceMemoryUpdatedAt: string | null = null
-      if (
-        effectivePartnerId
-        && shouldAutoFill
-        && isPriceApplyCurrent(currentAfterProductLookup)
-      ) {
-        try {
-          const memory = await getPriceMemory(effectivePartnerId, result.productId)
-          if (memory?.unitPrice != null) {
-            nextUnitPrice = String(memory.unitPrice)
-            nextPriceSource = 'REMEMBERED'
-            nextPriceMemoryUpdatedAt = memory.updatedAt ?? null
+      let resolvedPartnerId = selectedPartnerIdRef.current
+      if (shouldAutoFill) {
+        // 품목 lookup 중 거래처가 바뀌면 새 거래처는 아직 productId 를 보지 못해 bulk 후보가 0건이다.
+        // 현재 거래처가 응답 동안 다시 바뀌면 최신 partnerId 로 반복 resolve하고 busy 를 유지한다.
+        while (true) {
+          nextUnitPrice = String(result.sellingPrice)
+          nextPriceSource = 'CATALOG'
+          nextPriceMemoryUpdatedAt = null
+          if (resolvedPartnerId) {
+            try {
+              const memory = await getPriceMemory(resolvedPartnerId, result.productId)
+              if (memory?.unitPrice != null) {
+                nextUnitPrice = String(memory.unitPrice)
+                nextPriceSource = 'REMEMBERED'
+                nextPriceMemoryUpdatedAt = memory.updatedAt ?? null
+              }
+            } catch {
+              // 가격기억 조회 실패는 모델 lookup 자체를 실패시키지 않는다. 판매가 fallback 유지.
+            }
           }
-        } catch {
-          // 가격기억 조회 실패는 모델 lookup 자체를 실패시키지 않는다. 판매가(catalog) fallback 유지.
+          const currentAfterPriceLookup = linesRef.current.find((candidate) => candidate.uid === line.uid)
+          if (!currentAfterPriceLookup || !isProductBindCurrent(currentAfterPriceLookup)) {
+            finishStaleRequest()
+            return
+          }
+          if (currentAfterPriceLookup.priceSource === 'USER') break
+          if (selectedPartnerIdRef.current === resolvedPartnerId) break
+          resolvedPartnerId = selectedPartnerIdRef.current
         }
       }
       const current = linesRef.current.find((candidate) => candidate.uid === line.uid)
@@ -816,9 +849,11 @@ export function EstimateFormPage() {
         finishStaleRequest()
         return
       }
-      // 가격 3필드는 게이트 통과 시에만 적용 — lookup 중 단가 타이핑(USER)·거래처 변경 시에는
-      // 품목만 바인딩하고 현재 단가 상태를 그대로 둔다(R4-F3).
-      const applyPrice = shouldAutoFill && isPriceApplyCurrent(current)
+      // 명시적 USER 편집만 현재 단가를 보존한다. 거래처 stale 은 위에서 최신 partner+새 product 로
+      // 재resolve했으므로 0원 중간 상태로 품목만 바인딩하지 않는다(R5-H3).
+      const applyPrice = shouldAutoFill
+        && current.priceSource !== 'USER'
+        && selectedPartnerIdRef.current === resolvedPartnerId
       const currentIndex = linesRef.current.findIndex((candidate) => candidate.uid === line.uid)
       const nextLine: DraftLine = {
         ...current,
@@ -838,6 +873,11 @@ export function EstimateFormPage() {
       )
       linesRef.current = nextLines
       setLines(nextLines)
+      if (applyPrice) {
+        setPriceLookupAnnouncement(
+          `라인 ${currentIndex + 1} ${nextPriceSource === 'REMEMBERED' ? '거래처 최근단가' : '판매가'} 적용`,
+        )
+      }
       if (estimateFormCoeditProvider) {
         try {
           estimateFormCoeditProvider.setItemValue(currentIndex, 'productName', result.productName)
@@ -941,7 +981,7 @@ export function EstimateFormPage() {
       // /1.1 재분리(약 9.1% 하락)와 가격기억 오염을 막는다 — 전표 복사(duplicateSlip)와 동일 semantics.
       // 사용자가 수정한 값은 '단가(VAT포함)' 입력이므로 기존대로 true.
       const keepsLegacySupplyPrice =
-        l.legacySupplyUnitPrice != null && l.unitPrice === l.legacySupplyUnitPrice
+        l.legacySupplyUnitPrice != null && l.legacyPriceUntouched === true
       return {
         productId: l.productId!,
         productName: l.productName.trim() || undefined,
@@ -1170,14 +1210,18 @@ export function EstimateFormPage() {
         {/* R4-D9: live region 은 빈 컨테이너로 상시 렌더하고 텍스트만 토글 — ARIA 관행상
             live region 이 선존재해야 SR 낭독이 신뢰된다. 비활성 시 class 미부여로 시각 0px. */}
         <div
-          className={priceRefreshNoticeActive ? 'price-memory-refresh-banner' : undefined}
+          className={priceRefreshNoticeActive
+            ? 'price-memory-refresh-banner'
+            : priceLookupAnnouncement
+              ? 'price-lookup-status'
+              : undefined}
           role="status"
           aria-live="polite"
           data-testid="estimate-price-refresh-banner"
         >
           {priceRefreshNoticeActive
             ? '거래처 변경으로 최근단가 재적용 · 변경된 행을 확인해 주세요.'
-            : null}
+            : priceLookupAnnouncement || null}
         </div>
 
         {!isMobile ? (
@@ -1229,6 +1273,7 @@ export function EstimateFormPage() {
           const isBundle = line.productType === 'BUNDLE'
           const priceStatus = priceSourceStatus(line, hasPartner)
           const priceStatusId = `estimate-price-status-${line.uid}`
+          const priceChangedStatusId = `estimate-price-changed-${line.uid}`
           if (isMobile) {
             return (
               <EstimateMobileLineCard
@@ -1261,6 +1306,8 @@ export function EstimateFormPage() {
           return (
            <div key={line.uid}>
             <div
+              role="row"
+              aria-describedby={line.priceRefreshChanged ? priceChangedStatusId : undefined}
               style={{
                 display: 'grid',
                 gridTemplateColumns:
@@ -1349,6 +1396,7 @@ export function EstimateFormPage() {
                     priceMemoryUpdatedAt: null,
                     priceRefreshChanged: false,
                     lookupLoading: false,
+                    legacyPriceUntouched: false,
                   })}
                   // doc-sync 유래 값 반영은 분류(priceSource) 를 건드리지 않는다 — 자동채움 provider
                   // write 가 pending REMEMBERED/CATALOG 분류를 USER 로 덮는 마커 소멸 차단(R4-F6).
@@ -1373,6 +1421,7 @@ export function EstimateFormPage() {
                     {priceStatus.label}
                   </span>
                 ) : null}
+                {line.priceRefreshChanged ? <PriceChangeIndicator id={priceChangedStatusId} /> : null}
               </div>
               <div
                 style={{

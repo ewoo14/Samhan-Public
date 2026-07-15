@@ -1138,6 +1138,9 @@ const MOCK_TRANSFERS = [
  * PR-3b: `productType` 추가 — "BUNDLE" 이면 세트 옵션 picker 노출.
  * `modelCode` 미지정 시 modelName 을 그대로 사용 (BE ProductSummary 기본값).
  */
+const MOCK_PRODUCT_AJ040_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaa040'
+const MOCK_PRODUCT_MWR10_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb010'
+
 const MOCK_PRODUCTS_BY_MODEL: Record<
   string,
   {
@@ -1155,7 +1158,7 @@ const MOCK_PRODUCTS_BY_MODEL: Record<
   }
 > = {
   AJ040RXH4BC1: {
-    productId: 'p-aj040',
+    productId: MOCK_PRODUCT_AJ040_ID,
     modelName: 'AJ040RXH4BC1',
     productName: '시스템에어컨 4Way 4HP',
     sellingPrice: '1850000',
@@ -1203,7 +1206,7 @@ const MOCK_PRODUCTS_BY_MODEL: Record<
     goods: true,
   },
   'MWR-WE10N': {
-    productId: 'p-mwr10',
+    productId: MOCK_PRODUCT_MWR10_ID,
     modelName: 'MWR-WE10N',
     productName: '유선 리모컨 (WE10N)',
     sellingPrice: '85000',
@@ -3215,28 +3218,46 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
 
   // 거래처+품목 최근단가 — generic GET /slips/{id} matcher 보다 먼저 처리한다.
   // updatedAt 은 audit flush 시각이 아니라 원 전표/견적 저장 시각(remembered_at)이다.
-  const priceMemoryRow = (productId: string) => productId === 'p-aj040'
-    ? {
-        productId,
-        unitPrice: 2035000,
-        source: 'LINE_SAVE',
-        updatedAt: '2026-05-04T10:30:00+09:00',
-      }
-    : null
+  const priceMemoryKey = (partnerId: string, productId: string) => `${partnerId}:${productId}`
+  const priceMemoryRows = new Map([
+    ['11111111-1111-4111-8111-111111111111', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'],
+  ].map(([partnerId]) => [
+    priceMemoryKey(partnerId!, MOCK_PRODUCT_AJ040_ID),
+    {
+      productId: MOCK_PRODUCT_AJ040_ID,
+      unitPrice: 2035000,
+      source: 'LINE_SAVE',
+      updatedAt: '2026-05-04T10:30:00+09:00',
+    },
+  ]))
+  const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
   if (method === 'POST' && /\/slips\/price-memory\/bulk$/.test(url)) {
     const body = parseMockBody(config)
-    const productIds = Array.isArray(body['productIds'])
-      ? body['productIds'].filter((id): id is string => typeof id === 'string')
-      : []
+    const partnerId = body['partnerId']
+    const productIds = body['productIds']
+    if (
+      typeof partnerId !== 'string'
+      || !uuidPattern.test(partnerId)
+      || !Array.isArray(productIds)
+      || productIds.length < 1
+      || productIds.length > 100
+      || productIds.some((id) => typeof id !== 'string' || !uuidPattern.test(id))
+    ) {
+      return mockError(400, 'INVALID_INPUT', 'partnerId UUID와 productIds UUID 1~100개가 필요합니다.')
+    }
     return envelope(productIds.flatMap((productId) => {
-      const row = priceMemoryRow(productId)
+      const row = priceMemoryRows.get(priceMemoryKey(partnerId, productId))
       return row ? [row] : []
     }))
   }
   if (method === 'GET' && /\/slips\/price-memory(?:\?.*)?$/.test(url)) {
     const urlObj = new URL(url.startsWith('http') ? url : `http://mock${url}`)
+    const partnerId = String(config.params?.['partnerId'] ?? urlObj.searchParams.get('partnerId') ?? '')
     const productId = String(config.params?.['productId'] ?? urlObj.searchParams.get('productId') ?? '')
-    const row = priceMemoryRow(productId)
+    if (!uuidPattern.test(partnerId) || !uuidPattern.test(productId)) {
+      return mockError(400, 'INVALID_INPUT', 'partnerId와 productId는 UUID여야 합니다.')
+    }
+    const row = priceMemoryRows.get(priceMemoryKey(partnerId, productId))
     return row
       ? envelope({ unitPrice: row.unitPrice, source: row.source, updatedAt: row.updatedAt })
       : { __mockStatus: 204, body: null }

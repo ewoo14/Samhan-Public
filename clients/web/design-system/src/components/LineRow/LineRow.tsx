@@ -210,6 +210,7 @@ export const LineRow = forwardRef<HTMLDivElement, LineRowProps>(function LineRow
   const qtyId = `lr-qty-${reactId}`
   const priceId = `lr-price-${reactId}`
   const priceStatusId = `${priceId}-status`
+  const priceChangedStatusId = `${priceId}-changed`
 
   const hasError = !!line.lookupError
   const sumDisplay = computeLineSum(line.quantity, line.unitPrice)
@@ -250,6 +251,7 @@ export const LineRow = forwardRef<HTMLDivElement, LineRowProps>(function LineRow
         ref={ref}
         role="row"
         aria-selected={selected}
+        aria-describedby={line.priceRefreshChanged ? priceChangedStatusId : undefined}
         className={rowClass}
         style={style}
         data-line-number={lineNumber}
@@ -317,12 +319,20 @@ export const LineRow = forwardRef<HTMLDivElement, LineRowProps>(function LineRow
         {/* 5. 품목명 (read-only display) */}
         <div className={`${styles['cell']} ${styles['cellProduct']}`}>
           {line.productName ? (
-            <span title={line.productName}>{line.productName}</span>
+            <span className={styles['productName']} title={line.productName}>{line.productName}</span>
           ) : (
             <span className={styles['productPlaceholder']}>
               {line.lookupLoading ? '조회중...' : '모델명 조회 후 자동입력'}
             </span>
           )}
+          {line.priceRefreshChanged ? (
+            <span id={priceChangedStatusId} className={styles['priceChangedStatus']}>
+              <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+                <path d="M3 2v7m0 0L1.5 7.5M3 9l1.5-1.5M9 10V3m0 0L7.5 4.5M9 3l1.5 1.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              단가 변경
+            </span>
+          ) : null}
         </div>
 
         {/* 6. 규격 (Slice A 신규 — 피드백 #4) */}

@@ -103,6 +103,33 @@ export interface EstimateDetail extends EstimateSummary {
   lines: EstimateLine[]
 }
 
+/**
+ * Jackson BigDecimal 은 JSON number 로 내려올 수 있으므로 폼에 닿기 전에 금액을 string 으로 고정한다.
+ * 이 경계 정규화가 없으면 hydration/coedit provenance 비교가 number/string 런타임 타입에 좌우된다.
+ */
+function normalizeEstimateSummary<T extends EstimateSummary>(estimate: T): T {
+  return {
+    ...estimate,
+    totalSupply: String(estimate.totalSupply),
+    totalVat: String(estimate.totalVat),
+    totalAmount: String(estimate.totalAmount),
+  }
+}
+
+function normalizeEstimateDetail(estimate: EstimateDetail): EstimateDetail {
+  return {
+    ...normalizeEstimateSummary(estimate),
+    lines: estimate.lines.map((line) => ({
+      ...line,
+      unitPrice: String(line.unitPrice),
+      unitPriceWithVat: line.unitPriceWithVat == null ? null : String(line.unitPriceWithVat),
+      supplyAmount: String(line.supplyAmount),
+      vatAmount: String(line.vatAmount),
+      lineTotal: String(line.lineTotal),
+    })),
+  }
+}
+
 /** 견적 라인 1건 생성/수정 요청. */
 export interface EstimateLineRequest {
   productId: string
@@ -173,7 +200,10 @@ export async function listEstimates(
     '/slips/estimates',
     { params },
   )
-  return res.data.data
+  return {
+    ...res.data.data,
+    content: res.data.data.content.map(normalizeEstimateSummary),
+  }
 }
 
 /** 단건 상세. */
@@ -181,7 +211,7 @@ export async function getEstimate(id: string): Promise<EstimateDetail> {
   const res = await apiClient.get<ApiEnvelope<EstimateDetail>>(
     `/slips/estimates/${id}`,
   )
-  return res.data.data
+  return normalizeEstimateDetail(res.data.data)
 }
 
 /** 신규 생성 (DRAFT). */
@@ -192,7 +222,7 @@ export async function createEstimate(
     '/slips/estimates',
     body,
   )
-  return res.data.data
+  return normalizeEstimateDetail(res.data.data)
 }
 
 /** DRAFT/SENT 수정. */
@@ -204,7 +234,7 @@ export async function updateEstimate(
     `/slips/estimates/${id}`,
     body,
   )
-  return res.data.data
+  return normalizeEstimateDetail(res.data.data)
 }
 
 /** DRAFT → SENT. */
@@ -213,7 +243,7 @@ export async function sendEstimate(id: string): Promise<EstimateDetail> {
     `/slips/estimates/${id}/send`,
     {},
   )
-  return res.data.data
+  return normalizeEstimateDetail(res.data.data)
 }
 
 /** SENT → ACCEPTED. */
@@ -222,7 +252,7 @@ export async function acceptEstimate(id: string): Promise<EstimateDetail> {
     `/slips/estimates/${id}/accept`,
     {},
   )
-  return res.data.data
+  return normalizeEstimateDetail(res.data.data)
 }
 
 /** SENT → REJECTED. */
@@ -231,7 +261,7 @@ export async function rejectEstimate(id: string): Promise<EstimateDetail> {
     `/slips/estimates/${id}/reject`,
     {},
   )
-  return res.data.data
+  return normalizeEstimateDetail(res.data.data)
 }
 
 /** ACCEPTED → CONVERTED — Slip(OUTBOUND DRAFT) 자동 발행. */
@@ -240,7 +270,7 @@ export async function convertEstimate(id: string): Promise<EstimateDetail> {
     `/slips/estimates/${id}/convert`,
     {},
   )
-  return res.data.data
+  return normalizeEstimateDetail(res.data.data)
 }
 
 /** 견적서 soft-delete 복원. */

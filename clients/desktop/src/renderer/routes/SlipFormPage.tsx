@@ -140,6 +140,17 @@ const calcVatInclusiveLine = (
   return { incl, supply, vat: incl - supply }
 }
 
+function PriceChangeIndicator({ id }: { id: string }) {
+  return (
+    <span id={id} className="price-change-indicator">
+      <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+        <path d="M3 2v7m0 0L1.5 7.5M3 9l1.5-1.5M9 10V3m0 0L7.5 4.5M9 3l1.5 1.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+      단가 변경
+    </span>
+  )
+}
+
 function SlipMobileLineCard(props: {
   line: LineDraft
   lineNumber: number
@@ -160,6 +171,7 @@ function SlipMobileLineCard(props: {
     props.line.unitPrice,
   )
   const priceStatusId = `slip-mobile-price-status-${props.line.id}`
+  const priceChangedStatusId = `slip-mobile-price-changed-${props.line.id}`
   // D-R4-1: 자동채움 실체 = 제품 등록 화면 '판매가'(sellingPrice) — '정가' 라벨 금지(출고가 별칭 오도).
   // D-R4-4: 거래처 해제 시 단가값은 유지하고 마커(저장일 포함)만 해제 — LineRow(데스크탑)와 동일 분기.
   const priceStatus = props.line.priceSource === 'REMEMBERED'
@@ -180,6 +192,7 @@ function SlipMobileLineCard(props: {
   return (
     <div
       className={`mobile-line-card${props.line.priceRefreshChanged ? ' price-memory-refreshed-row' : ''}`}
+      aria-describedby={props.line.priceRefreshChanged ? priceChangedStatusId : undefined}
       data-line-index={props.lineNumber}
     >
       <div className="mobile-line-card-header">
@@ -192,6 +205,7 @@ function SlipMobileLineCard(props: {
           />
           <span className="mobile-line-card-index">{props.lineNumber}</span>
         </label>
+        {props.line.priceRefreshChanged ? <PriceChangeIndicator id={priceChangedStatusId} /> : null}
         <button
           type="button"
           className="mobile-line-remove-button"
@@ -397,6 +411,7 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
 
   // AC-3: 거래처 자동완성 선택 상태 (PartnerAutocomplete controlled value)
   const [selectedPartner, setSelectedPartner] = useState<PartnerOption | null>(null)
+  const [priceLookupAnnouncement, setPriceLookupAnnouncement] = useState('')
   const selectedPartnerIdRef = useRef<string | null>(null)
   const priceRefreshRequestRef = useRef(0)
   selectedPartnerIdRef.current = selectedPartner?.id ?? null
@@ -463,6 +478,8 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
     setLines((ls) => ls.map((l) => (l.id === id ? { ...l, ...patch } : l)))
 
   const applyProductSelection = async (line: LineDraft, product: ProductOption | null) => {
+    setPriceLookupAnnouncement('')
+    const lineNumber = Math.max(1, lines.findIndex((candidate) => candidate.id === line.id) + 1)
     const productId = product?.id ?? null
     const fallbackUnitPrice =
       product?.sellingPrice != null ? String(product.sellingPrice) : line.unitPrice
@@ -485,6 +502,9 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
       lookupLoading: Boolean(partnerId && productId && shouldAutoFill),
     })
     if (!partnerId || !productId || !shouldAutoFill) {
+      if (productId && shouldAutoFill) {
+        setPriceLookupAnnouncement(`라인 ${lineNumber} 판매가 적용`)
+      }
       return
     }
     try {
@@ -507,6 +527,9 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
           }
         }),
       )
+      setPriceLookupAnnouncement(
+        `라인 ${lineNumber} ${remembered == null ? '판매가' : '거래처 최근단가'} 적용`,
+      )
     } catch {
       // 가격기억 조회 실패는 품목 선택 자체를 막지 않는다. miss/오류 모두 판매가(catalog) fallback 유지.
       setLines((currentLines) =>
@@ -518,6 +541,7 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
             : current,
         ),
       )
+      setPriceLookupAnnouncement(`라인 ${lineNumber} 판매가 적용`)
     }
   }
 
@@ -537,7 +561,7 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
     )
     const snapshotById = new Map(candidates.map((line) => [line.id, line]))
     try {
-      const memories = await getPriceMemories(
+      const { hits: memories } = await getPriceMemories(
         partnerId,
         candidates.map((line) => line.productId!),
       )
@@ -911,14 +935,18 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
         {/* R4-D9: live region 은 빈 컨테이너로 상시 렌더하고 텍스트만 토글 — ARIA 관행상
             live region 이 선존재해야 SR 낭독이 신뢰된다. 비활성 시 class 미부여로 시각 0px. */}
         <div
-          className={priceRefreshNoticeActive ? 'price-memory-refresh-banner' : undefined}
+          className={priceRefreshNoticeActive
+            ? 'price-memory-refresh-banner'
+            : priceLookupAnnouncement
+              ? 'price-lookup-status'
+              : undefined}
           role="status"
           aria-live="polite"
           data-testid="slip-price-refresh-banner"
         >
           {priceRefreshNoticeActive
             ? '거래처 변경으로 최근단가 재적용 · 변경된 행을 확인해 주세요.'
-            : null}
+            : priceLookupAnnouncement || null}
         </div>
 
         {/*

@@ -427,6 +427,13 @@ export interface BulkPriceMemoryResult extends PriceMemoryResult {
   productId: string
 }
 
+export interface BulkPriceMemoryLookupResult {
+  /** 성공 chunk 에서 반환된 hit. 성공 chunk 의 miss 는 배열에서 생략된다. */
+  hits: BulkPriceMemoryResult[]
+  /** 호출 자체가 실패한 chunk 에 포함됐던 productId. 호출자가 이 품목만 catalog fallback 한다. */
+  failedProductIds: string[]
+}
+
 /**
  * 전표 페이지 조회. 빈 필터 시 전체.
  *
@@ -503,27 +510,31 @@ const PRICE_MEMORY_BULK_CHUNK_SIZE = 100
  * 반환하며 전체 miss 도 200 + 빈 배열이다. productIds 는 중복 제거 후 1개 이상이어야 하고,
  * BE 상한(100개) 초과분은 100개 단위 chunk 순차 호출로 합산한다 — 고유 품목 101개↑에서
  * throw 되어 전 라인이 조용히 판매가(CATALOG) 강등되는 것을 방지(R4-F5).
- * chunk 중 하나라도 실패하면 그대로 throw — 호출자 catch(판매가 fallback)로 일관 처리되며,
- * 사용자(USER) 단가는 재조회 후보에서 애초에 제외되므로 불가침이다.
+ * chunk 실패는 해당 productId 만 failedProductIds 로 분리하고 앞선 성공 hit 는 보존한다.
  */
 export async function getPriceMemories(
   partnerId: string,
   productIds: string[],
-): Promise<BulkPriceMemoryResult[]> {
+): Promise<BulkPriceMemoryLookupResult> {
   const uniqueProductIds = [...new Set(productIds)]
   if (uniqueProductIds.length === 0) {
     throw new Error('price memory bulk productIds must contain at least 1 unique item')
   }
   const results: BulkPriceMemoryResult[] = []
+  const failedProductIds: string[] = []
   for (let start = 0; start < uniqueProductIds.length; start += PRICE_MEMORY_BULK_CHUNK_SIZE) {
     const chunk = uniqueProductIds.slice(start, start + PRICE_MEMORY_BULK_CHUNK_SIZE)
-    const res = await apiClient.post<ApiEnvelope<BulkPriceMemoryResult[]>>(
-      '/slips/price-memory/bulk',
-      { partnerId, productIds: chunk },
-    )
-    results.push(...(res.data.data ?? []))
+    try {
+      const res = await apiClient.post<ApiEnvelope<BulkPriceMemoryResult[]>>(
+        '/slips/price-memory/bulk',
+        { partnerId, productIds: chunk },
+      )
+      results.push(...(res.data.data ?? []))
+    } catch {
+      failedProductIds.push(...chunk)
+    }
   }
-  return results
+  return { hits: results, failedProductIds }
 }
 
 /**
