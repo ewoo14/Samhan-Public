@@ -1,102 +1,82 @@
-# #809 R5 CODEX SOL 5.6 QA fix — live real QA report
+# #809 R5 CODEX SOL 5.6 QA 스펙 재설계 — live real QA report
 
 - 실행일: 2026-07-16 KST
-- 대상: PR #820 R5 fix 배포본, gateway `:8080`, Vite QA renderer `:5220`, 실 PostgreSQL `slip_db`
+- 대상: PR #820 HEAD `710979e26`, R5 fix 배포본, gateway `:8080`, Vite QA renderer `:5221`, 실 PostgreSQL `slip_db`
 - 실행 명령: `playwright test playwright/809-price-memory-real-qa/price-memory-r2-live-real-qa.spec.ts --config=playwright.real-qa.config.ts --reporter=line --timeout=60000`
-- 최종 판정: **13 PASS / 1 FAIL / 0 SKIP — suite RED**
+- 최종 판정: **14 PASS / 0 FAIL / 0 SKIP — suite GREEN**
 - 기존 R4-postfix 10개: **10/10 PASS**
-- 신규 R5 시나리오 패밀리: **R5-H6 FAIL / R5-H7 PASS(전표·견적) / R5-H8 PASS**
+- R5 시나리오: **R5-H6 PASS / R5-H7 PASS(전표·견적) / R5-H8 PASS**
 
-## 신규 시나리오 판정
+## R5-H6 재설계 판정 — PASS, R5-H2 fix 실증
 
-### R5-H6 — FAIL, R5-H2 fix 실증 불가
+### 도달 전제와 범위
 
-- 실 DB 편집 가능 legacy 라인: `1,926`; 그중 `partner_id IS NOT NULL`: `0`.
-- 실 대상: 견적번호 `2026/06/08-1924`, 모델 `AR16TXEAAWKNEU-08`, `unit_price=1920000.00`, `unit_price_with_vat=NULL`.
-- GUI 편집 hydrate는 1,920,000을 그대로 표시했다.
-- 무수정 `임시저장` 클릭 결과: **PUT 0건**. 화면 오류는 `거래처 정보를 다시 불러올 수 없습니다. 거래처를 다시 선택해 주세요.`.
-- DB before/after는 `product|1920000.00|NULL`로 완전 동일했고 대상 품목 price-memory도 빈 상태 그대로였다. 다만 PUT이 발생하지 않았으므로 `legacyPriceUntouched`의 서버 round-trip은 증명되지 않았다.
-- 같은 거래처 재선택은 `partner_id`를 새로 채우는 수정이므로 “무수정 저장” 단언을 우회하지 않았다.
-- 선택한 실 legacy 행에 대한 실제 편집→원복도 PUT 선행 차단 때문에 미수행했다.
+- 실 대상: 견적번호 `2026/06/08-1924`, 모델 `AR16TXEAAWKNEU-08`, product `4599cfc1-35c1-3a8a-869b-f92f5f125b76`.
+- 사전 DB: `partner_id=NULL`, `unit_price=1920000.00`, `unit_price_with_vat=NULL`, 대상 `(부산냉난방테크, 품목)` price-memory 0행.
+- 정상 coedit provider 연결 중에는 거래처 autocomplete가 `disabled`라 이 legacy 문서의 `partner_id`를 복구할 GUI가 없다. H6는 앱에 이미 구현·단위검증된 **coedit provider 생성 실패 → 평문 폼 fallback**에 진입하도록 초기 coedit GET 1건만 abort했다.
+- 이 fallback 진입을 정확히 1건으로 단언했다. 거래처 검색, 단가 상태, 견적 PUT, price-memory, DB 응답은 모두 실서버이며 응답 body 변조/합성은 없다.
+- 거래처 재선택은 가격 편집을 대신하거나 우회하지 않는다. 저장 필수 전제인 `partner_id`만 복구하고, 검증 대상은 단가 입력을 건드리지 않은 `legacyPriceUntouched` 가격 basis다.
 
-### R5-H7 — PASS, `BundleLineageResolver` 실증
+### Primary — 거래처 재선택, 가격 무수정
 
-- 전표 `2026/07/16-17`: 신규 BUNDLE POST 후 상세 무수정 PUT 2xx.
-- 견적 `2026/07/16-11`: 신규 BUNDLE POST 후 편집 재진입 무수정 PUT 2xx.
-- 양쪽 모두 POST 직후와 PUT 직후 lineage snapshot이 완전 동일:
-  - 구성품 A: `set_head=true`, `parent_set_model=QA797-SET-01`, `80000.00/88000.00`.
-  - 구성품 B: `set_head=false`, `parent_set_model=QA797-SET-01`, `50000.00/55000.00`.
-- 최종 price-memory:
-  - 부산냉난방테크 + parent BUNDLE: `1100000.00|BUNDLE_SET`, 정확히 1행.
-  - 전주에어시스템 + parent BUNDLE: `1100000.00|BUNDLE_SET`, 정확히 1행.
-  - 두 거래처의 구성품 기억행: **0행**.
+- 부산냉난방테크를 재선택한 뒤 GUI 단가는 계속 `1,920,000`이었다.
+- `PUT /estimates/{id}` **2xx 관측**. 0건 허용 없음.
+- 실 PUT body:
+  - `partnerId=e8ae9c86-afe1-3364-b484-1f5a2bf31313`
+  - `lines.length=1`
+  - `unitPrice=1920000`
+  - `priceVatInclusive=false`
+- 저장 후 DB는 `product|1920000.00|NULL`로 사전값과 exact 동일:
+  - `unit_price`: **1,920,000 → 1,920,000 불변**
+  - `unit_price_with_vat`: **NULL 유지**
+- 잘못 VAT 포함으로 해석했을 때의 `/1.1` 값 `1,745,455.00`을 별도 계산해 DB snapshot에 포함되지 않음을 명시 단언했다. **약 9.1% 하락 미발생**.
+- 거래처가 채워졌으므로 price-memory는 새로 생성됐고, 값은 원 공급단가 기준 `1,920,000 × 1.1 = 2,112,000.00|LINE_SAVE`와 exact 일치했다. 하락값/원 공급단가 그대로 기억하는 오판은 허용하지 않는다.
 
-### R5-H8 — PASS, lookup↔price 중간상태 실증
+### 역방향 provenance — 가격 실제 편집 후 원복
 
-- `GET /slips/lookup-product` 실 2xx를 먼저 관측했다.
-- 이어지는 단건 `GET /slips/price-memory`는 `route.fetch()`로 실 upstream 2xx를 받은 뒤 gate 동안만 hold하고 `route.fulfill({ response })`로 원본 status/header/body를 무변조 전달했다.
-- hold 중 GUI: 단가 `0`, `최근단가 확인 중…`, 저장 disabled; 강제 click 뒤에도 `POST /estimates` 0건.
-- 응답 전달 후 GUI: 품목명 정상 바인딩, 단가 `888000`, `거래처 최근단가` 마커, 저장 enabled.
-- 저장은 POST 정확히 1건. DB: `quantity=1`, `unit_price=807273.00`, `unit_price_with_vat=888000.00`; price-memory `888000.00|LINE_SAVE`.
-- 공급단가는 BE 공식 `round(888000 / 1.1, HALF_UP)=807273`과 exact 일치.
+- 같은 legacy 라인에서 `1,920,000 → 999,000 → 1,920,000`을 실제 입력한 뒤 저장했다.
+- 두 번째 `PUT /estimates/{id}`도 2xx였고, body는 최종 단가 `1,920,000` + `priceVatInclusive=true`였다.
+- DB는 true 계약대로 `unit_price=1745455.00`, `unit_price_with_vat=1920000.00`; price-memory는 `1920000.00|LINE_SAVE`였다.
+- 즉 최종 숫자가 원래와 같다는 이유로 `legacyPriceUntouched=true`로 되돌리는 역방향 오판이 없음을 실증했다.
 
-## DB 및 오염 대조
+### 반복 실행 복구
 
-- Flyway V58: checksum `1743979716`, success `true`.
-- 최종 `partner_product_price_memory`: 5행; BUNDLE 구성품 product 2종 행은 0.
-- 전체 테이블 DELETE는 없다.
-  - `beforeAll`: 거래처 A/B × 품목 X/Y/BUNDLE/구성품 2종의 교집합만 `WHERE`로 정리.
-  - 시나리오 helper: 정확한 `(partner_id, product_id)` 한 쌍만 `WHERE`로 정리.
-- 실험 잔여 중 시나리오 대상 밖 행은 삭제하지 않았다.
+- H6 종료 시 정확한 legacy 견적 헤더 1건, 라인 1건, 해당 `(partner_id, product_id)` 기억쌍만 원상복구했다.
+- 최종 확인: `2026/06/08-1924|partner=NULL|unit_price=1920000.00|unit_price_with_vat=NULL|memory=0`.
+- 테이블 전체 DELETE/광역 DELETE는 없다.
 
-## 단언 약화 0건
+## 전체 스위트 보조 판정
 
-- 편집 전 계측: `expect(...)` 104개, test 10개.
-- 최종: `expect(...)` 155개, test 14개.
-- 삭제된 expect: **0개**.
-- 삭제 expect 대응쌍: **0쌍**.
-- 추가: expect 51개, 독립 test 4개(H6 1, H7 전표/견적 2, H8 1).
-- H6의 PUT 2xx 단언은 실패 상태 그대로 유지했고, 같은 거래처 재선택/POST 대체/DB-only 대체로 약화하지 않았다.
+- R5-H7: 전표·견적 BUNDLE 신규 POST → 상세 무수정 PUT 뒤 계보 보존, 구성품 기억행 0, parent `BUNDLE_SET` 정확히 1행 — PASS.
+- R5-H8: lookup 2xx 뒤 실 price-memory 응답 hold 중 저장 disabled/0원 POST 0건, 해제 뒤 `888000` 적용·POST 1건·DB `807273.00|888000.00` — PASS.
+- Flyway V58 및 서비스 배포 상태는 PM 제공 실측(checksum `1743979716`)을 전제로 했으며, 본 라운드는 gradle/git을 실행하지 않았다.
+
+## expect 변화 및 약화 0 증명
+
+- 변경 전: `expect(...)` **155개**, test **14개**.
+- 변경 후: `expect(...)` **171개**, test **14개**.
+- 삭제된 단언 동작: **0개**.
+- 추가 expect: **16개**(순증 +16).
+- 약화: **0개**.
+  - 기존 PUT `>=200` / `<300` 두 단언 유지.
+  - 기존 DB `priceAfter === priceBefore` exact 단언 유지.
+  - 기존의 잘못된 “price-memory 완전 불변” 기대만 올바른 “신규 생성” 계약으로 전환하고, 단순 `not equal`에 그치지 않고 exact `2112000.00|LINE_SAVE`를 2중 대조했다.
+  - PUT body의 partnerId/라인수/unitPrice/`priceVatInclusive=false`, 명시적 9.1% 하락값 부재, coedit fallback 1건, 역방향 `priceVatInclusive=true`와 DB 두 필드를 추가했다.
+  - 조건부 skip, 실패 catch 후 통과, PUT 0건 허용, DB-only 대체는 없다.
+
+## 신규 캡처
+
+1. `C:\dev\Samhan-Public\docs\qa\809-partner-product-price-memory\r5-postfix\33-KEY-legacy-estimate-partner-reselected-price-untouched-1920000.png`
+2. `C:\dev\Samhan-Public\docs\qa\809-partner-product-price-memory\r5-postfix\34-KEY-legacy-estimate-after-put-supply-price-unchanged-memory-created.png`
+3. `C:\dev\Samhan-Public\docs\qa\809-partner-product-price-memory\r5-postfix\35-KEY-legacy-price-edited-999000-restored-1920000-before-save.png`
+4. `C:\dev\Samhan-Public\docs\qa\809-partner-product-price-memory\r5-postfix\36-KEY-legacy-price-edited-restored-saved-as-vat-inclusive.png`
+
+기존 01~32 캡처는 보존했다.
 
 ## 정직한 잔여 미커버
 
-- legacy 실제 편집→원복: 모든 실 legacy 편집 가능 행의 `partner_id`가 NULL이라 무수정 PUT부터 차단되어 미수행.
-- legacy `QUOTE_SENT`: 현재 1,926행은 모두 `QUOTE_DRAFT`; SENT 실표본 없음.
-- H7은 무수정 PUT 계보 보존을 검증했으며 BUNDLE 구성품 가격 자체를 사용자가 수정하는 경로는 범위 밖.
-- H8은 `fillEstimateModel` 견적 경로의 단건 lookup↔price 창을 검증했으며 전표 autocomplete 선택의 별도 중간 창은 범위 밖.
-- 기존 D-R4-4 거래처 해제 GUI 도달 불가는 기존 리포트와 동일하게 남음.
-
-## 캡처 파일 전체 목록
-
-1. `C:\dev\Samhan-Public\docs\qa\809-partner-product-price-memory\r5-postfix\01-slip-miss-list-price-1200000-catalog-marker-no-recent-marker.png`
-2. `C:\dev\Samhan-Public\docs\qa\809-partner-product-price-memory\r5-postfix\02-slip-manual-price-888000-entered.png`
-3. `C:\dev\Samhan-Public\docs\qa\809-partner-product-price-memory\r5-postfix\03-KEY-slip-autofill-888000-with-recent-marker.png`
-4. `C:\dev\Samhan-Public\docs\qa\809-partner-product-price-memory\r5-postfix\04-KEY-estimate-autofill-888000-productname-filled-recent-marker.png`
-5. `C:\dev\Samhan-Public\docs\qa\809-partner-product-price-memory\r5-postfix\05-estimate-saved-after-draft-save.png`
-6. `C:\dev\Samhan-Public\docs\qa\809-partner-product-price-memory\r5-postfix\06-bundle-set-price-1100000-entered.png`
-7. `C:\dev\Samhan-Public\docs\qa\809-partner-product-price-memory\r5-postfix\07-KEY-bundle-set-refill-1100000-bundle-set-source.png`
-8. `C:\dev\Samhan-Public\docs\qa\809-partner-product-price-memory\r5-postfix\08-partnerB-isolated-list-price-1200000.png`
-9. `C:\dev\Samhan-Public\docs\qa\809-partner-product-price-memory\r5-postfix\09-before-partner-change-A-888000-user-111111-autoY-1440000.png`
-10. `C:\dev\Samhan-Public\docs\qa\809-partner-product-price-memory\r5-postfix\10-KEY-partner-changed-to-B-refresh-banner-visible.png`
-11. `C:\dev\Samhan-Public\docs\qa\809-partner-product-price-memory\r5-postfix\11-KEY-partner-changed-bulk1-highlight-row1-555000-user-preserved-missY-1440000.png`
-12. `C:\dev\Samhan-Public\docs\qa\809-partner-product-price-memory\r5-postfix\12-slip-detail-edit-unit-price-500000-vat-excluded.png`
-13. `C:\dev\Samhan-Public\docs\qa\809-partner-product-price-memory\r5-postfix\13-KEY-new-slip-autofill-550000-after-edit-path.png`
-14. `C:\dev\Samhan-Public\docs\qa\809-partner-product-price-memory\r5-postfix\14-override-preserved-123456-no-marker.png`
-15. `C:\dev\Samhan-Public\docs\qa\809-partner-product-price-memory\r5-postfix\15-estimate-3lines-A-888000-user-111111-autoY-1440000.png`
-16. `C:\dev\Samhan-Public\docs\qa\809-partner-product-price-memory\r5-postfix\16-KEY-estimate-partner-change-inflight-busy-save-disabled.png`
-17. `C:\dev\Samhan-Public\docs\qa\809-partner-product-price-memory\r5-postfix\17-KEY-estimate-partner-changed-to-B-banner-highlight-row1-555000.png`
-18. `C:\dev\Samhan-Public\docs\qa\809-partner-product-price-memory\r5-postfix\18-estimate-line1-x-hit-888000-remembered-2000-01-01.png`
-19. `C:\dev\Samhan-Public\docs\qa\809-partner-product-price-memory\r5-postfix\19-KEY-estimate-swap-x-to-y-sellingprice-1440000-no-inheritance.png`
-20. `C:\dev\Samhan-Public\docs\qa\809-partner-product-price-memory\r5-postfix\20-estimate-swap-back-to-x-rehit-888000.png`
-21. `C:\dev\Samhan-Public\docs\qa\809-partner-product-price-memory\r5-postfix\21-estimate-final-y-1440000-saved.png`
-22. `C:\dev\Samhan-Public\docs\qa\809-partner-product-price-memory\r5-postfix\22-KEY-estimate-no-partner-sellingprice-copy-without-partner-claim.png`
-23. `C:\dev\Samhan-Public\docs\qa\809-partner-product-price-memory\r5-postfix\23-KEY-estimate-late-partner-select-rehit-888000-banner-highlight.png`
-24. `C:\dev\Samhan-Public\docs\qa\809-partner-product-price-memory\r5-postfix\24-legacy-estimate-draft-before-nochange-save.png`
-25. `C:\dev\Samhan-Public\docs\qa\809-partner-product-price-memory\r5-postfix\25-legacy-estimate-after-nochange-save-attempt.png`
-26. `C:\dev\Samhan-Public\docs\qa\809-partner-product-price-memory\r5-postfix\26-slip-bundle-detail-before-nochange-put.png`
-27. `C:\dev\Samhan-Public\docs\qa\809-partner-product-price-memory\r5-postfix\27-slip-bundle-after-nochange-put.png`
-28. `C:\dev\Samhan-Public\docs\qa\809-partner-product-price-memory\r5-postfix\28-estimate-bundle-detail-before-nochange-put.png`
-29. `C:\dev\Samhan-Public\docs\qa\809-partner-product-price-memory\r5-postfix\29-estimate-bundle-after-nochange-put.png`
-30. `C:\dev\Samhan-Public\docs\qa\809-partner-product-price-memory\r5-postfix\30-KEY-estimate-model-lookup-done-price-memory-held-save-disabled-zero.png`
-31. `C:\dev\Samhan-Public\docs\qa\809-partner-product-price-memory\r5-postfix\31-KEY-estimate-price-memory-resolved-888000-save-enabled.png`
-32. `C:\dev\Samhan-Public\docs\qa\809-partner-product-price-memory\r5-postfix\32-estimate-price-memory-resolved-888000-saved.png`
+- **정상 coedit 연결 상태의 legacy 거래처 재선택은 현재 GUI로 도달 불가**다. 정상 provider가 거래처 autocomplete를 잠그기 때문이다. H6는 앱의 의도된 coedit-unavailable 평문 fallback에서 가격 basis를 실증했다. 정상 협업 모드에 별도 거래처 변경 UX를 제공하는 작업은 본 QA 파일 범위 밖이다.
+- legacy `QUOTE_SENT`: 현재 1,926개 표본은 모두 `QUOTE_DRAFT`; SENT 실표본 없음.
+- R5-H7은 BUNDLE 무수정 PUT 계보 보존을 검증했으며 구성품 가격을 사용자가 직접 수정하는 경로는 범위 밖.
+- R5-H8은 견적 `fillEstimateModel`의 단건 lookup↔price 창을 검증했으며 전표 autocomplete 선택의 별도 중간 창은 범위 밖.
+- 기존 D-R4-4 거래처 해제 GUI 도달 불가는 종전과 동일하게 남는다.

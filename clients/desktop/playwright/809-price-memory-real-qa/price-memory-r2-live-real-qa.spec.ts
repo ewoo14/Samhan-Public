@@ -4,8 +4,9 @@
  * 대상: R4 적대검증 27건 fix 6개 배치(BE·DevOps·FE·Design·통합·sweep) 적용 워킹트리
  * (base 71a6f0412 — R3 fix 3커밋 위). 실 게이트웨이(:8080) → 재배포 slip-service(V58 적용 실측)
  * → 실 Postgres. 합성/fixture 없음. 판정은 전부 실 GUI, DB 는 뒷받침 실측용.
- * (단 08 의 R4-F4 in-flight 관측 1곳만 실서버 응답을 그대로 전달하며 지연을 주입한다 —
- *  응답 내용 변조 없음. 아래 08 주석 참조.)
+ * (단 08 의 R4-F4 in-flight 관측 1곳만 실서버 응답을 그대로 전달하며 지연을 주입하고,
+ *  11 은 정상 coedit 가 거래처 autocomplete 를 잠그는 현재 제약 때문에 초기 coedit GET 만 실패시켜
+ *  앱 자체의 의도된 평문 폼 fallback 에 진입한다. 가격 조회/PUT 응답 내용 변조 없음. 각 주석 참조.)
  *
  * ⚠️ R2 의 "라이브 QA 7/7 PASS" 는 superseded — R3 QA(CB-3)가 스펙 자체의 false-green 을 적발했다.
  * (견적 저장 POST 가 500 이어도 통과 · 방금 만든 견적이 아니라 임의 기존 견적 조회 · 단가가 아니라
@@ -52,8 +53,10 @@
  *    LineRow.test.tsx 'REMEMBERED without a partner hides the marker …'.
  *
  * R5-postfix 신규 강화(기존 단언 삭제/약화 없음, R4 false-green 커버리지 구멍만 추가):
- *  - 11 [R5-H6]: 실제 legacy QUOTE_DRAFT 견적 무수정 저장 → PUT 2xx + unit_price /
- *                 unit_price_with_vat / price-memory 완전 불변
+ *  - 11 [R5-H6]: 실제 legacy QUOTE_DRAFT 견적의 필수 거래처 재선택 → 가격 무수정 저장 →
+ *                 PUT 2xx + priceVatInclusive=false + unit_price 불변 / unit_price_with_vat=NULL 유지 +
+ *                 원 공급단가×1.1 기준 price-memory 생성(약 9.1% 하락 명시 배제) + 같은 라인
+ *                 가격 실제 편집→원복 시 priceVatInclusive=true 역방향 provenance 가드
  *  - 12 [R5-H7]: 전표·견적 각각 신규 BUNDLE 저장 → 상세 재진입 무수정 PUT → 세트 계보 보존,
  *                 구성품 기억행 0, parent BUNDLE_SET 정확히 1행
  *  - 13 [R5-H8]: 모델 lookup 2xx 뒤 단건 price-memory 실응답만 지연 → 중간 저장 disabled /
@@ -350,6 +353,7 @@ interface LegacyEstimateTarget {
   productId: string
   productName: string
   modelName: string
+  quantity: number
   unitPrice: string
 }
 
@@ -359,8 +363,9 @@ function findLegacyEstimateTarget(): LegacyEstimateTarget {
     `SELECT row_to_json(target)::text FROM (
        SELECT e.id, e.estimate_no AS \"estimateNo\", e.status,
               e.partner_name AS \"partnerName\", el.product_id AS \"productId\",
-              el.product_name AS \"productName\", el.model_name AS \"modelName\",
-              el.unit_price::text AS \"unitPrice\"
+               el.product_name AS \"productName\", el.model_name AS \"modelName\",
+               el.quantity,
+               el.unit_price::text AS \"unitPrice\"
        FROM estimates e
        JOIN estimate_lines el ON el.estimate_id=e.id
        WHERE e.is_deleted=false AND el.is_deleted=false
@@ -1089,11 +1094,12 @@ test.describe.serial('#809 R4-postfix — R4 적대 fix 후 라이브 재검증'
 })
 
 test.describe('#809 R5-postfix — R4 false-green 커버리지 구멍 실서버 재검증', () => {
-  test('11 [R5-H6] 🔴 실제 legacy 견적 무수정 저장 — PUT 2xx + 단가 2필드·price-memory 완전 불변', async ({ browser }) => {
+  test('11 [R5-H6] 🔴 실제 legacy 견적 거래처 재선택·가격 무수정 저장 — PUT 2xx + 공급단가 불변·9.1% 하락 없음·기억값 정상 생성', async ({ browser }) => {
     test.slow()
     const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
     const page = await ctx.newPage()
     await login(page)
+    let targetToRestore: LegacyEstimateTarget | null = null
 
     try {
       const legacyEditableCount = psql(
@@ -1107,16 +1113,30 @@ test.describe('#809 R5-postfix — R4 false-green 커버리지 구멍 실서버 
       expect(legacyEditableCount, 'R5 브리프의 편집 가능 legacy 1,926건 실측과 다름').toBe('1926')
 
       const target = findLegacyEstimateTarget()
+      targetToRestore = target
       expect(target.status, 'legacy 대상이 편집 가능 상태가 아님').toMatch(/^QUOTE_(DRAFT|SENT)$/)
       expect(target.id, 'legacy estimateId 형식 불일치').toMatch(
         /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
       )
       const priceBefore = estimatePriceSnapshot(target.id)
       const memoryBefore = memorySnapshotForProduct(target.productId)
+      const partnerMemoryBefore = memoryRow(PARTNER_A.id, target.productId)
       expect(priceBefore, 'legacy DB 사전값이 unit_price_with_vat=NULL 계약과 다름').toBe(
         `${target.productId}|${target.unitPrice}|NULL`,
       )
+      expect(partnerMemoryBefore, 'legacy 대상 거래처+품목에 사전 price-memory 가 이미 존재함').toBe('')
 
+      // 정상 coedit provider 연결 중에는 거래처 autocomplete 가 disabled라 legacy partner_id=NULL을
+      // 사용자가 복구할 UI가 없다. 앱이 명시적으로 제공·단위검증하는 "provider 생성 실패 → 평문 폼"
+      // fallback만 활성화한다. coedit 초기 GET 외 가격/거래처 검색/PUT/DB는 전부 실서버다.
+      let coeditFallbackGetCount = 0
+      const coeditInitialGet = new RegExp(
+        `/slips/estimates/${target.id}/collab/coedit(?:\\?.*)?$`,
+      )
+      await page.route(coeditInitialGet, async (route) => {
+        coeditFallbackGetCount += 1
+        await route.abort('failed')
+      })
       await page.goto(`${BASE_URL}/sales/estimates/${target.id}/edit`)
       await expect(page.getByLabel('라인 1 모델명'), 'legacy 견적 편집 폼 미표시').toHaveValue(target.modelName, {
         timeout: 30000,
@@ -1125,7 +1145,18 @@ test.describe('#809 R5-postfix — R4 false-green 커버리지 구멍 실서버 
       await expectUnitPriceDigits(page, target.unitPrice, 1, 'legacy 공급단가 hydrate')
       const saveButton = page.getByTestId('estimate-form-save-button')
       await expect(saveButton, 'legacy 견적 저장 버튼 미활성').toBeEnabled({ timeout: 20000 })
-      await capture(page, '24-legacy-estimate-draft-before-nochange-save')
+      await expect(page.getByRole('combobox', { name: '거래처 검색' }), 'coedit 실패 뒤 평문 폼 fallback 미진입').toBeEnabled()
+      expect(coeditFallbackGetCount, 'coedit 초기 GET 실패 주입이 정확히 1건이 아님').toBe(1)
+      await page.unroute(coeditInitialGet)
+
+      // legacy 레코드는 partner_id=NULL 이므로 main 에서도 저장 전 거래처 재선택이 필수다.
+      // 이 단계는 가격 편집을 우회하지 않는다. 검증 대상은 단가 입력을 한 번도 건드리지 않은 채
+      // legacyPriceUntouched provenance 가 유지되어 priceVatInclusive=false 로 전송되는 가격 basis 다.
+      await pickAutocomplete(page, '거래처 검색', '거래처 목록', PARTNER_A.query)
+      await expect(page.getByLabel('거래처명'), 'legacy 거래처 재선택 후 명칭 불일치').toHaveValue(PARTNER_A.name)
+      await expectUnitPriceDigits(page, target.unitPrice, 1, '거래처 재선택은 가격 무수정이어야 함')
+      await expect(saveButton, '거래처 재선택 후 legacy 견적 저장 버튼 미활성').toBeEnabled({ timeout: 20000 })
+      await capture(page, '33-KEY-legacy-estimate-partner-reselected-price-untouched-1920000')
 
       let resolveUpdate!: (response: Response) => void
       const updateObserved = new Promise<Response>((resolve) => { resolveUpdate = resolve })
@@ -1145,22 +1176,116 @@ test.describe('#809 R5-postfix — R4 false-green 커버리지 구멍 실서버 
       ])
       page.off('response', onResponse)
 
-      // PUT 성공 여부와 무관하게 DB 불변을 먼저 실측해 9.1% 하락/기억오염을 놓치지 않는다.
-      const priceAfter = estimatePriceSnapshot(target.id)
-      const memoryAfter = memorySnapshotForProduct(target.productId)
-      console.log('[#809 R5-postfix] 11 legacy DB before/after:', priceBefore, '/', priceAfter)
-      console.log('[#809 R5-postfix] 11 legacy price-memory before/after:', memoryBefore, '/', memoryAfter)
-      expect(priceAfter, 'legacy 무수정 저장으로 unit_price 또는 unit_price_with_vat 변형').toBe(priceBefore)
-      expect(memoryAfter, 'legacy 무수정 저장으로 대상 품목 price-memory 변형').toBe(memoryBefore)
-      await capture(page, '25-legacy-estimate-after-nochange-save-attempt')
-
       const validationMessage = await page.getByRole('alert').textContent().catch(() => null)
       expect(
         updateResponse?.status() ?? 0,
         `PUT /estimates/{id} 미관측(폼 오류: ${validationMessage ?? '없음'})`,
       ).toBeGreaterThanOrEqual(200)
       expect(updateResponse?.status() ?? 999, 'PUT /estimates/{id} 가 2xx 아님').toBeLessThan(300)
+
+      const updateBody = updateResponse?.request().postDataJSON() as {
+        partnerId?: string
+        lines?: Array<{ unitPrice?: string | number; priceVatInclusive?: boolean }>
+      } | undefined
+      expect(updateBody?.partnerId, 'legacy PUT body partnerId 가 재선택 거래처와 다름').toBe(PARTNER_A.id)
+      expect(updateBody?.lines, 'legacy PUT body 라인이 정확히 1개가 아님').toHaveLength(1)
+      expect(Number(updateBody?.lines?.[0]?.unitPrice), 'legacy PUT body 가 원 공급단가를 보내지 않음').toBe(
+        Number(target.unitPrice),
+      )
+      expect(updateBody?.lines?.[0]?.priceVatInclusive, '가격 무수정 legacy 라인을 VAT 포함 입력으로 오판').toBe(false)
+
+      // PUT 2xx 뒤 DB 두 단가 필드를 실측한다. priceVatInclusive=false 이므로 원 공급단가는 불변이고
+      // unit_price_with_vat 은 NULL 을 유지해야 한다. 이 exact 단언이 /1.1 재분리(약 9.1% 하락)를 막는다.
+      const priceAfter = estimatePriceSnapshot(target.id)
+      const incorrectlyDividedSupplyUnit = (
+        Math.round((Number(target.unitPrice) * target.quantity) / 1.1) / target.quantity
+      ).toFixed(2)
+      console.log('[#809 R5-postfix] 11 legacy DB before/after:', priceBefore, '/', priceAfter)
+      console.log('[#809 R5-postfix] 11 legacy 9.1% 하락 오판값:', incorrectlyDividedSupplyUnit)
+      expect(priceAfter, 'legacy 무수정 저장으로 unit_price 또는 unit_price_with_vat 변형').toBe(priceBefore)
+      expect(
+        priceAfter,
+        `legacy 공급단가가 VAT 포함으로 오판되어 약 9.1% 하락(${target.unitPrice}→${incorrectlyDividedSupplyUnit})`,
+      ).not.toContain(`|${incorrectlyDividedSupplyUnit}|`)
+
+      // price-memory 저장 basis 는 VAT 포함 입력단가다. legacy 공급단가 경로(false)는 원 공급단가×1.1로
+      // 정규화되어야 하며, 잘못 하락한 공급단가나 원 공급단가 자체를 그대로 기억하면 FAIL 한다.
+      const expectedMemoryPrice = (Number(target.unitPrice) * 1.1).toFixed(2)
+      await expect.poll(
+        () => memoryRow(PARTNER_A.id, target.productId),
+        {
+          timeout: 5000,
+          intervals: [25, 50, 100, 250, 500],
+          message: `legacy 원 공급단가 기준 price-memory 생성 미완료: ${target.unitPrice}×1.1=${expectedMemoryPrice}`,
+        },
+      ).toBe(`${expectedMemoryPrice}|LINE_SAVE`)
+      const memoryAfter = memorySnapshotForProduct(target.productId)
+      console.log('[#809 R5-postfix] 11 legacy price-memory before/after:', memoryBefore, '/', memoryAfter)
+      expect(memoryAfter, '거래처가 채워진 legacy 저장인데 대상 품목 price-memory 가 생성되지 않음').not.toBe(memoryBefore)
+      expect(memoryRow(PARTNER_A.id, target.productId), 'legacy price-memory 가 원 공급단가 기준이 아님').toBe(
+        `${expectedMemoryPrice}|LINE_SAVE`,
+      )
+      await page.goto(`${BASE_URL}/sales/estimates/${target.id}/edit`)
+      await expectUnitPriceDigits(page, target.unitPrice, 1, 'legacy 저장 후 재진입 공급단가 불변')
+      await capture(page, '34-KEY-legacy-estimate-after-put-supply-price-unchanged-memory-created')
+
+      // 역방향 provenance 가드: 값의 최종 동일성으로 "무수정"을 판정하면 안 된다.
+      // 1920000→999000→1920000처럼 실제 입력을 거치면 legacyPriceUntouched=false,
+      // 따라서 같은 숫자로 원복했어도 priceVatInclusive=true 로 전송되어야 한다.
+      await expect(saveButton, '역방향 provenance 검증 전 저장 버튼 미활성').toBeEnabled({ timeout: 20000 })
+      await unitPriceInput(page).fill('999000')
+      await unitPriceInput(page).fill(target.unitPrice)
+      await expectUnitPriceDigits(page, target.unitPrice, 1, 'legacy 가격 편집→원복 최종값')
+      await capture(page, '35-KEY-legacy-price-edited-999000-restored-1920000-before-save')
+
+      const editedRestoreResponsePromise = page.waitForResponse(
+        (response) => response.request().method() === 'PUT'
+          && response.url().includes(`/slips/estimates/${target.id}`),
+        { timeout: 30000 },
+      )
+      await saveButton.click()
+      const editedRestoreResponse = await editedRestoreResponsePromise
+      expect(editedRestoreResponse.ok(), `편집→원복 PUT 실패: HTTP ${editedRestoreResponse.status()}`).toBeTruthy()
+      const editedRestoreBody = editedRestoreResponse.request().postDataJSON() as {
+        lines?: Array<{ unitPrice?: string | number; priceVatInclusive?: boolean }>
+      }
+      expect(Number(editedRestoreBody.lines?.[0]?.unitPrice), '편집→원복 PUT 최종 단가 불일치').toBe(
+        Number(target.unitPrice),
+      )
+      expect(
+        editedRestoreBody.lines?.[0]?.priceVatInclusive,
+        '실제 가격 편집→원복을 legacy 가격 무수정으로 오판',
+      ).toBe(true)
+
+      const editedRestoreSnapshot = estimatePriceSnapshot(target.id)
+      console.log('[#809 R5-postfix] 11 legacy 편집→원복 DB:', editedRestoreSnapshot)
+      expect(editedRestoreSnapshot, 'priceVatInclusive=true 역방향 저장 DB 계약 불일치').toBe(
+        `${target.productId}|${incorrectlyDividedSupplyUnit}|${Number(target.unitPrice).toFixed(2)}`,
+      )
+      await expect.poll(
+        () => memoryRow(PARTNER_A.id, target.productId),
+        {
+          timeout: 5000,
+          intervals: [25, 50, 100, 250, 500],
+          message: '편집→원복 priceVatInclusive=true 기억값 반영 미완료',
+        },
+      ).toBe(`${Number(target.unitPrice).toFixed(2)}|LINE_SAVE`)
+      await capture(page, '36-KEY-legacy-price-edited-restored-saved-as-vat-inclusive')
     } finally {
+      // 실 legacy 문서를 반복 실행 가능하게 복구한다. 정확히 이 견적 헤더 1건과 방금 생성한
+      // 라인 1건, (거래처, 품목) 기억쌍만 대상으로 하며 테이블 전체 DELETE/광역 정리는 하지 않는다.
+      if (targetToRestore) {
+        psql(
+          `UPDATE estimate_lines
+           SET unit_price=${targetToRestore.unitPrice}, unit_price_with_vat=NULL,
+               supply_amount=${targetToRestore.unitPrice} * quantity,
+               vat_amount=${targetToRestore.unitPrice} * quantity * 0.1,
+               line_total=${targetToRestore.unitPrice} * quantity * 1.1
+           WHERE estimate_id='${targetToRestore.id}' AND is_deleted=false`.replace(/\s+/g, ' '),
+        )
+        psql(`UPDATE estimates SET partner_id=NULL WHERE id='${targetToRestore.id}'`)
+        resetMemoryPair(PARTNER_A.id, targetToRestore.productId)
+      }
       await ctx.close()
     }
   })
