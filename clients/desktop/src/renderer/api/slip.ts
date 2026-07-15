@@ -418,7 +418,13 @@ interface ProductLookupWireResult {
 export interface PriceMemoryResult {
   unitPrice: number
   source: string
+  /** 원 전표/견적이 실제 저장된 logical event time (`remembered_at`). */
   updatedAt: string | null
+}
+
+/** 거래처+복수 품목 최근 수동단가 bulk 응답 항목 — miss 품목은 응답에서 생략된다. */
+export interface BulkPriceMemoryResult extends PriceMemoryResult {
+  productId: string
 }
 
 /**
@@ -484,6 +490,27 @@ export async function getPriceMemory(
     },
   )
   if (res.status === 204) return null
+  return res.data.data
+}
+
+/**
+ * 거래처+복수 품목 최근 수동단가 bulk 조회.
+ *
+ * 거래처 변경처럼 여러 자동채움 라인을 동시에 갱신할 때만 사용한다. BE 계약상 hit 항목만
+ * 반환하며 전체 miss 도 200 + 빈 배열이다. productIds 는 중복 제거 후 1~100개여야 한다.
+ */
+export async function getPriceMemories(
+  partnerId: string,
+  productIds: string[],
+): Promise<BulkPriceMemoryResult[]> {
+  const uniqueProductIds = [...new Set(productIds)]
+  if (uniqueProductIds.length === 0 || uniqueProductIds.length > 100) {
+    throw new Error('price memory bulk productIds must contain 1 to 100 unique items')
+  }
+  const res = await apiClient.post<ApiEnvelope<BulkPriceMemoryResult[]>>(
+    '/slips/price-memory/bulk',
+    { partnerId, productIds: uniqueProductIds },
+  )
   return res.data.data
 }
 
@@ -667,16 +694,21 @@ export async function duplicateSlip(source: SlipDetail): Promise<SlipDetail> {
     memo: source.memo ?? undefined,
     driverName: source.driverName ?? undefined,
     driverPhone: source.driverPhone ?? undefined,
-    lines: source.lines.map((l) => ({
-      productId: l.productId,
-      productName: l.productName ?? undefined,
-      modelName: l.modelName ?? undefined,
-      specification: l.specification ?? undefined,
-      quantity: l.quantity,
-      unitPrice: l.unitPriceWithVat ?? l.unitPrice,
-      note: l.note ?? undefined,
-      priceVatInclusive: true,
-    })),
+    lines: source.lines.map((l) => {
+      // V12 이전 라인은 unitPriceWithVat 이 null 일 수 있다. 이때 unitPrice 는 공급단가이므로
+      // 곱셈/반올림하지 않고 원값 + priceVatInclusive=false 로 보내야 복사 전후 단가가 보존된다.
+      const hasVatInclusivePrice = l.unitPriceWithVat != null
+      return {
+        productId: l.productId,
+        productName: l.productName ?? undefined,
+        modelName: l.modelName ?? undefined,
+        specification: l.specification ?? undefined,
+        quantity: l.quantity,
+        unitPrice: hasVatInclusivePrice ? l.unitPriceWithVat! : l.unitPrice,
+        note: l.note ?? undefined,
+        priceVatInclusive: hasVatInclusivePrice,
+      }
+    }),
   }
   return createSlip(body)
 }

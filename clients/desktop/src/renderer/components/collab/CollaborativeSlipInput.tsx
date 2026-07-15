@@ -75,6 +75,7 @@ export interface CollaborativeSlipInputProps {
   coeditPending?: boolean
   'data-testid'?: string
   'aria-label': string
+  'aria-describedby'?: string
 }
 
 export function CollaborativeSlipInput({
@@ -97,6 +98,7 @@ export function CollaborativeSlipInput({
   coeditPending,
   'data-testid': dataTestId,
   'aria-label': ariaLabel,
+  'aria-describedby': ariaDescribedBy,
 }: CollaborativeSlipInputProps) {
   const inputRef = useRef<HTMLInputElement | null>(null)
   const latestValueRef = useRef(value)
@@ -228,6 +230,7 @@ export function CollaborativeSlipInput({
         readOnly={effectiveReadOnly}
         value={value}
         aria-label={ariaLabel}
+        aria-describedby={ariaDescribedBy}
         data-testid={dataTestId}
         onFocus={updateCursor}
         onClick={updateCursor}

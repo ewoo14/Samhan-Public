@@ -79,6 +79,8 @@ export interface LineDraft {
   catalogUnitPrice?: string | null
   /** 최근 단가 저장 시각 — tooltip 전용. */
   priceMemoryUpdatedAt?: string | null
+  /** 거래처 변경으로 자동 단가가 실제 변경된 행 — 시각적 강조/고지용. */
+  priceRefreshChanged?: boolean
   /** lookup 실패 메시지. */
   lookupError: string | null
   /** lookup 진행 중 — 우측 spinner 표시. */
@@ -197,17 +199,29 @@ export const LineRow = forwardRef<HTMLDivElement, LineRowProps>(function LineRow
   const specId = `lr-spec-${reactId}`
   const qtyId = `lr-qty-${reactId}`
   const priceId = `lr-price-${reactId}`
+  const priceStatusId = `${priceId}-status`
 
   const hasError = !!line.lookupError
   const sumDisplay = computeLineSum(line.quantity, line.unitPrice)
   const vatBreakdown = vatInclusive ? computeVatBreakdown(line.quantity, line.unitPrice) : null
   const priceDisplay = line.unitPrice ? Number(line.unitPrice).toLocaleString() : '0'
+  const priceStatus = line.priceSource === 'REMEMBERED'
+    ? '거래처 최근단가'
+    : line.priceSource === 'CATALOG'
+      ? '정가'
+      : null
+  const priceStatusDescription = line.priceSource === 'REMEMBERED'
+    ? `이 거래처에 마지막으로 저장된 단가${line.priceMemoryUpdatedAt ? ` · ${line.priceMemoryUpdatedAt.slice(0, 10)} 저장` : ''}`
+    : line.priceSource === 'CATALOG'
+      ? '이 거래처에 저장된 최근단가가 없어 정가를 적용했습니다'
+      : null
 
   const rowClass = [
     styles['lineRow'],
     selected ? styles['selected'] : null,
     isDragging ? styles['dragging'] : null,
     hasError ? styles['error'] : null,
+    line.priceRefreshChanged ? styles['priceRefreshed'] : null,
   ]
     .filter(Boolean)
     .join(' ')
@@ -336,14 +350,18 @@ export const LineRow = forwardRef<HTMLDivElement, LineRowProps>(function LineRow
                 onUnitPriceChange(numeric)
               }}
               aria-label={`라인 ${lineNumber} 단가`}
+              aria-describedby={priceStatusDescription ? priceStatusId : undefined}
             />
-            {line.priceSource === 'REMEMBERED' ? (
+            {priceStatus && priceStatusDescription ? (
               <span
+                id={priceStatusId}
                 role="note"
+                aria-live="polite"
+                aria-label={priceStatusDescription}
                 className={styles['priceMemoryNote']}
-                title={`최근 단가${line.priceMemoryUpdatedAt ? ` · ${line.priceMemoryUpdatedAt.slice(0, 10)} 저장` : ''}`}
+                title={priceStatusDescription}
               >
-                최근가
+                {priceStatus}
               </span>
             ) : null}
           </span>

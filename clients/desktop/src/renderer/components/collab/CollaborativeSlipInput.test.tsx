@@ -109,6 +109,24 @@ function providerStub(): TestDocCoeditProvider {
 }
 
 describe('CollaborativeSlipInput', () => {
+  it('forwards aria-describedby to the actual input', () => {
+    render(
+      <>
+        <CollaborativeSlipInput
+          provider={null}
+          fieldPath="items.0.unitPrice"
+          value="100000"
+          onValueChange={() => undefined}
+          aria-label="단가 1"
+          aria-describedby="price-source-1"
+        />
+        <span id="price-source-1">거래처 최근단가</span>
+      </>,
+    )
+
+    expect(screen.getByLabelText('단가 1').getAttribute('aria-describedby')).toBe('price-source-1')
+  })
+
   it('입력값을 Yjs fieldPath 에 쓰고 원격 awareness 라벨은 이름만 표시한다', () => {
     const provider = providerStub()
     const onValueChange = vi.fn()

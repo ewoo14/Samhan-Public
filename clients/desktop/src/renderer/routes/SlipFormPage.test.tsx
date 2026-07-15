@@ -7,6 +7,7 @@ import { MemoryRouter } from 'react-router-dom'
 
 const harness = vi.hoisted(() => ({
   getPriceMemory: vi.fn(),
+  getPriceMemories: vi.fn(),
   lookupPartnerForAutoFill: vi.fn(),
   createSlip: vi.fn(),
   listWarehouses: vi.fn(),
@@ -88,14 +89,6 @@ vi.mock('@samhan/design-system', () => ({
           value={props.line.unitPrice}
           onChange={(event) => props.onUnitPriceChange(event.target.value)}
         />
-        {props.line.priceSource === 'REMEMBERED' ? (
-          <span
-            role="note"
-            title={`최근 단가 · ${props.line.priceMemoryUpdatedAt?.slice(0, 10) ?? ''} 저장`}
-          >
-            최근가
-          </span>
-        ) : null}
         <button
           type="button"
           data-testid={`delete-line-${lineNo}`}
@@ -176,6 +169,7 @@ vi.mock('@dnd-kit/utilities', () => ({
 
 vi.mock('../api/slip', () => ({
   createSlip: harness.createSlip,
+  getPriceMemories: harness.getPriceMemories,
   getPriceMemory: harness.getPriceMemory,
   lookupPartnerForAutoFill: harness.lookupPartnerForAutoFill,
   emptyBundleSetOptions: () => ({
@@ -251,6 +245,7 @@ beforeEach(() => {
   harness.lookupPartnerForAutoFill.mockResolvedValue({})
   harness.createSlip.mockResolvedValue({})
   harness.getPriceMemory.mockResolvedValue(null)
+  harness.getPriceMemories.mockResolvedValue([])
 })
 
 describe('SlipFormPage price memory autofill', () => {
@@ -307,10 +302,9 @@ describe('SlipFormPage price memory autofill', () => {
 
   it('ignores a late response when partner changes during lookup', async () => {
     const first = deferred<{ unitPrice: number; source: string; updatedAt: string } | null>()
-    const second = deferred<{ unitPrice: number; source: string; updatedAt: string } | null>()
-    harness.getPriceMemory
-      .mockReturnValueOnce(first.promise)
-      .mockReturnValueOnce(second.promise)
+    const second = deferred<Array<{ productId: string; unitPrice: number; source: string; updatedAt: string }>>()
+    harness.getPriceMemory.mockReturnValueOnce(first.promise)
+    harness.getPriceMemories.mockReturnValueOnce(second.promise)
     renderPage()
     await selectPartnerA()
 
@@ -318,10 +312,15 @@ describe('SlipFormPage price memory autofill', () => {
     await waitFor(() => expect(harness.getPriceMemory).toHaveBeenCalledWith(harness.partnerA.id, harness.productA.id))
     await waitFor(() => expect(screen.getByTestId('product-name-1').textContent).toBe(harness.productA.productName))
     await selectPartnerB()
-    await waitFor(() => expect(harness.getPriceMemory).toHaveBeenCalledWith(harness.partnerB.id, harness.productA.id))
+    await waitFor(() => expect(harness.getPriceMemories).toHaveBeenCalledWith(harness.partnerB.id, [harness.productA.id]))
 
     await act(async () => {
-      second.resolve({ unitPrice: 222000, source: 'LINE_SAVE', updatedAt: '2026-07-11T09:00:00' })
+      second.resolve([{
+        productId: harness.productA.id,
+        unitPrice: 222000,
+        source: 'LINE_SAVE',
+        updatedAt: '2026-07-11T09:00:00',
+      }])
       await second.promise
     })
     await waitFor(() => expect(unitPrice().value).toBe('222000'))
@@ -383,9 +382,17 @@ describe('SlipFormPage price memory autofill', () => {
   })
 
   it('refreshes autofilled lines on partner change and preserves user override lines', async () => {
-    harness.getPriceMemory
-      .mockResolvedValueOnce({ unitPrice: 100000, source: 'LINE_SAVE', updatedAt: '2026-07-10T09:00:00' })
-      .mockResolvedValueOnce({ unitPrice: 200000, source: 'LINE_SAVE', updatedAt: '2026-07-11T09:00:00' })
+    harness.getPriceMemory.mockResolvedValueOnce({
+      unitPrice: 100000,
+      source: 'LINE_SAVE',
+      updatedAt: '2026-07-10T09:00:00',
+    })
+    harness.getPriceMemories.mockResolvedValueOnce([{
+      productId: harness.productA.id,
+      unitPrice: 200000,
+      source: 'LINE_SAVE',
+      updatedAt: '2026-07-11T09:00:00',
+    }])
     renderPage()
     await selectPartnerA()
     fireEvent.click(screen.getByTestId('select-product-a-1'))
@@ -399,10 +406,40 @@ describe('SlipFormPage price memory autofill', () => {
 
     await selectPartnerB()
 
-    await waitFor(() => expect(harness.getPriceMemory).toHaveBeenCalledWith(harness.partnerB.id, harness.productA.id))
-    expect(harness.getPriceMemory).not.toHaveBeenCalledWith(harness.partnerB.id, harness.productB.id)
+    await waitFor(() => expect(harness.getPriceMemories).toHaveBeenCalledWith(harness.partnerB.id, [harness.productA.id]))
+    expect(harness.getPriceMemories).toHaveBeenCalledTimes(1)
     await waitFor(() => expect(unitPrice(1).value).toBe('200000'))
     expect(unitPrice(2).value).toBe('7777')
+    expect(screen.getByRole('status').textContent).toContain('거래처 변경으로 최근단가 재적용')
+    expect(screen.getByTestId('line-1').getAttribute('data-price-source')).toBe('REMEMBERED')
+  })
+
+  it('partner change uses one bulk call and maps omitted products to catalog miss', async () => {
+    harness.getPriceMemories.mockResolvedValueOnce([{
+      productId: harness.productA.id,
+      unitPrice: 555000,
+      source: 'LINE_SAVE',
+      updatedAt: '2026-07-11T09:00:00',
+    }])
+    renderPage()
+    await selectPartnerA()
+    fireEvent.click(screen.getByTestId('select-product-a-1'))
+    await waitFor(() => expect(unitPrice(1).value).toBe(harness.productA.sellingPrice))
+    fireEvent.click(screen.getByTestId('add-line-button'))
+    fireEvent.click(screen.getByTestId('select-product-b-2'))
+    await waitFor(() => expect(unitPrice(2).value).toBe(harness.productB.sellingPrice))
+
+    await selectPartnerB()
+
+    await waitFor(() => expect(harness.getPriceMemories).toHaveBeenCalledWith(
+      harness.partnerB.id,
+      [harness.productA.id, harness.productB.id],
+    ))
+    expect(harness.getPriceMemories).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(unitPrice(1).value).toBe('555000'))
+    expect(unitPrice(2).value).toBe(harness.productB.sellingPrice)
+    expect(screen.getByTestId('line-1').getAttribute('data-price-source')).toBe('REMEMBERED')
+    expect(screen.getByTestId('line-2').getAttribute('data-price-source')).toBe('CATALOG')
   })
 
   it('treats zero remembered unit price as a valid hit', async () => {
@@ -418,10 +455,10 @@ describe('SlipFormPage price memory autofill', () => {
 
     await waitFor(() => expect(harness.getPriceMemory).toHaveBeenCalledWith(harness.partnerA.id, harness.productA.id))
     await waitFor(() => expect(unitPrice().value).toBe('0'))
-    expect(screen.getByRole('note').textContent).toBe('최근가')
+    expect(screen.getByTestId('line-1').getAttribute('data-price-source')).toBe('REMEMBERED')
   })
 
-  it('renders recent-price marker only for remembered hits with updatedAt tooltip', async () => {
+  it('passes remembered priceSource to the real LineRow boundary', async () => {
     harness.getPriceMemory.mockResolvedValueOnce({
       unitPrice: 123000,
       source: 'LINE_SAVE',
@@ -432,15 +469,13 @@ describe('SlipFormPage price memory autofill', () => {
 
     fireEvent.click(screen.getByTestId('select-product-a-1'))
 
-    const note = await screen.findByRole('note')
-    expect(note.getAttribute('title')).toContain('2026-07-10')
-    expect(note.textContent).toBe('최근가')
+    await waitFor(() => expect(screen.getByTestId('line-1').getAttribute('data-price-source')).toBe('REMEMBERED'))
 
     fireEvent.click(screen.getByTestId('add-line-button'))
     fireEvent.change(unitPrice(2), { target: { value: '7777' } })
     fireEvent.click(screen.getByTestId('select-product-b-2'))
     await waitFor(() => expect(screen.getByTestId('product-name-2').textContent).toBe(harness.productB.productName))
-    expect(screen.getAllByRole('note')).toHaveLength(1)
+    expect(screen.getByTestId('line-2').getAttribute('data-price-source')).toBe('USER')
   })
 
   it('skips price memory lookup when partnerId is not selected', async () => {
@@ -464,5 +499,52 @@ describe('SlipFormPage price memory autofill', () => {
     await waitFor(() => expect(screen.getByTestId('product-name-1').textContent).toBe(harness.productA.productName))
     await waitFor(() => expect(unitPrice().value).toBe(harness.productA.sellingPrice))
     expect(screen.queryByRole('note')).toBeNull()
+  })
+
+  it('bulk refresh failure does not overwrite a user edit made while the request is pending', async () => {
+    const pending = deferred<Array<{ productId: string; unitPrice: number; source: string; updatedAt: string }>>()
+    harness.getPriceMemory.mockResolvedValueOnce({
+      unitPrice: 100000,
+      source: 'LINE_SAVE',
+      updatedAt: '2026-07-10T09:00:00',
+    })
+    harness.getPriceMemories.mockReturnValueOnce(pending.promise)
+    renderPage()
+    await selectPartnerA()
+    fireEvent.click(screen.getByTestId('select-product-a-1'))
+    await waitFor(() => expect(unitPrice().value).toBe('100000'))
+
+    await selectPartnerB()
+    await waitFor(() => expect(harness.getPriceMemories).toHaveBeenCalledTimes(1))
+    fireEvent.change(unitPrice(), { target: { value: '7777' } })
+    await act(async () => {
+      pending.reject(new Error('forbidden'))
+      await pending.promise.catch(() => undefined)
+    })
+
+    expect(unitPrice().value).toBe('7777')
+    expect(screen.getByTestId('line-1').getAttribute('data-price-source')).toBe('USER')
+    expect(screen.queryByText(/거래처 변경으로 최근단가 재적용/)).toBeNull()
+  })
+
+  it('SlipFormPage_submit_sendsVatInclusivePriceExactly', async () => {
+    renderPage()
+    await selectPartnerA()
+    fireEvent.click(screen.getByTestId('select-warehouse'))
+    fireEvent.click(screen.getByTestId('select-product-a-1'))
+    await waitFor(() => expect(unitPrice().value).toBe(harness.productA.sellingPrice))
+    fireEvent.change(unitPrice(), { target: { value: '100000' } })
+
+    fireEvent.click(screen.getByRole('button', { name: '저장' }))
+
+    await waitFor(() => expect(harness.createSlip).toHaveBeenCalledTimes(1))
+    expect(harness.createSlip).toHaveBeenCalledWith(expect.objectContaining({
+      partnerId: harness.partnerA.id,
+      lines: [expect.objectContaining({
+        productId: harness.productA.id,
+        unitPrice: '100000',
+        priceVatInclusive: true,
+      })],
+    }))
   })
 })

@@ -3193,7 +3193,10 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       ?? MOCK_PRODUCTS_BY_MODEL[modelName]
     if (found) {
       return envelope({
-        ...found,
+        id: found.productId,
+        modelName: found.modelName,
+        name: found.productName,
+        sellingPrice: found.sellingPrice,
         modelCode: found.modelCode ?? found.modelName,
         productType: found.productType ?? 'SINGLE',
       })
@@ -3203,11 +3206,40 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     // 호출자에서 에러 처리하도록 빈 객체 + status 200 으로 진행 (mock 한계).
     // → 화면 동작 확인용으로는 sample 1건 항상 반환:
     return envelope({
-      productId: 'p-fallback',
+      id: 'p-fallback',
       modelName,
-      productName: `(샘플) ${modelName}`,
+      name: `(샘플) ${modelName}`,
       sellingPrice: '1000000',
     })
+  }
+
+  // 거래처+품목 최근단가 — generic GET /slips/{id} matcher 보다 먼저 처리한다.
+  // updatedAt 은 audit flush 시각이 아니라 원 전표/견적 저장 시각(remembered_at)이다.
+  const priceMemoryRow = (productId: string) => productId === 'p-aj040'
+    ? {
+        productId,
+        unitPrice: 2035000,
+        source: 'LINE_SAVE',
+        updatedAt: '2026-05-04T10:30:00+09:00',
+      }
+    : null
+  if (method === 'POST' && /\/slips\/price-memory\/bulk$/.test(url)) {
+    const body = parseMockBody(config)
+    const productIds = Array.isArray(body['productIds'])
+      ? body['productIds'].filter((id): id is string => typeof id === 'string')
+      : []
+    return envelope(productIds.flatMap((productId) => {
+      const row = priceMemoryRow(productId)
+      return row ? [row] : []
+    }))
+  }
+  if (method === 'GET' && /\/slips\/price-memory(?:\?.*)?$/.test(url)) {
+    const urlObj = new URL(url.startsWith('http') ? url : `http://mock${url}`)
+    const productId = String(config.params?.['productId'] ?? urlObj.searchParams.get('productId') ?? '')
+    const row = priceMemoryRow(productId)
+    return row
+      ? envelope({ unitPrice: row.unitPrice, source: row.source, updatedAt: row.updatedAt })
+      : { __mockStatus: 204, body: null }
   }
 
   // ==========================================================================
@@ -15297,6 +15329,7 @@ const MOCK_DISPATCHES = [
 const MOCK_ESTIMATES = [
   {
     id: 'est-001',
+    partnerId: '11111111-1111-4111-8111-111111111111',
     estimateNumber: '2026/05/04-1',
     estimateDate: '2026-05-04',
     expirationDate: '2026-05-31',
@@ -15310,6 +15343,7 @@ const MOCK_ESTIMATES = [
   },
   {
     id: 'est-002',
+    partnerId: '22222222-2222-4222-8222-222222222222',
     estimateNumber: '2026/05/06-2',
     estimateDate: '2026-05-06',
     expirationDate: '2026-06-06',
@@ -15323,6 +15357,7 @@ const MOCK_ESTIMATES = [
   },
   {
     id: 'est-003',
+    partnerId: '33333333-3333-4333-8333-333333333333',
     estimateNumber: '2026/04/28-99',
     estimateDate: '2026-04-28',
     expirationDate: '2026-05-28',
@@ -15339,6 +15374,7 @@ const MOCK_ESTIMATES = [
   // Record<string, unknown> 캐스팅으로 읽으므로 기본 shape 밖 추가 필드로 부여한다.
   {
     id: 'est-004',
+    partnerId: '44444444-4444-4444-8444-444444444444',
     estimateNumber: '2026/05/20-3',
     estimateDate: '2026-05-20',
     expirationDate: '2026-06-19',
@@ -15376,7 +15412,7 @@ function mockEstimateSummary(row: (typeof MOCK_ESTIMATES)[number]) {
     estimateDate: row.estimateDate,
     seqNo: Number.isFinite(seqNo) ? seqNo : 1,
     status,
-    partnerId: String((row as Record<string, unknown>)['partnerId'] ?? row.id ?? '00000000-0000-0000-0000-000000000809'),
+    partnerId: row.partnerId,
     partnerName: row.partnerName,
     partnerBusinessNo: row.partnerCode,
     validUntil: row.expirationDate,
@@ -15450,7 +15486,9 @@ function buildMockEstimateDetail(id: string) {
     estimateDate: isAccepted ? '2026-04-28' : '2026-05-04',
     seqNo: 1,
     status,
-    partnerId: 'pt-mock-001',
+    partnerId: isAccepted
+      ? '33333333-3333-4333-8333-333333333333'
+      : '11111111-1111-4111-8111-111111111111',
     partnerName: isAccepted ? '대박종합건설' : '엘에이시스템에어',
     partnerBusinessNo: isAccepted ? '5678901234' : '1234567890',
     partnerAddress: '서울시 강남구 테헤란로 1',

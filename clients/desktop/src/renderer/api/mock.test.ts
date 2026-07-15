@@ -77,6 +77,66 @@ afterEach(() => {
   vi.unstubAllEnvs()
 })
 
+describe('mock price memory contract', () => {
+  it('lookupProductByModelName mock mirrors the BE id/name wire shape', () => {
+    const response = mockRequest({
+      method: 'GET',
+      url: '/slips/lookup-product',
+      params: { modelName: 'AJ040RXH4BC1' },
+    }) as MockEnvelope<Record<string, unknown>>
+
+    expect(response.data).toMatchObject({
+      id: 'p-aj040',
+      name: '시스템에어컨 4Way 4HP',
+      modelName: 'AJ040RXH4BC1',
+    })
+    expect(response.data).not.toHaveProperty('productId')
+    expect(response.data).not.toHaveProperty('productName')
+  })
+
+  it('single/bulk price memory handlers preserve hit-only partial response semantics', () => {
+    const single = mockRequest({
+      method: 'GET',
+      url: '/slips/price-memory',
+      params: {
+        partnerId: '11111111-1111-4111-8111-111111111111',
+        productId: 'p-aj040',
+      },
+    }) as MockEnvelope<{ unitPrice: number; updatedAt: string }>
+    expect(single.data).toMatchObject({ unitPrice: 2035000, updatedAt: '2026-05-04T10:30:00+09:00' })
+
+    const bulk = mockRequest({
+      method: 'POST',
+      url: '/slips/price-memory/bulk',
+      data: {
+        partnerId: '11111111-1111-4111-8111-111111111111',
+        productIds: ['p-aj040', 'p-mwr10'],
+      },
+    }) as MockEnvelope<Array<{ productId: string; unitPrice: number }>>
+    expect(bulk.data).toEqual([
+      expect.objectContaining({ productId: 'p-aj040', unitPrice: 2035000 }),
+    ])
+  })
+
+  it('mockEstimateDetail_partnerIdIsUuidAndEnablesPriceMemoryLookup', () => {
+    const list = mockRequest({
+      method: 'GET',
+      url: '/api/v1/slips/estimates?page=0&size=20',
+    }) as MockEnvelope<{ content: Array<{ id: string; partnerId: string }> }>
+    const detail = mockRequest({
+      method: 'GET',
+      url: '/api/v1/slips/estimates/est-001',
+    }) as MockEnvelope<{ partnerId: string }>
+    const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+    expect(list.data.content.find((row) => row.id === 'est-001')?.partnerId).toMatch(uuid)
+    expect(detail.data.partnerId).toMatch(uuid)
+    expect(detail.data.partnerId).toBe(
+      list.data.content.find((row) => row.id === 'est-001')?.partnerId,
+    )
+  })
+})
+
 describe('mock journal cash receipt contract', () => {
   it('입금보고서 자동 분개는 post mock 은 허용하고 reverse mock 만 409로 차단한다', () => {
     const posted = mockRequest({

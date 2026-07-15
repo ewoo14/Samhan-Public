@@ -14,7 +14,20 @@ const mocks = vi.hoisted(() => ({
   searchPartners: vi.fn(),
   lookupProductByModelName: vi.fn(),
   getPriceMemory: vi.fn(),
+  getPriceMemories: vi.fn(),
   createDocCoeditProvider: vi.fn(),
+  partnerA: {
+    id: '11111111-1111-1111-1111-111111111111',
+    partnerCode: 'P-A',
+    name: 'Partner A',
+    bizNo: '111-11-11111',
+  },
+  partnerB: {
+    id: '22222222-2222-2222-2222-222222222222',
+    partnerCode: 'P-B',
+    name: 'Partner B',
+    bizNo: '222-22-22222',
+  },
 }))
 
 vi.mock('@samhan/design-system', () => ({
@@ -33,10 +46,16 @@ vi.mock('@samhan/design-system', () => ({
       </label>
     )
   }),
-  PartnerAutocomplete: ({ label, disabled }: { label?: string; disabled?: boolean }) => (
+  PartnerAutocomplete: ({ label, disabled, onChange }: { label?: string; disabled?: boolean; onChange: (value: unknown) => void }) => (
     <label>
       {label ? <span>{label}</span> : null}
       <input data-testid="estimate-partner-autocomplete" disabled={disabled} />
+      <button type="button" data-testid="estimate-select-partner-a" disabled={disabled} onClick={() => onChange(mocks.partnerA)}>
+        partner-a
+      </button>
+      <button type="button" data-testid="estimate-select-partner-b" disabled={disabled} onClick={() => onChange(mocks.partnerB)}>
+        partner-b
+      </button>
     </label>
   ),
   Spinner: ({ label }: { label?: string }) => <div role="status">{label}</div>,
@@ -52,9 +71,11 @@ vi.mock('../components/collab/CollaborativeSlipInput', () => ({
     readOnly?: boolean
     onBlur?: () => void
     'aria-label': string
+    'aria-describedby'?: string
   }) => (
     <input
       aria-label={props['aria-label']}
+      aria-describedby={props['aria-describedby']}
       data-testid={`estimate-coedit-${props.fieldPath.replace(/\./g, '-')}`}
       data-field-path={props.fieldPath}
       data-provider-present={String(!!props.provider)}
@@ -90,6 +111,7 @@ vi.mock('../api/sales', () => ({
 
 vi.mock('../api/slip', () => ({
   lookupProductByModelName: mocks.lookupProductByModelName,
+  getPriceMemories: mocks.getPriceMemories,
   getPriceMemory: mocks.getPriceMemory,
   emptyBundleSetOptions: () => ({
     outdoorUnits: 1,
@@ -218,6 +240,24 @@ function renderPage(initialPath = '/sales/estimates/estimate-1/edit') {
   )
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
+function estimateUnitPrice(index = 0): HTMLInputElement {
+  return screen.getByTestId(`estimate-coedit-items-${index}-unitPrice`) as HTMLInputElement
+}
+
+function estimateModel(index = 0): HTMLInputElement {
+  return screen.getByTestId(`estimate-coedit-items-${index}-modelName`) as HTMLInputElement
+}
+
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
@@ -225,6 +265,9 @@ afterEach(() => {
 
 beforeEach(() => {
   mocks.getPriceMemory.mockResolvedValue(null)
+  mocks.getPriceMemories.mockResolvedValue([])
+  mocks.createEstimate.mockResolvedValue({ id: 'estimate-created' })
+  mocks.updateEstimate.mockResolvedValue({ id: 'estimate-1' })
 })
 
 describe('EstimateFormPage 견적 편집 full-form coedit 배선', () => {
@@ -418,5 +461,211 @@ describe('EstimateFormPage 견적 편집 full-form coedit 배선', () => {
       expect.objectContaining({ modelName: 'MODEL-1', productName: '제품 1' }),
       expect.objectContaining({ modelName: 'MODEL-2', productName: '제품 2' }),
     ])
+  })
+
+  it('newEstimate_autofillsRememberedPrice', async () => {
+    mocks.lookupProductByModelName.mockResolvedValue({
+      productId: 'product-new',
+      productName: '신규 제품',
+      productType: 'SINGLE',
+      sellingPrice: '33000',
+    })
+    mocks.getPriceMemory.mockResolvedValue({
+      unitPrice: 88000,
+      source: 'LINE_SAVE',
+      updatedAt: '2026-07-10T09:00:00',
+    })
+    renderPage('/sales/estimates/new')
+
+    fireEvent.click(screen.getByTestId('estimate-select-partner-a'))
+    fireEvent.change(estimateModel(), { target: { value: 'MODEL-NEW' } })
+    fireEvent.blur(estimateModel())
+
+    await waitFor(() => expect(mocks.getPriceMemory).toHaveBeenCalledWith(mocks.partnerA.id, 'product-new'))
+    await waitFor(() => expect(estimateUnitPrice().value).toBe('88000'))
+    expect(screen.getByTestId('estimate-form-line-0').getAttribute('data-price-source')).toBe('REMEMBERED')
+    const note = screen.getByRole('note', { name: /이 거래처에 마지막으로 저장된 단가/ })
+    expect(note.textContent).toBe('거래처 최근단가')
+    expect(estimateUnitPrice().getAttribute('aria-describedby')).toBe(note.id)
+  })
+
+  it('CB-1 edit hydrate preserves the persisted price when partner changes', async () => {
+    mocks.getEstimate.mockResolvedValue(makeEstimate())
+    mocks.createDocCoeditProvider.mockRejectedValue(new Error('coedit unavailable'))
+    renderPage()
+
+    await waitFor(() => expect((screen.getByTestId('estimate-select-partner-b') as HTMLButtonElement).disabled).toBe(false))
+    fireEvent.click(screen.getByTestId('estimate-select-partner-b'))
+
+    expect(estimateUnitPrice().value).toBe('11000')
+    expect(screen.getByTestId('estimate-form-line-0').getAttribute('data-price-source')).toBe('USER')
+    expect(mocks.getPriceMemories).not.toHaveBeenCalled()
+  })
+
+  it('editEstimate_refreshesRememberedPriceForSelectedPartner_onlyForSessionAutoLines', async () => {
+    mocks.getEstimate.mockResolvedValue(makeEstimate())
+    mocks.createDocCoeditProvider.mockRejectedValue(new Error('coedit unavailable'))
+    mocks.lookupProductByModelName.mockResolvedValue({
+      productId: 'product-session',
+      productName: '세션 제품',
+      productType: 'SINGLE',
+      sellingPrice: '33000',
+    })
+    mocks.getPriceMemory.mockResolvedValue({
+      unitPrice: 44000,
+      source: 'LINE_SAVE',
+      updatedAt: '2026-07-10T09:00:00',
+    })
+    mocks.getPriceMemories.mockResolvedValue([{
+      productId: 'product-session',
+      unitPrice: 99000,
+      source: 'LINE_SAVE',
+      updatedAt: '2026-07-11T09:00:00',
+    }])
+    renderPage()
+
+    await waitFor(() => expect((screen.getByTestId('estimate-form-add-line') as HTMLButtonElement).disabled).toBe(false))
+    fireEvent.click(screen.getByTestId('estimate-form-add-line'))
+    fireEvent.change(estimateModel(1), { target: { value: 'MODEL-SESSION' } })
+    fireEvent.blur(estimateModel(1))
+    await waitFor(() => expect(estimateUnitPrice(1).value).toBe('44000'))
+
+    fireEvent.click(screen.getByTestId('estimate-select-partner-b'))
+
+    await waitFor(() => expect(mocks.getPriceMemories).toHaveBeenCalledWith(mocks.partnerB.id, ['product-session']))
+    await waitFor(() => expect(estimateUnitPrice(1).value).toBe('99000'))
+    expect(estimateUnitPrice(0).value).toBe('11000')
+    expect(screen.getByTestId('estimate-form-line-0').getAttribute('data-price-source')).toBe('USER')
+    expect(screen.getByText(/거래처 변경으로 최근단가 재적용/)).not.toBeNull()
+  })
+
+  it('estimate_ignoresStaleMemoryResponse', async () => {
+    const pending = deferred<{ unitPrice: number; source: string; updatedAt: string } | null>()
+    mocks.lookupProductByModelName.mockResolvedValue({
+      productId: 'product-stale',
+      productName: '스테일 제품',
+      productType: 'SINGLE',
+      sellingPrice: '33000',
+    })
+    mocks.getPriceMemory.mockReturnValueOnce(pending.promise)
+    renderPage('/sales/estimates/new')
+
+    fireEvent.click(screen.getByTestId('estimate-select-partner-a'))
+    fireEvent.change(estimateModel(), { target: { value: 'MODEL-STALE' } })
+    fireEvent.blur(estimateModel())
+    await waitFor(() => expect(mocks.getPriceMemory).toHaveBeenCalledWith(mocks.partnerA.id, 'product-stale'))
+    fireEvent.click(screen.getByTestId('estimate-select-partner-b'))
+    await act(async () => {
+      pending.resolve({ unitPrice: 77000, source: 'LINE_SAVE', updatedAt: '2026-07-10T09:00:00' })
+      await pending.promise
+    })
+
+    expect(estimateUnitPrice().value).toBe('0')
+    expect(screen.getByTestId('estimate-form-line-0').getAttribute('data-price-source')).toBe('')
+  })
+
+  it('estimate_preservesUserOverride in both provider and UI', async () => {
+    const pending = deferred<{ unitPrice: number; source: string; updatedAt: string } | null>()
+    const provider = makeProvider()
+    mocks.getEstimate.mockResolvedValue(makeEstimate({ lines: [] }))
+    mocks.createDocCoeditProvider.mockResolvedValue(provider)
+    mocks.lookupProductByModelName.mockResolvedValue({
+      productId: 'product-pending',
+      productName: '대기 제품',
+      productType: 'SINGLE',
+      sellingPrice: '33000',
+    })
+    mocks.getPriceMemory.mockReturnValueOnce(pending.promise)
+    renderPage()
+
+    await waitFor(() => expect(provider.subscribeDoc).toHaveBeenCalled())
+    fireEvent.change(estimateModel(), { target: { value: 'MODEL-PENDING' } })
+    fireEvent.blur(estimateModel())
+    await waitFor(() => expect(mocks.getPriceMemory).toHaveBeenCalled())
+    fireEvent.change(estimateUnitPrice(), { target: { value: '7777' } })
+    await act(async () => {
+      pending.resolve({ unitPrice: 88000, source: 'LINE_SAVE', updatedAt: '2026-07-10T09:00:00' })
+      await pending.promise
+    })
+
+    expect(estimateUnitPrice().value).toBe('7777')
+    expect(provider.setItemValue).toHaveBeenCalledWith(0, 'unitPrice', '7777')
+    expect(provider.setItemValue).not.toHaveBeenCalledWith(0, 'unitPrice', '88000')
+    expect(screen.getByTestId('estimate-form-line-0').getAttribute('data-price-source')).toBe('USER')
+  })
+
+  it('remote coedit unit price change promotes REMEMBERED to USER', async () => {
+    const provider = makeProvider()
+    mocks.getEstimate.mockResolvedValue(makeEstimate({ lines: [] }))
+    mocks.createDocCoeditProvider.mockResolvedValue(provider)
+    mocks.lookupProductByModelName.mockResolvedValue({
+      productId: 'product-remote-price',
+      productName: '원격 제품',
+      productType: 'SINGLE',
+      sellingPrice: '33000',
+    })
+    mocks.getPriceMemory.mockResolvedValue({
+      unitPrice: 88000,
+      source: 'LINE_SAVE',
+      updatedAt: '2026-07-10T09:00:00',
+    })
+    renderPage()
+
+    await waitFor(() => expect(provider.subscribeDoc).toHaveBeenCalled())
+    fireEvent.change(estimateModel(), { target: { value: 'MODEL-REMOTE' } })
+    fireEvent.blur(estimateModel())
+    await waitFor(() => expect(screen.getByTestId('estimate-form-line-0').getAttribute('data-price-source')).toBe('REMEMBERED'))
+
+    provider.setItemValue(0, 'unitPrice', '7777')
+    act(() => provider.__emit())
+
+    await waitFor(() => expect(estimateUnitPrice().value).toBe('7777'))
+    expect(screen.getByTestId('estimate-form-line-0').getAttribute('data-price-source')).toBe('USER')
+    expect(screen.queryByRole('note')).toBeNull()
+  })
+
+  it('EstimateFormPage_create_sendsPriceVatInclusiveTrue', async () => {
+    mocks.lookupProductByModelName.mockResolvedValue({
+      productId: 'product-create',
+      productName: '생성 제품',
+      productType: 'SINGLE',
+      sellingPrice: '33000',
+    })
+    renderPage('/sales/estimates/new')
+    fireEvent.click(screen.getByTestId('estimate-select-partner-a'))
+    fireEvent.change(estimateModel(), { target: { value: 'MODEL-CREATE' } })
+    fireEvent.blur(estimateModel())
+    await waitFor(() => expect(estimateUnitPrice().value).toBe('33000'))
+    fireEvent.change(estimateUnitPrice(), { target: { value: '100000' } })
+    fireEvent.click(screen.getByTestId('estimate-form-save-button'))
+
+    await waitFor(() => expect(mocks.createEstimate).toHaveBeenCalledTimes(1))
+    expect(mocks.createEstimate).toHaveBeenCalledWith(expect.objectContaining({
+      partnerId: mocks.partnerA.id,
+      lines: [expect.objectContaining({
+        productId: 'product-create',
+        unitPrice: '100000',
+        priceVatInclusive: true,
+      })],
+    }))
+  })
+
+  it('EstimateFormPage_update_sendsPriceVatInclusiveTrue', async () => {
+    mocks.getEstimate.mockResolvedValue(makeEstimate())
+    mocks.createDocCoeditProvider.mockRejectedValue(new Error('coedit unavailable'))
+    renderPage()
+    await waitFor(() => expect((screen.getByTestId('estimate-form-save-button') as HTMLButtonElement).disabled).toBe(false))
+    fireEvent.change(estimateUnitPrice(), { target: { value: '100000' } })
+    fireEvent.click(screen.getByTestId('estimate-form-save-button'))
+
+    await waitFor(() => expect(mocks.updateEstimate).toHaveBeenCalledTimes(1))
+    expect(mocks.updateEstimate).toHaveBeenCalledWith('estimate-1', expect.objectContaining({
+      partnerId: '11111111-1111-1111-1111-111111111111',
+      lines: [expect.objectContaining({
+        productId: 'product-1',
+        unitPrice: '100000',
+        priceVatInclusive: true,
+      })],
+    }))
   })
 })

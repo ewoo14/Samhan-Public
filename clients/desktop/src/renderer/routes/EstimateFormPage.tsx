@@ -31,6 +31,7 @@ import {
 import { searchPartners, type PartnerSummary } from '../api/sales'
 import {
   lookupProductByModelName,
+  getPriceMemories,
   getPriceMemory,
   emptyBundleSetOptions,
   toApiBundleSetOptions,
@@ -60,6 +61,7 @@ interface DraftLine {
   priceSource?: 'REMEMBERED' | 'CATALOG' | 'USER' | null
   catalogUnitPrice?: string | null
   priceMemoryUpdatedAt?: string | null
+  priceRefreshChanged?: boolean
   note: string
   lookupError: string | null
   lookupLoading: boolean
@@ -80,6 +82,7 @@ const emptyLine = (): DraftLine => ({
   priceSource: null,
   catalogUnitPrice: null,
   priceMemoryUpdatedAt: null,
+  priceRefreshChanged: false,
   note: '',
   lookupError: null,
   lookupLoading: false,
@@ -110,6 +113,28 @@ const calcLineSupply = (qty: string, unitPrice: string): number => {
   return Math.trunc(q * p)
 }
 
+const isAutoPriceSource = (source: DraftLine['priceSource']): boolean =>
+  source === 'CATALOG' || source === 'REMEMBERED'
+
+function priceSourceStatus(line: DraftLine): {
+  label: string
+  description: string
+} | null {
+  if (line.priceSource === 'REMEMBERED') {
+    return {
+      label: '거래처 최근단가',
+      description: `이 거래처에 마지막으로 저장된 단가${line.priceMemoryUpdatedAt ? ` · ${line.priceMemoryUpdatedAt.slice(0, 10)} 저장` : ''}`,
+    }
+  }
+  if (line.priceSource === 'CATALOG') {
+    return {
+      label: '정가',
+      description: '이 거래처에 저장된 최근단가가 없어 정가를 적용했습니다',
+    }
+  }
+  return null
+}
+
 function toDraftLinesFromEstimate(estimate: EstimateDetail): DraftLine[] {
   return estimate.lines.length > 0
     ? estimate.lines.map((line) => ({
@@ -121,9 +146,11 @@ function toDraftLinesFromEstimate(estimate: EstimateDetail): DraftLine[] {
         quantity: String(line.quantity),
         // 단가 부가세포함: 폼 단가 입력은 VAT 포함값. 편집 hydrate/coedit seed 모두 같은 값으로 보존.
         unitPrice: line.unitPriceWithVat ?? line.unitPrice,
-        priceSource: null,
+        // 서버에서 hydrate 된 저장 단가는 사용자 확정값으로 취급해 거래처 변경 자동재조회에서 보호한다.
+        priceSource: 'USER',
         catalogUnitPrice: null,
         priceMemoryUpdatedAt: null,
+        priceRefreshChanged: false,
         note: line.note ?? '',
         lookupError: null,
         lookupLoading: false,
@@ -153,9 +180,25 @@ function seedEstimateCoeditProvider(provider: DocCoeditProvider, estimate: Estim
   )
 }
 
-function coeditLinesToDraftLines(provider: DocCoeditProvider, current: DraftLine[]): DraftLine[] {
+type LocalAutoPriceWrite = Pick<
+  DraftLine,
+  'unitPrice' | 'priceSource' | 'priceMemoryUpdatedAt' | 'priceRefreshChanged'
+>
+
+function coeditLinesToDraftLines(
+  provider: DocCoeditProvider,
+  current: DraftLine[],
+  localAutoPriceWrites?: Map<string, LocalAutoPriceWrite>,
+): DraftLine[] {
   return provider.items.toArray().map((_, index) => {
     const previous = current[index]
+    const unitPrice = provider.getItemValue(index, 'unitPrice') || '0'
+    const expectedAutoWrite = previous ? localAutoPriceWrites?.get(previous.uid) : undefined
+    const isExpectedAutoWrite = expectedAutoWrite?.unitPrice === unitPrice
+    if (previous && expectedAutoWrite) localAutoPriceWrites?.delete(previous.uid)
+    const isRemoteUnitPriceChange = Boolean(
+      previous && unitPrice !== previous.unitPrice && !isExpectedAutoWrite,
+    )
     return {
       uid: previous?.uid ?? nextLineUid(),
       productId: provider.getItemValue(index, 'productId') || null,
@@ -163,10 +206,23 @@ function coeditLinesToDraftLines(provider: DocCoeditProvider, current: DraftLine
       productName: provider.getItemValue(index, 'productName'),
       specification: provider.getItemValue(index, 'specification'),
       quantity: provider.getItemValue(index, 'quantity') || '0',
-      unitPrice: provider.getItemValue(index, 'unitPrice') || '0',
-      priceSource: previous?.priceSource ?? null,
+      unitPrice,
+      priceSource: isExpectedAutoWrite
+        ? expectedAutoWrite.priceSource
+        : isRemoteUnitPriceChange
+          ? 'USER'
+          : previous?.priceSource ?? null,
       catalogUnitPrice: previous?.catalogUnitPrice ?? null,
-      priceMemoryUpdatedAt: previous?.priceMemoryUpdatedAt ?? null,
+      priceMemoryUpdatedAt: isExpectedAutoWrite
+        ? expectedAutoWrite.priceMemoryUpdatedAt
+        : isRemoteUnitPriceChange
+          ? null
+          : previous?.priceMemoryUpdatedAt ?? null,
+      priceRefreshChanged: isExpectedAutoWrite
+        ? expectedAutoWrite.priceRefreshChanged
+        : isRemoteUnitPriceChange
+          ? false
+          : previous?.priceRefreshChanged ?? false,
       note: previous?.note ?? '',
       // 원격 doc 변경마다 재빌드되므로 진행 중 lookup 상태는 previous 에서 보존(스피너 조기소멸 방지, 리뷰 MED).
       lookupError: previous?.lookupError ?? null,
@@ -193,8 +249,14 @@ function EstimateMobileLineCard(props: {
   children?: ReactNode
 }) {
   const lineNumber = props.index + 1
+  const priceStatus = priceSourceStatus(props.line)
+  const priceStatusId = `estimate-mobile-price-status-${props.line.uid}`
   return (
-    <div className="mobile-line-card" data-testid={`estimate-form-line-${props.index}`}>
+    <div
+      className={`mobile-line-card${props.line.priceRefreshChanged ? ' price-memory-refreshed-row' : ''}`}
+      data-testid={`estimate-form-line-${props.index}`}
+      data-price-source={props.line.priceSource ?? ''}
+    >
       <div className="mobile-line-card-header">
         <span className="mobile-line-card-index">{lineNumber}</span>
         <button
@@ -284,6 +346,8 @@ function EstimateMobileLineCard(props: {
             unitPrice: value,
             priceSource: 'USER',
             priceMemoryUpdatedAt: null,
+            priceRefreshChanged: false,
+            lookupLoading: false,
           })}
           inputSize="sm"
           readOnly={props.isReadOnly}
@@ -291,14 +355,18 @@ function EstimateMobileLineCard(props: {
           inputMode="decimal"
           inputStyle={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
           aria-label={`라인 ${lineNumber} 단가`}
+          aria-describedby={priceStatus ? priceStatusId : undefined}
         />
-        {props.line.priceSource === 'REMEMBERED' ? (
+        {priceStatus ? (
           <span
+            id={priceStatusId}
             role="note"
-            title={`최근 단가${props.line.priceMemoryUpdatedAt ? ` · ${props.line.priceMemoryUpdatedAt.slice(0, 10)} 저장` : ''}`}
-            style={{ fontSize: 11, color: 'var(--ink-secondary, #5C6773)' }}
+            aria-live="polite"
+            aria-label={priceStatus.description}
+            title={priceStatus.description}
+            className="price-source-note"
           >
-            최근가
+            {priceStatus.label}
           </span>
         ) : null}
       </div>
@@ -347,6 +415,12 @@ export function EstimateFormPage() {
   const [lineLookupOpen, setLineLookupOpen] = useState(false)
   const [estimateFormCoeditProvider, setEstimateFormCoeditProvider] = useState<DocCoeditProvider | null>(null)
   const [estimateFormCoeditPending, setEstimateFormCoeditPending] = useState(false)
+  const selectedPartnerIdRef = useRef<string>('')
+  const priceRefreshRequestRef = useRef(0)
+  const modelLookupRequestRef = useRef(new Map<string, number>())
+  const localAutoPriceWritesRef = useRef(new Map<string, LocalAutoPriceWrite>())
+  const linesRef = useRef(lines)
+  linesRef.current = lines
 
   const isReadOnly =
     isEdit &&
@@ -372,6 +446,7 @@ export function EstimateFormPage() {
     const e = detailQuery.data
     if (!e) return
     if (estimateFormCoeditProvider) return
+    selectedPartnerIdRef.current = e.partnerId
     setPartnerIdSnapshot(e.partnerId)
     setPartnerName(e.partnerName)
     setPartnerBusinessNo(e.partnerBusinessNo ?? '')
@@ -379,7 +454,9 @@ export function EstimateFormPage() {
     setEstimateDate(e.estimateDate)
     setValidUntil(e.validUntil ?? '')
     setMemo(e.memo ?? '')
-    setLines(toDraftLinesFromEstimate(e))
+    const draftLines = toDraftLinesFromEstimate(e)
+    linesRef.current = draftLines
+    setLines(draftLines)
   }, [isEdit, detailQuery.data, estimateFormCoeditProvider])
 
   useEffect(() => {
@@ -402,7 +479,13 @@ export function EstimateFormPage() {
       setEstimateDate(nextProvider.getHeaderValue('estimateDate'))
       setValidUntil(nextProvider.getHeaderValue('validUntil'))
       setMemo(nextProvider.getHeaderValue('memo'))
-      setLines((prev) => coeditLinesToDraftLines(nextProvider, prev))
+      const nextLines = coeditLinesToDraftLines(
+        nextProvider,
+        linesRef.current,
+        localAutoPriceWritesRef.current,
+      )
+      linesRef.current = nextLines
+      setLines(nextLines)
     }
 
     void createDocCoeditProvider({
@@ -458,13 +541,15 @@ export function EstimateFormPage() {
   }, [lines])
 
   const handleSelectPartner = (p: PartnerSummary) => {
+    const nextPartnerId = p.partnerId && UUID_PATTERN.test(p.partnerId) ? p.partnerId : ''
+    selectedPartnerIdRef.current = nextPartnerId
     setPartner(p)
-    setPartnerIdSnapshot(p.partnerId && UUID_PATTERN.test(p.partnerId) ? p.partnerId : '')
+    setPartnerIdSnapshot(nextPartnerId)
     setPartnerName(p.companyName)
     setPartnerBusinessNo(p.businessRegistrationNumber)
     setPartnerAddress(p.address ?? '')
-    if (p.partnerId && UUID_PATTERN.test(p.partnerId)) {
-      void refreshAutoPricesForPartner(p.partnerId)
+    if (nextPartnerId) {
+      void refreshAutoPricesForPartner(nextPartnerId)
     }
   }
 
@@ -481,8 +566,19 @@ export function EstimateFormPage() {
 
   const handlePartnerOptionChange = (option: PartnerOption | null) => {
     if (!option) {
+      selectedPartnerIdRef.current = ''
+      priceRefreshRequestRef.current += 1
       setPartner(null)
       setPartnerIdSnapshot('')
+      setLines((prev) => {
+        const next = prev.map((line) => ({
+          ...line,
+          lookupLoading: false,
+          priceRefreshChanged: false,
+        }))
+        linesRef.current = next
+        return next
+      })
       return
     }
     handleSelectPartner({
@@ -498,78 +594,110 @@ export function EstimateFormPage() {
   }
 
   const updateLine = (index: number, patch: Partial<DraftLine>) => {
-    setLines((prev) =>
-      prev.map((l, i) => (i === index ? { ...l, ...patch } : l)),
-    )
+    setLines((prev) => {
+      const next = prev.map((l, i) => (i === index ? { ...l, ...patch } : l))
+      linesRef.current = next
+      return next
+    })
   }
 
   const refreshAutoPricesForPartner = async (effectivePartnerId: string) => {
-    const candidates = lines
+    const requestId = ++priceRefreshRequestRef.current
+    const candidates = linesRef.current
       .map((line, index) => ({ line, index }))
-      .filter(({ line }) => line.productId && line.priceSource !== 'USER')
+      .filter(({ line }) => line.productId && isAutoPriceSource(line.priceSource))
     if (candidates.length === 0) return
-    setLines((prev) =>
-      prev.map((line) =>
-        line.productId && line.priceSource !== 'USER'
-          ? { ...line, lookupLoading: true }
-          : line,
-      ),
+    const snapshotByUid = new Map(candidates.map(({ line }) => [line.uid, line]))
+    const candidateUids = new Set(snapshotByUid.keys())
+    const loadingLines = linesRef.current.map((line) =>
+      candidateUids.has(line.uid)
+        ? { ...line, lookupLoading: true, priceRefreshChanged: false }
+        : line,
     )
-    await Promise.all(candidates.map(async ({ line, index }) => {
-      const fallback = line.catalogUnitPrice ?? line.unitPrice
-      try {
-        const memory = await getPriceMemory(effectivePartnerId, line.productId!)
-        const remembered = memory?.unitPrice
-        const nextUnitPrice = remembered == null ? fallback : String(remembered)
-        setLines((prev) =>
-          prev.map((current) =>
-            current.uid === line.uid && current.productId === line.productId && current.priceSource !== 'USER'
-              ? {
-                  ...current,
-                  unitPrice: nextUnitPrice,
-                  priceSource: remembered == null ? 'CATALOG' : 'REMEMBERED',
-                  priceMemoryUpdatedAt: memory?.updatedAt ?? null,
-                  lookupLoading: false,
-                }
-              : current,
-          ),
-        )
-        estimateFormCoeditProvider?.setItemValue(index, 'unitPrice', nextUnitPrice)
-      } catch {
-        setLines((prev) =>
-          prev.map((current) =>
-            current.uid === line.uid && current.productId === line.productId && current.priceSource !== 'USER'
-              ? {
-                  ...current,
-                  unitPrice: fallback,
-                  priceSource: 'CATALOG',
-                  priceMemoryUpdatedAt: null,
-                  lookupLoading: false,
-                }
-              : current,
-          ),
-        )
+    linesRef.current = loadingLines
+    setLines(loadingLines)
+
+    const applyResolvedPrices = (memoryByProductId: Map<string, { unitPrice: number; updatedAt: string | null }>) => {
+      if (
+        priceRefreshRequestRef.current !== requestId
+        || selectedPartnerIdRef.current !== effectivePartnerId
+      ) return
+      const providerWrites: Array<{ index: number; line: DraftLine }> = []
+      const nextLines = linesRef.current.map((current, index) => {
+        const snapshot = snapshotByUid.get(current.uid)
+        if (!snapshot || current.productId !== snapshot.productId) return current
+        if (!isAutoPriceSource(current.priceSource)) {
+          return { ...current, lookupLoading: false, priceRefreshChanged: false }
+        }
+        const fallback = snapshot.catalogUnitPrice ?? snapshot.unitPrice
+        const memory = memoryByProductId.get(snapshot.productId!)
+        const nextUnitPrice = memory == null ? fallback : String(memory.unitPrice)
+        const nextLine: DraftLine = {
+          ...current,
+          unitPrice: nextUnitPrice,
+          priceSource: memory == null ? 'CATALOG' : 'REMEMBERED',
+          priceMemoryUpdatedAt: memory?.updatedAt ?? null,
+          priceRefreshChanged: nextUnitPrice !== current.unitPrice,
+          lookupLoading: false,
+        }
+        providerWrites.push({ index, line: nextLine })
+        return nextLine
+      })
+      linesRef.current = nextLines
+      setLines(nextLines)
+      for (const write of providerWrites) {
+        if (!estimateFormCoeditProvider) continue
+        localAutoPriceWritesRef.current.set(write.line.uid, {
+          unitPrice: write.line.unitPrice,
+          priceSource: write.line.priceSource,
+          priceMemoryUpdatedAt: write.line.priceMemoryUpdatedAt,
+          priceRefreshChanged: write.line.priceRefreshChanged,
+        })
+        try {
+          estimateFormCoeditProvider.setItemValue(write.index, 'unitPrice', write.line.unitPrice)
+        } catch {
+          localAutoPriceWritesRef.current.delete(write.line.uid)
+        }
       }
-    }))
+    }
+
+    try {
+      const memories = await getPriceMemories(
+        effectivePartnerId,
+        candidates.map(({ line }) => line.productId!),
+      )
+      applyResolvedPrices(new Map(memories.map((memory) => [memory.productId, memory])))
+    } catch {
+      // 현재 요청/거래처/uid/product/source 가 여전히 같을 때만 정가 fallback 한다.
+      applyResolvedPrices(new Map())
+    }
   }
   const updateSetOption = (index: number, patch: Partial<BundleSetOptions>) => {
-    setLines((prev) =>
-      prev.map((l, i) =>
+    setLines((prev) => {
+      const next = prev.map((l, i) =>
         i === index ? { ...l, setOptions: { ...l.setOptions, ...patch } } : l,
-      ),
-    )
+      )
+      linesRef.current = next
+      return next
+    })
   }
-  const addLine = () => setLines((prev) => [...prev, emptyLine()])
+  const addLine = () => setLines((prev) => {
+    const next = [...prev, emptyLine()]
+    linesRef.current = next
+    return next
+  })
   const removeLine = (index: number) => {
     setLines((prev) => {
       const next = prev.filter((_, i) => i !== index)
-      return next.length === 0 ? [emptyLine()] : next
+      const normalized = next.length === 0 ? [emptyLine()] : next
+      linesRef.current = normalized
+      return normalized
     })
   }
 
   // 모델명 onBlur lookup
   const handleModelLookup = async (index: number) => {
-    const line = lines[index]
+    const line = linesRef.current[index]
     // provider 가 언마운트 중 destroy 됐을 때 getItemValue 예외로 lookup 이 중단되지 않게 방어(리뷰 LOW).
     let coeditModelName = ''
     try {
@@ -579,16 +707,41 @@ export function EstimateFormPage() {
     }
     const modelName = (coeditModelName || line?.modelName || '').trim()
     if (!line || !modelName) return
+    const requestId = (modelLookupRequestRef.current.get(line.uid) ?? 0) + 1
+    modelLookupRequestRef.current.set(line.uid, requestId)
+    const effectivePartnerId = selectedPartnerIdRef.current
     updateLine(index, { lookupLoading: true, lookupError: null })
+
+    const isCurrentRequest = (current: DraftLine): boolean =>
+      modelLookupRequestRef.current.get(line.uid) === requestId
+      && current.uid === line.uid
+      && (current.modelName || '').trim() === modelName
+      && current.productId === line.productId
+      && current.priceSource === line.priceSource
+      && selectedPartnerIdRef.current === effectivePartnerId
+
+    const finishStaleRequest = () => {
+      setLines((prev) => {
+        const next = prev.map((current) =>
+          modelLookupRequestRef.current.get(line.uid) === requestId
+            && current.uid === line.uid
+            && (current.modelName || '').trim() === modelName
+            ? { ...current, lookupLoading: false }
+            : current,
+        )
+        linesRef.current = next
+        return next
+      })
+    }
+
     try {
       const result = await lookupProductByModelName(modelName)
-      const effectivePartnerId =
-        partnerIdSnapshot && UUID_PATTERN.test(partnerIdSnapshot)
-          ? partnerIdSnapshot
-          : partner?.partnerId && UUID_PATTERN.test(partner.partnerId)
-            ? partner.partnerId
-            : ''
-      const shouldAutoFill = line.unitPrice === '0' || !line.unitPrice
+      const currentAfterProductLookup = linesRef.current.find((current) => current.uid === line.uid)
+      if (!currentAfterProductLookup || !isCurrentRequest(currentAfterProductLookup)) {
+        finishStaleRequest()
+        return
+      }
+      const shouldAutoFill = line.priceSource !== 'USER' && (line.unitPrice === '0' || !line.unitPrice)
       let nextUnitPrice = shouldAutoFill ? result.sellingPrice : line.unitPrice
       let nextPriceSource: DraftLine['priceSource'] = shouldAutoFill ? 'CATALOG' : line.priceSource
       let nextPriceMemoryUpdatedAt: string | null = null
@@ -604,43 +757,56 @@ export function EstimateFormPage() {
           // 가격기억 조회 실패는 모델 lookup 자체를 실패시키지 않는다. 정가 fallback 유지.
         }
       }
-      setLines((prev) =>
-        prev.map((current) => {
-          if (current.uid !== line.uid) return current
-          if ((current.modelName || '').trim() !== modelName) return current
-          const canApplyUnitPrice =
-            shouldAutoFill && current.priceSource !== 'USER'
-          return {
-            ...current,
-            productId: result.productId,
-            productName: result.productName,
-            productType: result.productType ?? 'SINGLE',
-            catalogUnitPrice: result.sellingPrice,
-            unitPrice: canApplyUnitPrice ? nextUnitPrice : current.unitPrice,
-            priceSource: canApplyUnitPrice ? nextPriceSource : current.priceSource,
-            priceMemoryUpdatedAt: canApplyUnitPrice ? nextPriceMemoryUpdatedAt : current.priceMemoryUpdatedAt,
-            lookupError: null,
-            lookupLoading: false,
-          }
-        }),
+      const current = linesRef.current.find((candidate) => candidate.uid === line.uid)
+      if (!current || !isCurrentRequest(current)) {
+        finishStaleRequest()
+        return
+      }
+      const currentIndex = linesRef.current.findIndex((candidate) => candidate.uid === line.uid)
+      const nextLine: DraftLine = {
+        ...current,
+        productId: result.productId,
+        productName: result.productName,
+        productType: result.productType ?? 'SINGLE',
+        catalogUnitPrice: result.sellingPrice,
+        unitPrice: shouldAutoFill ? nextUnitPrice : current.unitPrice,
+        priceSource: shouldAutoFill ? nextPriceSource : current.priceSource,
+        priceMemoryUpdatedAt: shouldAutoFill ? nextPriceMemoryUpdatedAt : current.priceMemoryUpdatedAt,
+        priceRefreshChanged: false,
+        lookupError: null,
+        lookupLoading: false,
+      }
+      const nextLines = linesRef.current.map((candidate) =>
+        candidate.uid === line.uid ? nextLine : candidate,
       )
+      linesRef.current = nextLines
+      setLines(nextLines)
       if (estimateFormCoeditProvider) {
         try {
-          estimateFormCoeditProvider.setItemValue(index, 'productName', result.productName)
+          estimateFormCoeditProvider.setItemValue(currentIndex, 'productName', result.productName)
           if (shouldAutoFill) {
-            estimateFormCoeditProvider.setItemValue(index, 'unitPrice', nextUnitPrice)
+            localAutoPriceWritesRef.current.set(line.uid, {
+              unitPrice: nextUnitPrice,
+              priceSource: nextPriceSource,
+              priceMemoryUpdatedAt: nextPriceMemoryUpdatedAt,
+              priceRefreshChanged: false,
+            })
+            estimateFormCoeditProvider.setItemValue(currentIndex, 'unitPrice', nextUnitPrice)
           }
-          estimateFormCoeditProvider.setItemValue(index, 'productId', result.productId)
+          estimateFormCoeditProvider.setItemValue(currentIndex, 'productId', result.productId)
         } catch {
+          localAutoPriceWritesRef.current.delete(line.uid)
           // 언마운트 중 provider destroy 가능 — 로컬 state 는 이미 갱신됨. 동기화 실패는 무시(가짜 lookup 오류 방지, 리뷰 LOW).
         }
       }
     } catch (err: unknown) {
-      updateLine(index, {
-        lookupError:
-          err instanceof Error
-            ? '모델 미존재 또는 lookup 실패'
-            : '알 수 없는 오류',
+      const current = linesRef.current.find((candidate) => candidate.uid === line.uid)
+      if (!current || !isCurrentRequest(current)) {
+        finishStaleRequest()
+        return
+      }
+      updateLine(linesRef.current.findIndex((candidate) => candidate.uid === line.uid), {
+        lookupError: err instanceof Error ? '모델 미존재 또는 lookup 실패' : '알 수 없는 오류',
         lookupLoading: false,
       })
     }
@@ -925,6 +1091,12 @@ export function EstimateFormPage() {
           />
         </div>
 
+        {lines.some((line) => line.priceRefreshChanged) ? (
+          <div className="price-memory-refresh-banner" role="status" aria-live="polite">
+            거래처 변경으로 최근단가 재적용 · 변경된 행을 확인해 주세요.
+          </div>
+        ) : null}
+
         {!isMobile ? (
           /* 라인 헤더 */
           <div
@@ -972,6 +1144,8 @@ export function EstimateFormPage() {
           const lineSupply = Math.round(lineIncl / 1.1)
           const lineVat = lineIncl - lineSupply
           const isBundle = line.productType === 'BUNDLE'
+          const priceStatus = priceSourceStatus(line)
+          const priceStatusId = `estimate-price-status-${line.uid}`
           if (isMobile) {
             return (
               <EstimateMobileLineCard
@@ -1011,8 +1185,12 @@ export function EstimateFormPage() {
                 padding: '6px 0',
                 alignItems: 'center',
                 borderBottom: isBundle ? 'none' : '1px solid #F3F4F6',
+                borderLeft: line.priceRefreshChanged ? '4px solid var(--action-brand)' : '4px solid transparent',
+                background: line.priceRefreshChanged ? 'var(--surface-selected)' : undefined,
+                boxShadow: line.priceRefreshChanged ? 'inset 0 0 0 1px var(--state-info-border)' : undefined,
               }}
               data-testid={`estimate-form-line-${i}`}
+              data-price-source={line.priceSource ?? ''}
             >
               <div style={{ textAlign: 'center', color: '#6B7280' }}>
                 {i + 1}
@@ -1077,20 +1255,26 @@ export function EstimateFormPage() {
                     unitPrice: value,
                     priceSource: 'USER',
                     priceMemoryUpdatedAt: null,
+                    priceRefreshChanged: false,
+                    lookupLoading: false,
                   })}
                   readOnly={Boolean(isReadOnly)}
                   inputMode="decimal"
                   inputStyle={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
                   aria-label={`라인 ${i + 1} 단가`}
+                  aria-describedby={priceStatus ? priceStatusId : undefined}
                   data-testid={`estimate-form-line-${i}-unit-price`}
                 />
-                {line.priceSource === 'REMEMBERED' ? (
+                {priceStatus ? (
                   <span
+                    id={priceStatusId}
                     role="note"
-                    title={`최근 단가${line.priceMemoryUpdatedAt ? ` · ${line.priceMemoryUpdatedAt.slice(0, 10)} 저장` : ''}`}
-                    style={{ display: 'block', marginTop: 2, textAlign: 'right', fontSize: 11, color: 'var(--ink-secondary, #5C6773)' }}
+                    aria-live="polite"
+                    aria-label={priceStatus.description}
+                    title={priceStatus.description}
+                    className="price-source-note"
                   >
-                    최근가
+                    {priceStatus.label}
                   </span>
                 ) : null}
               </div>
