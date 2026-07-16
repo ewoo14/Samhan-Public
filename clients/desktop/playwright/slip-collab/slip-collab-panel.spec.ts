@@ -184,13 +184,18 @@ test.describe('§7 입출고전표 협업 패널', () => {
     await expect(page.getByTestId('slip-coedit-field-items-0-quantity')).toBeVisible()
     await expect(page.getByTestId('slip-coedit-field-items-0-unitPrice')).toBeVisible()
 
-    await inlineForm.getByLabel('거래처', { exact: true }).fill('한일냉동기술 S2a')
+    // D-R8-7/D-R8-10: 거래처는 자유입력 coedit input 이 아니라 PartnerAutocomplete(단일 선택 경로)로
+    // 대체됐다 — partnerName 헤더는 선택/원격 전파(handleSlipPartnerSelect → CRDT 헤더)로만 갱신되며,
+    // 이 필드는 그 controlled value(협업 partnerName)를 표시한다(자유입력→구 partnerId 유지 각인
+    // R8-QA-3 방지). fieldPath 단위 coedit 편집은 수량·단가 셀로 검증한다.
     await inlineForm.getByLabel('수량 1').fill('3')
     await inlineForm.getByLabel('단가(VAT제외) 1').fill('120000')
 
-    await expect(inlineForm.getByLabel('거래처', { exact: true })).toHaveValue('한일냉동기술 S2a')
     await expect(inlineForm.getByLabel('수량 1')).toHaveValue('3')
     await expect(inlineForm.getByLabel('단가(VAT제외) 1')).toHaveValue('120000')
+    // 진입 시 auto-focus 로 열린 거래처 combobox 는 수량/단가로 포커스가 옮겨가며 blur→닫힌다 →
+    // coedit-bound 표시값(=DRAFT 전표 거래처)으로 복원(자유입력 hold 아님).
+    await expect(inlineForm.getByLabel('거래처', { exact: true })).toHaveValue('한일냉동기술')
     await expect(inlineForm).not.toContainText(DRAFT_SLIP_ID)
   })
 

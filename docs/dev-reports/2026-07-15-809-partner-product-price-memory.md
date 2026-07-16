@@ -864,15 +864,99 @@ end-to-end 배선까지 확인했다(rule 로드만으로는 불충분 — selec
 > [[feedback_qa_docker_real_test]] 의 *"실서버 테스트, code read PASS 금지"* 가 인프라 자산(경보·대시보드·
 > 마운트)에도 적용된다는 뜻이다.
 
-### R8 fix — 🚧 **진행 중** (본 문서 개정 시점 미완)
+### R8 fix — ✅ **완주** (R8-QA 신규 4건 + 라이브 잔여 3건 수렴 · 2026-07-16 PM 갱신)
 
 - fix = **OPUS 4.8**(캐논: fix = 그 라운드 진행 모델). 배치: **BE**(계약 변경 선행) → **DevOps/문서**
   (병렬) → **FE**(BE 계약 수신 후) → **QA**. 본 dev-report/spec 개정이 그중 **문서 배치**다.
 - **본 배치가 완료한 것**: D-R8-5 spec 명시·close · D-R8-6/7/8 계약 spec 명시 · lineId 왕복 계약 spec
   신설(미기재였음) · R7·R8 절 신설 · R7 stale 수치 정정 · **R8-DEVOPS-1 복구 + 재발 방지 가드 3종**.
-- 나머지 배치(BE·FE·QA)의 fix 결과·검증 실측·라이브 QA 는 **이 시점에 확정되지 않았다 — 여기서 결과를
-  단정하지 않는다.** **PM 이 fix 완료 후 이 절을 갱신한다.** 이후 **R9 = CODEX SOL 5.6 5차원**
-  (`gpt-5.6-sol`) → 양측 0수렴 → PM 종합 10-게이트 → CI green → 머지.
+- **✅ R8 fix 1차 완주**(회사PC · 28건 전건 disposition · `e8f558cd4`) → **라이브 QA 가 신규 4건
+  (R8-QA-9/11/12/13) 포착**. **R8 fix 2차 완주**(집PC 2026-07-16 · 아래 상세) — 신규 4건 + 그 fix 가
+  낳은 라이브 잔여 3건(VAT 드리프트·miss 각인·세트 구성품 재가격)까지 **국소 수렴**. 이후 **R9 =
+  CODEX SOL 5.6 5차원**(`gpt-5.6-sol` · 종합검증 1회) → 양측 0수렴 → PM 종합 10-게이트 → CI green → 머지.
+
+### R8-QA-13 / D-R8-13 fix — 마커 자기신고를 라인 내용과 대조 (OPUS 4.8 BE, R8 fix 2차)
+
+- **결함(라이브 실증)**: 요청 레벨 `lineIdContract` 마커는 클라이언트 **자기신고**라 서버가 내용과
+  대조하지 않았다. 스테일/악성 클라이언트가 마커 `true` 를 실으면서 **계보 보유(BUNDLE_SET)** 전표/
+  견적에서 lineId 를 한 개도 안 실으면, 서버가 전 라인 교체를 수행 → **200** → 세트 계보 전량 파괴
+  (`parent→NULL`·`set_head→false`). D-R8-9 가 이 경로를 "오탐 제거" 명목으로 허용해 R8-QA-1 을
+  **마커라는 다른 문**으로 재개방했다. D-R8-13 이 그 부분만 반전한다.
+- **fix**: 마커를 내용과 대조한다. **계보 보유 문서 ∧ 요청 non-null lineId 0개** 일 때만 400
+  거부(`INVALID_INPUT`). 오탐 방지 — 계보 없는 평면 문서 + lineId 0개 = 허용, 계보 보유 + lineId ≥1개
+  = 허용. 오직 (계보 ∧ lineId 전무) 만 거부. 거부 메시지는 마커 거부(`REJECTION_MESSAGE`, "앱을
+  업데이트")와 **다른** 조치("세트 구성품" + **화면 새로고침**)를 안내한다 —
+  거부되는 주체가 구버전 앱이 아니라 화면이 스테일한 최신 앱이기 때문이다.
+- **변경 파일**(services/slip-service 만):
+  - `service/BundleLineageResolver.java` — `hasBundleLineage()` 추가(캡처 계보 중 하나라도 세트
+    구성품이면 true).
+  - `service/LineIdContractGate.java` — `LINEAGE_REJECTION_MESSAGE` + `requireLineIdsForLineage(
+    boolean documentHasLineage, int requestedLineIdCount)` 추가.
+  - `service/SlipUpdateService.java`(매입)·`service/SalesSlipUpdateService.java`(매출)·
+    `estimate/service/EstimateService.java`(견적) — 3 미러 모두 **기존 라인 제거/교체 이전에**
+    `requireLineIdsForLineage(bundleLineage.hasBundleLineage(), 요청 non-null lineId 개수)` 배선.
+- **검증(genuine, 이 환경 실측)**:
+  - `LineIdContractGateTest` 12/12 · `SlipUpdateLineIdContractTest` 12/12 ·
+    `EstimateUpdateLineIdContractTest` 6/6 — 0 failures/errors/skipped
+    (`--rerun-tasks --no-build-cache`).
+  - `PartnerProductPriceMemoryIT` **29/29** 통과(실 PostgreSQL Testcontainers) — 개정된
+    `bundleSlipFullLineReplacementWithMarker_butNoLineIds_isRejectedToPreventLineageDestruction`
+    포함, 인접 마커 게이트 IT(round-trip 거부·견적 마커 거부) 무회귀 확인.
+  - 회귀 sweep: 전표/견적 update 를 부르는 타 테스트(`SlipUpdateIT`·`SlipSalesUpdateIT`·
+    `EstimateControllerIT` bundle CREATE·`RevisionRestoreVatAuthorityIT`·`EstimateServicePriceMemoryTest`)
+    는 평면 문서이거나 CREATE 경로라 D-R8-13(계보∧lineId전무) 조건에 도달하지 않음 — 무영향.
+
+### R8-QA-9/12 + mock 회귀 게이트 fix (OPUS 4.8 FE, R8 fix 2차)
+
+- **R8-QA-9 [HIGH]** 전표 수정 진입 시 거래처 빈칸 — `AsyncAutocomplete` 가 focus 로 열린 뒤 `disabled`
+  로 플립되면 React 가 disabled 요소에 onBlur 를 안 쏴 `open` 고착 → 선택값 표시 소실. **fix**:
+  `disabled` 전이 감지 `useEffect`(blur 타이머 정리 + `setOpen(false)`). 단위테스트 신설.
+- **R8-QA-12 [MEDIUM]** coedit 중 행삭제 잠금(`slipCoeditActive`)이 (1)수정 모달 행삭제를 영구 불가로
+  (2)R8-QA-2 근본 fix 라이브 검증을 봉쇄 → **D-R8-11: 잠금 제거 + Y.Doc lineId 직독으로만 방어**.
+  서버측 삭제 경합은 저장 400 → **충돌 배너("최신 내용 불러오기")** 로 처리(막다른 "입력값 확인" 대체).
+- **mock 회귀 hard gate 2건** — R8 fix 1차의 D-R8-7(거래처→`PartnerAutocomplete`·CRDT 헤더 편입)이
+  coedit 인라인 폼을 회귀시킴: `slip-coedit-field-header-partnerName` testid 소실 + 원격 memo 미전파.
+  **근본 fix**(테스트 약화 아님): `PartnerAutocomplete` 에 `inputTestId` prop + 재시드 게이트를
+  `isEmpty`(full-seed) / `stale`(lineId 셀만 in-place 복구, 헤더·원격편집 보존)로 분리. spec 은 D-R8-7 이
+  의도 제거한 자유입력 hold 단언만 coedit-bound 표시값 단언으로 이동(코어 커버리지 보존).
+
+### R8-QA-11 fix — 거래처 변경 재조회 공용 이식 (D-R8-10) + 라이브 잔여 3건 국소 수렴 (OPUS 4.8 FE)
+
+- **원 결함(R8-QA-11 HIGH)**: 수정 모달에서 거래처만 바꿔 저장 → 옛 거래처 협상단가가 새 거래처에
+  각인(모달에 재조회 부재). **D-R8-10 fix**: `SlipFormPage` 의 재조회·배너·강조를 공용 훅
+  `usePartnerPriceRefresh` 로 추출해 수정 모달에 이식(복붙 0).
+- **라이브 QA 가 그 fix 의 잔여 3건을 순차 포착 → 전부 국소 fix**(전부 모달 재조회 지점 마감 미스 =
+  확산 아님):
+  1. **VAT 드리프트 [MED]** — 모달 필드는 VAT제외인데 재조회가 VAT포함 기억값을 직기입 → 저장 시 BE
+     ×1.1 → 매 변경 ~10% 팽창. **fix**: `vatPrice.ts`(÷1.1 원단위 HALF_UP = BE `createFromVatInclusive`
+     미러)로 필드 도메인 변환 → 수렴 고정점(500,000→필드454,545→기억499,999.50).
+  2. **miss 각인 [HIGH · 원 결함의 miss 케이스]** — 새 거래처 기억 없으면 모달이 옛 값 유지 → 각인.
+     **fix**: 기존 BE `POST /products/lookup` 으로 카탈로그 판매가 조회 → miss fallback(폼 패리티) →
+     miss 시 카탈로그가로 전환·각인 차단.
+  3. **세트 구성품 재가격 [MED]** — 재조회가 세트 구성품 라인까지 카탈로그 fallback 적용 → 배분가
+     −9.09% 변형. **fix**: `bundleComponentLineIds`(BE `isBundleComponent` 미러)로 구성품을 후보에서
+     제외. 부수로 in-flight 편집 race 가드도 처리.
+
+### R8 fix 2차 검증 실측 (PM 독립)
+
+- **BE genuine** — slip-service **1,350 passed / 0 fail / 0 error / 0 skip**(189 클래스 ·
+  `--rerun-tasks --no-build-cache` foreground · 실 PG IT 포함).
+- **FE** — desktop `typecheck` exit 0 · vitest 전 green(design-system 12파일 · desktop 108파일 · 신규
+  `vatPrice`/`usePartnerPriceRefresh` 포함) · mock 회귀 게이트 대상 2 + 회귀 sweep green.
+- **배포 실증** — slip-service fresh jar(`LineIdContractGate.class` 포함) `--force-recreate` 재배포 ·
+  healthy · actuator UP.
+- **라이브 QA(Docker 실서버 · mock OFF · `dev_manager`)** — `price-memory-r8-adversarial-real-qa`
+  **13/13**(R8-QA-1·2a·2b·3·4·5·6·9·10·11-HIT·11-MISS·13 + 신설 14 구성품 가드) ·
+  `price-memory-r2-live-real-qa` **19/19** · 실캡처 `r8-postfix2/` 82장. 핵심 실측: 11-HIT 필드
+  454,545·B기억 499,999.50·A 1,004,300 불변 / 11-MISS 카탈로그 1,440,000→필드 1,309,091·B←카탈로그
+  (옛 A 854,700 미각인) / 신설 14 구성품 88,000·55,000 불변·순세트 bulk 0.
+
+### 📌 개발책임자 결정 (2026-07-16 · R8 페이싱 바운드)
+
+R8 한 슬라이스를 하루 종일 iterate(리뷰→fix→QA→잔여→fix…)한 데 대해 개발책임자가 **"이런 건 PM 이
+조절해야 한다"** 지적. 결정 = **"구성품 fix 마치고 R9 1회 종합 후 오늘 머지"** — R9 findings 를 한
+코너씩 재QA 하지 말고 **일괄 disposition + 재수렴 1회**로 바운드. PM 조절 규율
+(`.claude/memory/feedback_pm_regulate_slice_effort.md`) 박제.
 
 ## 정직 한계 (R4 확정 — 알려진 경계와 수용 근거)
 

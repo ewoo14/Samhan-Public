@@ -143,7 +143,7 @@ const ACCOUNT = 'dev_manager'
 // 전부 불가침(덮어쓰기 금지). 본 스펙의 직전 캡처는 r6-postfix/ 에 박제돼 있으므로 R8 fix 후
 // 재실행분은 별도 디렉토리로 분리한다. R8 적대 스펙(r8-postfix/ 직하)과도 파일명이 겹치므로
 // r2-suite/ 하위로 한 겹 더 내린다.
-const SHOTS = path.resolve(_dirname, '../../../../docs/qa/809-partner-product-price-memory/r8-postfix/r2-suite')
+const SHOTS = path.resolve(_dirname, '../../../../docs/qa/809-partner-product-price-memory/r8-postfix2/r2-suite')
 fs.mkdirSync(SHOTS, { recursive: true })
 
 const PARTNER_A = { name: '부산냉난방테크', query: '부산냉난방', id: 'e8ae9c86-afe1-3364-b484-1f5a2bf31313' }
@@ -168,14 +168,17 @@ const PARTNER_B = { name: '전주에어시스템', query: '전주에어', id: '1
 // 전개되는데 그 링크는 시트동기화/이카운트 임포트 경로 산물이라 `POST /products` 공개 API 로
 // 만들 수 없다(`CreateProductRequest` 에 구성품 배열이 없음). 반면 실 카탈로그에는 전개가
 // 실증된 세트가 있다 — R8 적대 스펙이 같은 이유로 이미 AF17B6474GZS 를 쓴다.
-const PRODUCT_X = { model: 'PC1NWSK1NRR', name: '', sellingPrice: '', id: 'e80287b2-869a-47d6-a2c0-2dc5ca050d74' }
-const PRODUCT_Y = { model: 'ACM-B102N', name: '', sellingPrice: '', id: '0145fc75-2c8e-4726-b150-7d9fc983b33f' }
+// [R8-postfix2] 스택 재시드로 구 픽스처(PC1NWSK1NRR / ACM-B102N / AF17B6474GZS)가 소멸 →
+// 현 실재 카탈로그로 재-핀(2026-07-16 실측: /slips/lookup-product·/api/products 조회 성공).
+// resolveFixtures 가 name·sellingPrice 를 API 로 채우므로 id·model 만 갱신한다.
+const PRODUCT_X = { model: 'AC100CNCDEH-76', name: '', sellingPrice: '', id: '508ffc15-4ebe-363e-a395-389ba0d6b6a7' }
+const PRODUCT_Y = { model: 'AC400CNCDEH-79', name: '', sellingPrice: '', id: 'e47852ff-2ea7-39e4-90d3-1cc0ea6ebfa1' }
 /** 실 카탈로그 세트 — bundle_component 2종(기본)이 전개된다. R8 적대 스펙과 동일 세트. */
-const BUNDLE = { model: 'AF17B6474GZS', sellingPrice: '', id: '21b20ce9-d972-46d3-81dc-a2571c782d09' }
-/** 세트 전개 구성품 — [0] = head(실내기), [1] = 구성품(실외기). 순서 계약은 2179 가 의존한다. */
+const BUNDLE = { model: 'QA797-SET-01', sellingPrice: '', id: '1ea24f99-631f-4e19-937f-be1901284769' }
+/** 세트 전개 구성품 — [0] = head(PART-01, display_order 1), [1] = 구성품(PART-02). 순서 계약은 2179 가 의존한다. */
 const BUNDLE_COMPONENT_IDS = [
-  'f199c745-0629-496f-b04a-8e30e529549e', // AF17B6474GZN (head · INDOOR · 기본)
-  'c9c200ad-c75a-44a6-b1cd-a813267bfc45', // AF17B6470DCX (OUTDOOR · 기본)
+  '7de11ab7-e70c-421e-80a4-7c6b51a2c6e9', // QA797-PART-01 (head · display_order 1 · set_head=true)
+  'ed278526-0e16-427d-8a92-2ca06164254a', // QA797-PART-02 (display_order 2 · set_head=false)
 ]
 
 /** 라운드 고유값 — 판매가/직전 라운드 값과 명백히 구분되는 단가. */

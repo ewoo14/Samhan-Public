@@ -6,14 +6,18 @@
  * product_db 에서 전량 소멸했다(R8 실측: `/api/products?q=AC200CNCDEH-77` → totalElements=0,
  * `q=QA797` → 0, `products.product_code` 는 1116행 전부 NULL). 그래서 그 파일은 현재
  * 0 passed / 10 failed / 9 did not run 이다(describe.serial 연쇄 skip). 본 스펙은 **실 카탈로그에
- * 실재하는 품목만** 사용해 R8 적대검증 3건을 재현·박제한다. 기존 파일의 단언은 일절 건드리지 않는다.
+ * 실재하는 품목만** 사용해 R8 적대검증을 재현·박제한다. 기존 파일의 단언은 일절 건드리지 않는다.
  *
- * 사용 실품목(실 DB·실 API 실측):
- *  - 세트 AF17B6474GZS (21b20ce9-…-a2571c782d09) BUNDLE / 판매가 1,813,000
- *      → 전개 구성품 2종: AF17B6474GZN(f199c745, head) · AF17B6470DCX(c9c200ad)
- *  - 단품 AC032CN1DBC1 (a5b924cb-…-c9492c361b38) SINGLE / 판매가 334,400
- *  - 거래처 한울냉열시스템 (44f0cfc1-…-04ad5fa70922)
- *  - 창고 5ab14cf6-…-0c04ef60fee9
+ * [R8-postfix2] R8 fix 2차 라운드 — 결함 재현 테스트를 교정 거동 fix-guard 로 전환한다(약화 금지,
+ * "결함 단언 → 교정 단언"). 공유 dev 스택 재시드로 픽스처를 현 실재 대상으로 재-핀했다(아래 상수).
+ *
+ * 사용 실품목(2026-07-16 실 DB·실 API 실측 검증):
+ *  - 세트 QA797-SET-01 (1ea24f99-…-be1901284769) BUNDLE / usage_scope PARTNER_ORDER
+ *      → 전개 구성품 2종: QA797-PART-01(7de11ab7, head, qty2 @88,000) · QA797-PART-02(ed278526, @55,000)
+ *  - 단품 AC1000CNCDEH-85 (d35ab633-…-b19262eb5fae) SINGLE / 판매가 4,800,000
+ *  - GUI 검색 실품목: AC200CNCDEH-77(a6992eb0, UI_HIT) · AC300CNCDEH-78(841e6a99, UI_MISS) — usage_scope BOTH
+ *  - 거래처 강릉HVAC솔루션 (e5c62496-…-c28fa7123675, A) · 거제공조산업 (f618755f-…-b9d950bcf8e3, B) — 둘 다 ACTIVE
+ *  - 창고 본사창고 11111111-…-000000000001
  *
  * 실행:
  *   cd clients/desktop
@@ -35,26 +39,32 @@ const BASE_URL = process.env['QA_BASE_URL'] ?? 'http://localhost:5218'
 const API_BASE = process.env['API_BASE'] ?? 'http://localhost:8080'
 const PASSWORD = process.env['DEV_PASSWORD'] ?? 'dev_p05_pass!'
 const ACCOUNT = 'dev_manager'
-// r2/·r4/·r4-postfix/·r5/·r5-postfix/·r6/·r6-postfix/·r8/ 는 이력 보존 — 불가침.
-// R8 적대리뷰 자체의 증거는 r8/ 에 박제돼 있다(RED 재현 19장). 본 스펙을 R8 fix 후 재실행하면
-// 그 증거를 덮어쓰므로, post-fix 재검증 캡처는 r8-postfix/ 신규 디렉토리로 분리한다.
-const SHOTS = path.resolve(_dirname, '../../../../docs/qa/809-partner-product-price-memory/r8-postfix')
+// r2/·r4/·r4-postfix/·r5/·r5-postfix/·r6/·r6-postfix/·r8/·r8-postfix/ 는 이력 보존 — 불가침.
+// R8 적대리뷰 자체의 증거는 r8/ 에, R8 fix 1차 검증은 r8-postfix/ 에 박제돼 있다. 본 스펙을
+// R8 fix 2차 후 재실행하면 그 증거를 덮어쓰므로, post-fix2 재검증 캡처는 r8-postfix2/ 신규
+// 디렉토리로 분리한다(결함 재현 → 교정 거동 fix-guard 로 전환한 라운드).
+const SHOTS = path.resolve(_dirname, '../../../../docs/qa/809-partner-product-price-memory/r8-postfix2')
 fs.mkdirSync(SHOTS, { recursive: true })
 
-const PARTNER = { id: '44f0cfc1-4a5f-4206-85cd-04ad5fa70922', name: '한울냉열시스템' }
-/** [R8-postfix] D-R8-7 거래처 변경 검증용 두 번째 실 거래처 — 실 DB 실측(partner_db.partners). */
-const OTHER_PARTNER = { id: '2cff65ba-2ec6-445c-9081-f277adcefce1', name: '(B.E.S.T)에어컨' }
-const WAREHOUSE = '5ab14cf6-d97e-40c4-b991-0c04ef60fee9'
-const BUNDLE = { id: '21b20ce9-d972-46d3-81dc-a2571c782d09', model: 'AF17B6474GZS' }
-/** 세트 전개 구성품 — head(GZN) + 구성품(DCX). */
-const COMP_HEAD = { id: 'f199c745-0629-496f-b04a-8e30e529549e', model: 'AF17B6474GZN' }
-const COMP_TAIL = { id: 'c9c200ad-c75a-44a6-b1cd-a813267bfc45', model: 'AF17B6470DCX' }
-/** 세트와 무관한 순수 단품 — 계보 오귀속의 피해자. */
-const SINGLE = { id: 'a5b924cb-3a9c-44a8-813e-c9492c361b38', model: 'AC032CN1DBC1' }
-// 전표 폼 품목 자동완성은 usageScope=PARTNER_ORDER 로 좁혀 검색한다(SlipFormPage:1291).
-// SINGLE(AC032CN1DBC1)은 usage_scope=NONE 이라 GUI 검색에 뜨지 않는다 — QA-4 는 BOTH 스코프 실품목 사용.
-const UI_HIT = { id: '3b342b65-0375-4c19-a51f-abc23c50e1ed', model: 'ACD-2558G' }
-const UI_MISS = { id: '0de09f0a-491e-482e-9b57-e99c2f0deca1', model: 'ACM-A202DN' }
+// ⚠️ [R8-postfix2] 공유 dev 스택의 product_db·partner_db 가 재시드돼 R8/R8-postfix 시점의 합성
+// 픽스처(AF17B6474GZS / AC032CN1DBC1 / 한울냉열시스템 …)가 전량 소멸했다(실측: 그 UUID·모델명
+// 0행). 아래는 현 스택에 실재하는 품목·거래처·창고로 재-핀한 것이다(2026-07-16 실측 검증:
+// 세트 전개 계보·구성품가·단품 기억까지 라이브 create 로 확인). 단언을 약화한 게 아니라 카탈로그
+// 변동에 맞춰 실재 대상으로 다시 고정한 것이다(스펙 자체가 "실 카탈로그 고정" 원칙).
+const PARTNER = { id: 'e5c62496-47df-3a07-a3d7-c28fa7123675', name: '강릉HVAC솔루션' }
+/** [R8-postfix2] D-R8-7/R8-QA-11 거래처 변경 검증용 두 번째 실 거래처 — 실 DB 실측(partner_db.partners, ACTIVE). */
+const OTHER_PARTNER = { id: 'f618755f-9439-33f2-8983-b9d950bcf8e3', name: '거제공조산업' }
+const WAREHOUSE = '11111111-1111-1111-1111-000000000001'
+const BUNDLE = { id: '1ea24f99-631f-4e19-937f-be1901284769', model: 'QA797-SET-01' }
+/** 세트 전개 구성품 — head(PART-01, display_order 1) + 구성품(PART-02, display_order 2). */
+const COMP_HEAD = { id: '7de11ab7-e70c-421e-80a4-7c6b51a2c6e9', model: 'QA797-PART-01' }
+const COMP_TAIL = { id: 'ed278526-0e16-427d-8a92-2ca06164254a', model: 'QA797-PART-02' }
+/** 세트와 무관한 순수 단품 — 계보 오귀속의 피해자. API 라인으로만 쓰여 usage_scope 무관. */
+const SINGLE = { id: 'd35ab633-c3db-3187-acb0-b19262eb5fae', model: 'AC1000CNCDEH-85' }
+// 전표 폼 품목 자동완성은 usageScope=PARTNER_ORDER 로 좁혀 검색한다(SlipFormPage:1310).
+// 아래 2종은 usage_scope=BOTH 실품목이라 그 필터에 걸려 GUI 검색에 뜬다(실측: q 검색 각 1건).
+const UI_HIT = { id: 'a6992eb0-81fc-3b3d-957b-7accfe06288c', model: 'AC200CNCDEH-77' }
+const UI_MISS = { id: '841e6a99-06fe-3252-8a4f-5227de864a62', model: 'AC300CNCDEH-78' }
 
 function psql(sql: string): string {
   // docker exec -tAc 는 한 줄 SQL 만 받는다 — 개행/연속공백을 접지 않으면 syntax error.
@@ -272,22 +282,21 @@ test.describe('#809 R8 — OPUS 4.8 적대검증 라이브 재현', () => {
   })
 
   /**
-   * R8-QA-2a [BLOCKING·fix 가드] — R8 fix 후, 원래의 BLOCKING 트리거가 **봉쇄**됐는지 확인한다.
+   * R8-QA-2a [D-R8-11·fix 가드] — R8 fix 1차의 행삭제 **잠금이 제거**됐는지 확인한다.
    *
-   * R8 리뷰가 라이브 2/2 로 재현한 원 결함: `SlipDetailPage.coeditLinesToEditLines` 가 Y.Doc 행의
-   * 셀 값은 직독하면서 **lineId 만은 로컬 배열 `current[index]` 에서 위치로 집었다**. 원격 피어가
-   * 행을 지우면 Y.Array 가 통째 교체돼 인덱스가 밀리는데 수신 창의 `current` 는 아직 옛 길이라,
-   * 삭제 지점 이후 모든 행이 **"내용은 다음 행, lineId 는 이전 행"** 으로 어긋난 채 PUT 됐다.
-   *
-   * R8 fix 는 두 겹으로 대응했다:
+   * R8 fix 1차는 원격삭제 → lineId 밀림 BLOCKING 에 두 겹으로 대응했다:
    *  1. **근본 fix** — `coeditLineIds.resolveServerLineId` 로 Y.Doc lineId 직독 + 서버 소유검증
-   *  2. **심층방어** — coedit 중 라인 구조(행 삭제) 잠금 (`slipCoeditActive`)
+   *  2. **심층방어(과잉)** — coedit 중 행 삭제 버튼 잠금 (`slipCoeditActive`)
    *
-   * 이 테스트는 2번(잠금)을 단언한다. 1번(직독)은 **이 경로로는 더 이상 실증할 수 없다** —
-   * 잠금이 트리거를 막아 원 시나리오가 GUI 로 도달 불가가 됐기 때문이다. 그 정직 고지는
-   * 보고서에 남기고, 아직 열려 있는 경로는 R8-QA-2b 가 맡는다.
+   * 그러나 그 잠금은 (a) 수정 모달의 행삭제를 **영구 불가**로 만들고 (b) 근본 fix(직독)의 라이브
+   * 검증 자체를 봉쇄했다. **D-R8-11 결정: 잠금 제거 + Y.Doc 직독만으로 방어.** 잠금이 사라졌으니
+   * 이제 행 삭제 버튼은 coedit 중에도 **활성**이어야 한다(SlipDetailPage 에서 `disabled={slipCoeditActive}`
+   * 와 lock title 이 제거됨). 잠금이 회귀하면 이 단언이 실패한다.
+   *
+   * 근본 fix(직독)의 실제 계보 방어는 R8-QA-2b(2창 서버측 삭제 → 피어 저장)가 라이브로 실증한다 —
+   * D-R8-11 로 트리거가 다시 열렸으므로 이번엔 GUI 로 도달 가능하다.
    */
-  test('R8-QA-2a [BLOCKING·fix 가드] coedit 중 라인 구조 잠금 — 원격 삭제로 lineId 를 밀 어포던스 자체가 봉쇄', async ({ browser }) => {
+  test('R8-QA-2a [D-R8-11·fix 가드] coedit 중 행 삭제 버튼 활성 — 잠금 제거(직독 방어로 대체)', async ({ browser }) => {
     const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
     const page = await ctx.newPage()
     const auth = await login(page)
@@ -296,41 +305,43 @@ test.describe('#809 R8 — OPUS 4.8 적대검증 라이브 재현', () => {
     await openSalesEdit(page, slipId)
     await capture(page, '03-r8-qa-2a-coedit-edit-modal-3lines')
 
-    // 🔴 fix 가드 — coedit 활성 중에는 행 삭제 버튼이 비활성이어야 한다.
-    //    R8 리뷰 시점(6ae5ccde9)엔 이 버튼이 활성이었고, 그게 원격삭제 → lineId 밀림 →
-    //    계보 오귀속 BLOCKING 의 입구였다. 현재는 slipCoeditActive 로 잠긴다
-    //    (SlipDetailPage:1704 `disabled={slipCoeditActive}` — 견적 lineStructureLocked 와 동일 계약).
+    // 🔴 fix 가드 — D-R8-11 이후 coedit 활성 중에도 행 삭제 버튼이 **활성**이어야 한다.
+    //    R8 fix 1차(5d38255df)엔 `disabled={slipCoeditActive}` 로 잠겼고 그게 R8-QA-2 근본 fix 의
+    //    라이브 검증을 봉쇄했다. R8 fix 2차가 그 잠금을 제거했다 — 잠금이 다시 걸리면(회귀) 실패.
     const del = page.getByRole('button', { name: '1번 행 삭제' })
     await expect(del, 'R8-QA-2a: 행 삭제 버튼 미표시').toBeVisible({ timeout: 10000 })
     await expect(
       del,
-      'R8-QA-2a fix 가드: coedit 중 행 삭제가 활성 — 원격삭제 lineId 밀림 경로가 다시 열림(R8-QA-2 회귀)',
-    ).toBeDisabled()
-    await expect(del).toHaveAttribute('title', '협업 편집 중에는 행을 삭제할 수 없습니다')
-    await capture(page, '04-r8-qa-2a-row-delete-disabled-during-coedit')
+      'R8-QA-2a fix 가드: coedit 중 행 삭제가 비활성 — D-R8-11 잠금 제거가 회귀했다(직독 방어 검증 봉쇄)',
+    ).toBeEnabled()
+    // 잠금 title 도 제거됐어야 한다(잠금 어포던스의 흔적 0).
+    expect(
+      await del.getAttribute('title'),
+      'R8-QA-2a fix 가드: 행 삭제 버튼에 잠금 title 이 잔존 — 잠금 제거 미완',
+    ).not.toBe('협업 편집 중에는 행을 삭제할 수 없습니다')
+    await capture(page, '04-r8-qa-2a-row-delete-active-during-coedit')
     await ctx.close()
   })
 
   /**
-   * R8-QA-2b [BLOCKING·불변식 보존] — R8-QA-2 의 **불변식은 그대로** 두고, R8 fix 이후에도
-   * **여전히 열려 있는 문**으로 같은 결함 계열을 유발할 수 있는지 확인한다.
+   * R8-QA-2b [D-R8-11·근본 fix 라이브 실증] — 잠금 제거 후, **2창 GUI 로** 계보 방어를 실증한다.
+   * (핸드오프 필수 항목: R8-QA-2 근본 fix(Y.Doc lineId 직독)의 라이브 재현.)
    *
-   * 왜 이 테스트가 필요한가: R8 fix 는 coedit 편집 모달의 행삭제(`×` → `removeSalesLine` →
-   * Y.Doc `replaceItems`)를 **잠갔다**(R8-QA-2a). 그래서 R8-QA-2 의 원래 트리거는 GUI 로 도달
-   * 불가가 됐다. 그러나 라인 삭제 경로는 **하나가 아니다** — 상세화면 툴바의 '행 삭제'
-   * (`handleRemoveLine` → **BE DELETE**, SlipDetailPage:1270)는 `linesEditable`(status DRAFT/SAVED)
-   * 만 보고 **`slipCoeditActive` 를 보지 않는다**. 즉 피어 A 가 상세화면에서 서버측 행삭제를
-   * 하는 동안 피어 B 는 coedit 편집 모달에 머무를 수 있다.
+   * 시나리오: 피어 A 는 상세화면 툴바에서 세트 head 를 **서버측 삭제**(`handleRemoveLine` → BE DELETE)
+   * 하고, 그 동안 피어 B 는 coedit 편집 모달에서 단품 단가를 입력한 뒤 **저장**한다. B 의 Y.Doc·
+   * `knownServerLineIds` 는 삭제 이전 스냅샷이라, 삭제된 head 의 lineId 를 그대로 싣는다.
    *
-   * 이게 왜 위험한가: `coeditLineIds.ts` 의 재시드 게이트 주석은
-   *   *"전표/견적 모두 coedit 중 라인 추가·삭제를 잠그므로(seed-lock) Y.Doc 행은 전부 seed 유래다"*
-   * 를 **안전성의 근거로 명시**한다. 서버측 삭제는 그 전제 밖이다 — B 의 Y.Doc 은 서버에서
-   * 사라진 라인의 lineId 를 계속 들고 있고, B 의 `knownServerLineIds` 도 삭제 이전 스냅샷이라
-   * `resolveServerLineId` 가 그 lineId 를 **정상 승인**한다.
+   * D-R8-11 로 편집 모달의 행삭제 잠금이 사라져 이 경합이 GUI 로 도달 가능해졌다. 방어는 두 겹:
+   *  1. 서버 `validateLineIds` — B 가 실은 삭제된 lineId 는 현재 활성 라인이 아니므로 **400 거부**.
+   *  2. FE `resolveServerLineId` — 근본 fix. lineId 를 Y.Doc 에서 위치가 아니라 **값으로 직독**.
    *
-   * 불변식은 R8 리뷰 원본과 동일하다 — 어떤 경로로도 깨져선 안 된다.
+   * **판정(둘 중 하나면 정상)**:
+   *  (a) 저장이 2xx 로 성공 → 계보 무손상 + 사용자 입력 단가가 기억됨, 또는
+   *  (b) 저장이 400 으로 거부 → **충돌 안내 배너**(R8-QA-12 fix: "최신 내용 불러오기…")로 사용자 인지.
+   * 어느 경로든 **세트 계보 오귀속·head 탈취는 없어야** 한다(불변식). 그리고 400 인데 막다른
+   * "입력값을 확인" 문구가 뜨면 **실패**(R8-QA-12 미fix — 사용자가 복구 경로를 못 찾음).
    */
-  test('R8-QA-2b [BLOCKING·불변식] 피어 coedit 중 서버측 행 삭제(툴바) → 수신창 저장 — 계보 오귀속·head 탈취·단가 증발 없음', async ({ browser }) => {
+  test('R8-QA-2b [D-R8-11·근본 fix] 2창 서버측 head 삭제 → 피어 저장 — 계보 방어(직독) + 400 시 충돌 안내 배너', async ({ browser }) => {
     const ctxA = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
     const ctxB = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
     const pageA = await ctxA.newPage()
@@ -342,10 +353,10 @@ test.describe('#809 R8 — OPUS 4.8 적대검증 라이브 재현', () => {
     const slipId = await createBundlePlusSingleSlip(pageA, auth)
     const NEW_SINGLE_PRICE = '299000' // 수신창이 단품 라인에 새로 입력할 단가(VAT 제외)
     const expectedMemory = '328900.00/LINE_SAVE' // 299000 × 1.1
-    // 생성 직후 단품 기억 = 334400 × 1.1. 저장이 정상이면 328900 으로 갱신돼야 한다.
-    expect(memoryOf(SINGLE.id), 'R8-QA-2b 전제: 생성 시 단품은 판매가 기준으로 기억됨').toBe('367840.00/LINE_SAVE')
+    // 생성 직후 단품 기억 = 334400 × 1.1. 저장이 정상(2xx)이면 328900 으로 갱신돼야 한다.
+    expect(memoryOf(SINGLE.id), 'R8-QA-2b 전제: 생성 시 단품은 라인 단가 기준으로 기억됨').toBe('367840.00/LINE_SAVE')
 
-    // 창B: coedit 편집 모달 진입 → 단품(3행) 단가 직접 입력. 이 기억이 살아남아야 정상.
+    // 창B: coedit 편집 모달 진입 → 단품(3행) 단가 직접 입력.
     await openSalesEdit(pageB, slipId)
     await capture(pageB, '05-r8-qa-2b-windowB-coedit-3lines')
     await pageB.getByLabel('단가(VAT제외) 3').fill(NEW_SINGLE_PRICE)
@@ -353,7 +364,6 @@ test.describe('#809 R8 — OPUS 4.8 적대검증 라이브 재현', () => {
     await capture(pageB, '06-r8-qa-2b-windowB-single-price-entered-299000')
 
     // 창A: 상세화면(편집 모달 아님) → 1행(세트 head) 선택 → 툴바 '행 삭제' → BE DELETE.
-    // 이 경로는 slipCoeditActive 게이트 밖이라 B 가 coedit 중이어도 막히지 않는다.
     await pageA.goto(`${BASE_URL}/sales/${slipId}`)
     await pageA.getByTestId('sales-slip-edit-button').waitFor({ state: 'visible', timeout: 30000 })
     await pageA.getByRole('button', { name: '라인 1 선택' }).click()
@@ -385,42 +395,61 @@ test.describe('#809 R8 — OPUS 4.8 적대검증 라이브 재현', () => {
     const putStatus = resp.status()
     console.log('[R8-QA-2b] 창B PUT 상태:', putStatus)
     console.log('[R8-QA-2b] 창B PUT body:', putBody.join('\n'))
-    await pageB.waitForTimeout(2500)
+    await pageB.waitForTimeout(2000)
     await capture(pageB, '10-r8-qa-2b-windowB-after-save')
-
-    await pageB.reload()
-    await pageB.getByTestId('sales-slip-edit-button').waitFor({ state: 'visible', timeout: 30000 })
-    await capture(pageB, '11-r8-qa-2b-final-detail-after-save')
 
     const finalLineage = lineageOf(slipId)
     console.log('[R8-QA-2b] 저장 후 계보:', finalLineage)
 
-    // 🔴 불변식 1 — 세트와 무관한 단품은 어떤 경우에도 세트 구성품이 될 수 없다. (R8 원본 동일)
+    // 🔴 불변식 1 — 세트와 무관한 단품은 어떤 경우에도 세트 구성품이 될 수 없다.
     expect(
       psql(`SELECT count(*) FROM slip_lines WHERE slip_id='${slipId}' AND is_deleted=false
               AND product_id='${SINGLE.id}' AND parent_set_model IS NOT NULL`),
       `R8-QA-2b: 단품 ${SINGLE.model} 이 세트 구성품으로 오귀속됨 (계보=${finalLineage} · PUT=${putStatus})`,
     ).toBe('0')
 
-    // 🔴 불변식 2 — head 행이 삭제된 뒤 남은 구성품이 head 지위를 훔쳐선 안 된다. (R8 원본 동일)
+    // 🔴 불변식 2 — head 행이 삭제된 뒤 남은 구성품이 head 지위를 훔쳐선 안 된다.
     expect(
       psql(`SELECT count(*) FROM slip_lines WHERE slip_id='${slipId}' AND is_deleted=false
               AND product_id='${COMP_TAIL.id}' AND set_head=true`),
       `R8-QA-2b: 삭제된 head 의 setHead 가 잔존 구성품으로 이식됨 (계보=${finalLineage} · PUT=${putStatus})`,
     ).toBe('0')
 
-    // 🔴 불변식 3 — 저장 결과가 **일관**돼야 한다. 저장이 2xx 로 성공했다고 사용자에게 말했다면
-    //    사용자가 입력한 299000(×1.1=328900)이 기억돼야 한다. 성공을 보고하고 입력을 조용히
-    //    버리는 것이 R8-QA-2 가 적발한 결함의 본질이다. 거부(4xx/409)라면 사용자는 최소한
-    //    자기 입력이 반영되지 않았음을 안다 — 그 경우는 이 불변식의 대상이 아니다.
+    // 🔴 판정 — 성공(2xx)이면 사용자 입력 기억, 거부(4xx)면 충돌 안내 배너로 사용자 인지.
     if (putStatus >= 200 && putStatus < 300) {
+      console.log('[R8-QA-2b] 경로 (a) — 저장 성공, 계보 무손상 + 사용자 입력 기억 검증')
       expect(
         memoryOf(SINGLE.id),
-        `R8-QA-2b: 저장이 ${putStatus} 로 성공했는데 사용자 입력 단가(${NEW_SINGLE_PRICE})의 기억이 증발함`,
+        `R8-QA-2b(a): 저장이 ${putStatus} 로 성공했는데 사용자 입력 단가(${NEW_SINGLE_PRICE})의 기억이 증발함`,
       ).toBe(expectedMemory)
     } else {
-      console.log(`[R8-QA-2b] 저장이 ${putStatus} 로 거부됨 — 사용자 입력 증발은 불변식 대상 아님(사용자가 인지 가능)`)
+      console.log('[R8-QA-2b] 경로 (b) — 저장 400 거부, 충돌 안내 배너(R8-QA-12 fix) 검증')
+      // 🔴 R8-QA-12 fix 가드 — 400 은 막다른 "입력값 확인" 이 아니라 복구 가능한 충돌 배너여야 한다.
+      const banner = pageB.getByTestId('sales-slip-edit-conflict-banner')
+      await expect(banner, 'R8-QA-2b(b): 400 거부인데 충돌 안내 배너가 없음(R8-QA-12 미fix — 사용자 인지 불가)')
+        .toBeVisible({ timeout: 10000 })
+      const bannerText = ((await banner.textContent()) ?? '').trim()
+      console.log('[R8-QA-2b] 충돌 배너 문구:', JSON.stringify(bannerText))
+      await capture(pageB, '10b-r8-qa-2b-windowB-conflict-banner')
+      expect(
+        bannerText,
+        `R8-QA-2b(b): 충돌 배너가 "최신 내용 불러오기" 복구 경로를 안내하지 않음 (문구=${bannerText})`,
+      ).toContain('최신 내용 불러오기')
+      // 막다른 입력값-확인 문구(R8-QA-12 미fix 신호)가 뜨면 실패.
+      expect(
+        bannerText,
+        'R8-QA-2b(b): 막다른 "입력값 확인" 문구 — 구조 불일치를 입력 오류로 오도(R8-QA-12 미fix)',
+      ).not.toContain('입력값')
+      // 복구 버튼(최신 내용 불러오기)도 노출돼야 한다.
+      await expect(
+        pageB.getByTestId('sales-slip-edit-reload'),
+        'R8-QA-2b(b): "최신 내용 불러오기" 복구 버튼 미표시',
+      ).toBeVisible()
     }
+
+    await pageB.reload()
+    await pageB.getByTestId('sales-slip-edit-button').waitFor({ state: 'visible', timeout: 30000 })
+    await capture(pageB, '11-r8-qa-2b-final-detail-after-save')
 
     await ctxA.close()
     await ctxB.close()
@@ -618,7 +647,7 @@ test.describe('#809 R8 — OPUS 4.8 적대검증 라이브 재현', () => {
     page.on('request', (r) => {
       if (r.url().includes('/slips/price-memory')) during.push(`${r.method()} ${r.url()}`)
     })
-    await pickAutocomplete(page, '거래처', '거래처 목록', '(B.E.S.T)에어컨')
+    await pickAutocomplete(page, '거래처', '거래처 목록', OTHER_PARTNER.name)
     await page.waitForTimeout(2500)
     await capture(page, '17-r8-qa-5-after-partner-change-banner-and-highlight')
 
@@ -724,10 +753,16 @@ test.describe('#809 R8 — OPUS 4.8 적대검증 라이브 재현', () => {
   })
 
   /**
-   * 🆕 R8-QA-9 [HIGH·신규 결함] — D-R8-7 이 심은 회귀. 전표 수정 모달을 열면 거래처가
-   * **항상 빈 칸**으로 보인다. 전표에는 거래처가 멀쩡히 있는데도.
+   * R8-QA-9 [HIGH·fix 가드] — R8 fix 2차가 **거래처 빈칸 회귀를 교정**했는지 확인한다.
+   * 전표 수정 모달 진입 시 거래처 상호가 정상 표시(=partnerName)되고 aria-expanded 고착이 없어야 한다.
    *
-   * **메커니즘(전 단계 라이브 실측으로 확정)**:
+   * **fix**: `AsyncAutocomplete` 가 `disabled` 전이를 감지해 `setOpen(false)`+blur 타이머 정리를 강제한다.
+   * disabled 요소는 React 가 onBlur 를 발화하지 않아 open 이 true 로 고착되던 것을, disabled effect 로
+   * 직접 끊는다 → `displayValue = open ? draft : selectedLabel` 이 selectedLabel(상호)로 복원된다.
+   *
+   * 아래는 **원 결함의 메커니즘**(fix 대상)이다 — 이 단언들이 실패하면 그 회귀가 돌아온 것이다.
+   *
+   * **원 결함 메커니즘(전 단계 라이브 실측으로 확정, 지금은 fix 됨)**:
    *  1. `SlipDetailPage:511-522` 매출 인라인 편집 진입 effect 가
    *     `input:not([readonly]):not([disabled])` **첫 요소에 focus** 한다. 주석이 명시하듯
    *     readonly(판매번호)를 건너뛰므로 **첫 편집가능 필드 = 거래처 PartnerAutocomplete** 다.
@@ -757,7 +792,7 @@ test.describe('#809 R8 — OPUS 4.8 적대검증 라이브 재현', () => {
    * 스스로 *"교체한 PartnerAutocomplete 경로는 typecheck + 순수함수 테스트로만 검증됨. 라이브 QA
    * 필수"* 라고 정직 고지했고, 이 결함이 정확히 그 구멍에서 나왔다.
    */
-  test('🆕 R8-QA-9 [HIGH·신규] 전표 수정 모달 진입 시 거래처가 빈 칸으로 표시 — 값은 state 에 있으나 open 고착으로 표시 소실', async ({ browser }) => {
+  test('R8-QA-9 [HIGH·fix 가드] 전표 수정 모달 진입 시 거래처 상호 정상 표시(partnerName) · aria-expanded 고착 없음', async ({ browser }) => {
     const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
     const page = await ctx.newPage()
     const auth = await login(page)
@@ -769,64 +804,85 @@ test.describe('#809 R8 — OPUS 4.8 적대검증 라이브 재현', () => {
 
     await openSalesEdit(page, slipId)
     const combo = page.getByRole('combobox', { name: '거래처' })
-    await capture(page, '20-r8-qa-9-edit-modal-partner-renders-empty')
+    // fix 안정화 대기 — disabled effect 가 open 고착을 끊고 selectedLabel 로 복원할 시간.
+    await expect(combo).toHaveValue(PARTNER.name, { timeout: 15000 })
+    await capture(page, '20-r8-qa-9-edit-modal-partner-renders-name')
 
-    // 보조 필드는 채워져 있다 — 화면 자기모순의 증거.
+    // 보조 필드도 채워져 있다(D-R8-7 파생 read-only 표시).
     expect(await page.getByLabel('거래처코드').inputValue(), 'R8-QA-9 전제: 거래처코드는 채워져 있음').not.toBe('')
     expect(await page.getByLabel('사업자번호').inputValue(), 'R8-QA-9 전제: 사업자번호는 채워져 있음').not.toBe('')
 
-    // 🔴 결함 1 — 상호만 빈 칸이다.
+    // 🔴 fix 가드 1 — 거래처 상호가 정상 표시된다(옛 회귀=빈 칸). 실패하면 open 고착 회귀.
     expect(
       await combo.inputValue(),
-      'R8-QA-9: 전표 수정 모달의 거래처가 빈 칸 — 거래처코드/사업자번호는 채워져 있는데 상호만 소실(표시 회귀)',
+      'R8-QA-9 fix 가드: 전표 수정 모달의 거래처 상호가 빈 칸 — open 고착 표시 회귀(AsyncAutocomplete disabled effect 미작동)',
     ).toBe(PARTNER.name)
 
-    // 🔴 결함 2 — 포커스가 없는데 aria-expanded=true (WAI-ARIA combobox 위반 · open 고착의 직접 증거).
+    // 🔴 fix 가드 2 — 포커스도 popup 도 없는데 aria-expanded=true 로 고착되면 안 된다(WAI-ARIA combobox).
     expect(
       await combo.evaluate((el) => el === document.activeElement),
       'R8-QA-9 전제: 거래처 input 은 포커스를 갖고 있지 않음',
     ).toBe(false)
     expect(
       await combo.getAttribute('aria-expanded'),
-      'R8-QA-9: 포커스도 popup 도 없는데 aria-expanded=true — open 고착(WAI-ARIA combobox 패턴 위반)',
+      'R8-QA-9 fix 가드: 포커스도 popup 도 없는데 aria-expanded=true — open 고착 회귀(WAI-ARIA combobox 패턴 위반)',
     ).toBe('false')
 
     await ctx.close()
   })
 
   /**
-   * 🆕 R8-QA-10 [2순위 확인] — D-R8-7 이 신설한 **CRDT 헤더 partnerId 전파** 실증 + FE 배치가
-   * 정직 고지한 **배너 미전파 갭** 실측.
+   * R8-QA-10 [확인·fix 가드] — D-R8-7 의 **CRDT 헤더 partnerId 전파** 유지 + R8 fix 2차가 심은
+   * **수정 모달 배너**가 변경 주체 창(A)에 노출되는지 실증.
    *
-   * FE 배치 주장: *"CRDT header partnerId 편입은 회피 불가. 전표 수정 폼은 coedit 항상 활성이라
-   * applyProviderState 가 doc 변경마다 헤더를 되읽어 전파 없이는 로컬 선택이 즉시 구값으로 복귀"*.
-   * → 창A 가 거래처를 바꾸면 창B 에 **전파**돼야 한다(안 그러면 B 가 구 partnerId 로 저장).
+   * 두 계약을 함께 단언한다:
+   *  1. **CRDT 전파(유지)** — 창A 가 거래처를 바꾸면 헤더 4필드가 창B 에 원자 전파된다
+   *     (`handleSlipPartnerSelect` → provider.setHeaderValue ×4). 전파가 없으면 B 는 구 partnerId 로 저장.
+   *  2. **배너 노출(신규 fix)** — R8-QA-11 fix 로 수정 모달도 거래처 변경 시 재조회+배너를 한다.
+   *     변경 주체 창A 에 `sales-slip-edit-price-refresh-banner` 가 뜬다(size>0). R8 fix 1차엔 배너가
+   *     아예 없어(R8-QA-10 원 실측 count=0) 사용자가 옛 단가 잔존을 몰랐다.
    *
-   * 동시에 FE 배치는 갭을 고지했다: *"priceRefreshChanged(변경행 강조/배너)는 로컬 state 라 CRDT
-   * 미전파 → 원격 피어가 배너 미수신"*. 이 테스트는 그 갭이 **실제로 그런지** 실측해 박제한다
-   * (fix 대상 아님 · R9 판단 자료).
+   * 배너가 뜨려면 재조회로 라인 단가가 **바뀌어야** 하므로, 원격 거래처 B 에 단품의 다른 기억단가를
+   * 미리 심어 hit→변경을 결정적으로 만든다.
    */
-  test('🆕 R8-QA-10 [확인] 2창 coedit — 거래처 변경이 원격 피어에 CRDT 전파 · 배너는 미전파(고지된 갭 실측)', async ({ browser }) => {
+  test('R8-QA-10 [확인·fix 가드] 2창 coedit — 거래처 변경 CRDT 전파 유지 + 변경 주체 창에 재적용 배너 노출', async ({ browser }) => {
     const ctxA = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
     const ctxB = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
     const pageA = await ctxA.newPage()
     const pageB = await ctxB.newPage()
     const auth = await login(pageA)
     await login(pageB)
+    resetMemoryPairs([SINGLE.id])
+    resetMemoryPairsFor(OTHER_PARTNER.id, [SINGLE.id])
     const slipId = await createBundlePlusSingleSlip(pageA, auth)
+    // 원격 거래처 B 에 단품의 다른 기억단가를 심어 A 의 거래처 변경 재조회가 단품 라인을 바꾸게 한다.
+    psql(
+      `INSERT INTO partner_product_price_memory (id, partner_id, product_id, unit_price, source,
+         remembered_at, created_at, created_by, is_deleted)
+       VALUES (gen_random_uuid(), '${OTHER_PARTNER.id}', '${SINGLE.id}', 999000, 'LINE_SAVE',
+         TIMESTAMP '2026-01-03 04:05:06', CURRENT_TIMESTAMP, 'qa-r8-postfix2', FALSE)`,
+    )
 
     await openSalesEdit(pageA, slipId)
     await openSalesEdit(pageB, slipId)
     await capture(pageB, '21-r8-qa-10-windowB-before-remote-partner-change')
 
-    // 창A 가 거래처를 변경 — CRDT 헤더 4필드 원자 전파(handleSlipPartnerSelect).
+    // 창A 가 거래처를 변경 — CRDT 헤더 4필드 원자 전파 + 새 거래처 기준 재조회.
     await pickAutocomplete(pageA, '거래처', '거래처 목록', OTHER_PARTNER.name)
-    await pageA.waitForTimeout(2000)
-    await capture(pageA, '22-r8-qa-10-windowA-partner-changed')
+    await pageA.waitForTimeout(2500)
+    await capture(pageA, '22-r8-qa-10-windowA-partner-changed-with-banner')
 
-    // 🔴 전파 확인 — B 의 거래처코드/사업자번호가 새 거래처 것으로 바뀌어야 한다.
-    //    (상호 표시는 R8-QA-9 의 open 고착 때문에 신뢰할 수 없어 보조필드로 판정한다 —
-    //     이 우회 자체가 R8-QA-9 가 실사용 관측을 어떻게 가리는지 보여준다.)
+    // 🔴 fix 가드 1 — 변경 주체 창A 에 재적용 배너가 노출된다(R8 fix 1차엔 count=0 이었다).
+    const bannerA = pageA.getByTestId('sales-slip-edit-price-refresh-banner')
+    await expect(
+      bannerA,
+      'R8-QA-10 fix 가드: 거래처를 바꾼 창A 에 재적용 배너가 없음 — 수정 모달 배너 미이식(R8-QA-11 fix 회귀)',
+    ).toBeVisible({ timeout: 15000 })
+    const bannerTextA = ((await bannerA.textContent()) ?? '').trim()
+    console.log('[R8-QA-10] 창A 배너 문구:', JSON.stringify(bannerTextA))
+    expect(bannerTextA.length, 'R8-QA-10: 창A 배너가 빈 텍스트').toBeGreaterThan(0)
+
+    // 🔴 유지 단언 2 — CRDT 전파: B 의 사업자번호가 새 거래처 것으로 바뀌어야 한다.
     const bizA = await pageA.getByLabel('사업자번호').inputValue()
     await expect(
       pageB.getByLabel('사업자번호'),
@@ -834,52 +890,50 @@ test.describe('#809 R8 — OPUS 4.8 적대검증 라이브 재현', () => {
     ).toHaveValue(bizA, { timeout: 20000 })
     await capture(pageB, '23-r8-qa-10-windowB-received-remote-partner-change')
 
-    // 📋 고지된 갭 실측 — 배너/변경행 강조는 로컬 state 라 B 에 전파되지 않는다.
-    const bannerA = await pageA.getByTestId('slip-price-refresh-banner').count()
-    const bannerB = await pageB.getByTestId('slip-price-refresh-banner').count()
-    console.log(`[R8-QA-10] 배너 — 창A(변경 주체) count=${bannerA} / 창B(원격 피어) count=${bannerB}`)
-    const bannerTextA = bannerA > 0 ? (await pageA.getByTestId('slip-price-refresh-banner').textContent()) ?? '' : ''
-    const bannerTextB = bannerB > 0 ? (await pageB.getByTestId('slip-price-refresh-banner').textContent()) ?? '' : ''
-    console.log(`[R8-QA-10] 배너 텍스트 — A=${JSON.stringify(bannerTextA.trim())} / B=${JSON.stringify(bannerTextB.trim())}`)
-    console.log(`[R8-QA-10] '단가 변경' 강조 — A=${await pageA.getByText('단가 변경', { exact: true }).count()} / B=${await pageB.getByText('단가 변경', { exact: true }).count()}`)
+    // 📋 관측 — 배너는 로컬 state 라 원격 피어 B 에는 전파되지 않는다(고지된 갭 · fix 대상 아님).
+    const bannerBcount = await pageB.getByTestId('sales-slip-edit-price-refresh-banner')
+      .filter({ hasText: '거래처 변경으로' }).count()
+    console.log(`[R8-QA-10] 배너 노출 — 창A(변경 주체)=1(단언) / 창B(원격 피어) 채워짐=${bannerBcount}(고지된 갭)`)
 
     await ctxA.close()
     await ctxB.close()
   })
 
   /**
-   * 🆕 R8-QA-11 [HIGH·신규 결함] — D-R8-7 이 **새로운 교차 거래처 기억 오염 경로**를 열었다.
-   * 전표 수정에서 거래처만 바꾸면 **옛 거래처의 협상단가가 새 거래처의 '최근단가'로 각인**된다.
+   * R8-QA-11-HIT [HIGH·fix 가드] — D-R8-10/R8-QA-11 fix 의 **핵심 교정**을 실증한다.
+   * 새 거래처 B 가 이 품목의 기억단가를 **보유**할 때, 수정 모달에서 거래처만 A→B 로 바꾸면:
+   *  1. 새 거래처 기준 **bulk 재조회**가 발동한다(POST /slips/price-memory/bulk).
+   *  2. **재적용 배너**가 뜨고 변경된 행이 **강조**된다.
+   *  3. 라인 단가가 **B 기억단가의 VAT제외 환산값**(round(기억/1.1) — BE createFromVatInclusive
+   *     미러)으로 갱신된다(옛 A 단가 소거 + 도메인 정합). 포함값 직기입이면 저장 ×1.1 재적용으로
+   *     기억이 ~10% 복리 팽창한다(R8 잔여2 — fix 2차 재fix 로 해소, 이 테스트가 그 가드).
+   *  4. 저장 후 B 기억 = **수렴 고정점**(필드 × 1.1 scale2)이고 **옛 A 단가가 각인되지 않는다**
+   *     (교차 거래처 오염 차단 — 이게 본질).
    *
-   * **왜 새 결함인가 — D-R8-7 이 만든 것이다**:
-   *  - D-R8-7 **이전**: 거래처를 바꿔도 `partner_id` 가 안 움직였다 → 기억이 **원** 거래처에
-   *    남았다(= R8-QA-3 이 적발한 결함).
-   *  - D-R8-7 **이후**: `partner_id` 가 실제로 움직이고 `collectPriceMemory` 도 헤더 갱신
-   *    **이후**로 옮겨졌다 → 기억이 **새** 거래처로 간다. 그런데 **라인 단가는 옛 거래처 값 그대로다.**
-   *    → 거래처 A 와 협상한 단가가 거래처 B 의 '거래처 최근단가' 로 둔갑한다.
-   *
-   * **근본 원인 — 폼/수정모달 비대칭**(이 PR 이 8라운드째 반복 적발한 그 패턴):
-   *  - `SlipFormPage`(신규 전표)는 거래처 변경 시 **bulk 재조회 + 배너 + 변경행 강조**를 한다
-   *    (D-R3-2 · D-R3-4). grep: `priceRefresh|bulk|priceMemory` = **31건**.
-   *  - `SlipDetailPage`(수정 모달)는 **가격 재조회 로직이 0건**이다. 같은 grep = **0건**.
-   *    `handleSlipPartnerSelect` 는 헤더 4필드 설정 + CRDT 전파만 하고 재조회를 하지 않는다.
-   *  - 실측(R8-QA-10): 거래처를 바꾼 창A 조차 배너 count=0 — 수정 모달엔 배너가 **애초에 없다**.
-   *
-   * **피해 시나리오**: 거래처 A 와 913,000 에 합의해 전표를 만든다 → 담당자가 "거래처를 잘못
-   * 골랐다" 며 수정에서 B 로 바꾼다 → 단가는 913,000 그대로 → 저장 → **B 의 최근단가 = 913,000**
-   * 으로 각인 → 다음에 B 전표를 쓰면 협상한 적 없는 913,000 이 자동채움된다. #809 가 막으려던
-   * 오염 그 자체이며, 마커('거래처 최근단가')가 거짓말을 한다.
+   * fix 전(R8 fix 1차): 수정 모달엔 재조회가 0건이라 A 의 협상단가가 B 로 그대로 넘어가 B 의
+   * '거래처 최근단가' 로 둔갑했다(마커가 거짓말). fix 는 공용 훅 usePartnerPriceRefresh 를 모달에
+   * 이식해 hit 케이스를 바로잡고, 재fix(잔여2)가 VAT 도메인 변환(utils/vatPrice.ts)을 더했다.
    */
-  test('🆕 R8-QA-11 [HIGH·신규] 수정 모달에서 거래처만 변경 → 옛 거래처 단가가 새 거래처 최근단가로 각인(재조회 부재)', async ({ browser }) => {
+  test('R8-QA-11-HIT [HIGH·fix 가드] 수정 모달 거래처 A→B(B 에 기억 보유) → 재조회+배너+강조·라인 B 기준 갱신·B 에 옛 A 단가 미각인', async ({ browser }) => {
     const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
     const page = await ctx.newPage()
     const auth = await login(page)
     resetMemoryPairs([UI_HIT.id])
     resetMemoryPairsFor(OTHER_PARTNER.id, [UI_HIT.id])
 
-    // 거래처 A 와 협상한 단가 — 이 값은 A 에만 유효하다.
+    // 거래처 A 와 협상한 단가 — A 에만 유효. B 에 각인되면 오염이다.
     const NEGOTIATED_FOR_A = 913000
-    const polluted = '1004300.00/LINE_SAVE' // 913000 × 1.1 — B 에 각인되면 안 되는 값
+    const pollutedOnB = '1004300.00/LINE_SAVE' // 913000 × 1.1 — B 에 나타나면 안 되는 값
+    // 거래처 B 가 이 품목에 대해 이미 보유한(A 와 무관한) 다른 기억단가(VAT 포함 도메인).
+    const B_MEMORY = 500000
+    // [R8 잔여2 fix — VAT 드리프트 해소] 수정 필드는 VAT 제외 공급단가이므로 재조회는 기억값을
+    // ÷1.1 원 단위 HALF_UP(BE SlipLine.createFromVatInclusive 미러)으로 변환 기입한다:
+    //   필드 = round(500000 / 1.1) = 454545
+    // 저장 시 BE collectPriceMemory 가 ×1.1 scale2 로 복원해 수렴 고정점에 도달한다:
+    //   B 기억 = 454545 × 1.1 = 499999.50 (이후 재저장에도 불변 — 종전 ×1.1 복리 팽창 없음)
+    // 값 2개는 BE 세만틱에서 손계산한 독립 기대값이다(FE 수식 재사용 아님 — 동어반복 방지).
+    const B_FIELD_EXPECTED = '454545'
+    const bRoundTrip = '499999.50/LINE_SAVE'
 
     const created = await page.request.post(`${API_BASE}/slips`, {
       headers: authHeaders(auth),
@@ -889,45 +943,504 @@ test.describe('#809 R8 — OPUS 4.8 적대검증 라이브 재현', () => {
         lines: [{ productId: UI_HIT.id, quantity: 1, unitPrice: NEGOTIATED_FOR_A }],
       },
     })
-    expect(created.ok(), 'R8-QA-11 전제: 전표 생성').toBeTruthy()
+    expect(created.ok(), 'R8-QA-11-HIT 전제: 전표 생성').toBeTruthy()
     const slipId = (await created.json()).data.id as string
-    expect(memoryOf(UI_HIT.id), 'R8-QA-11 전제: A 의 협상단가가 A 에 기억됨').toBe(polluted)
-    expect(memoryOfFor(OTHER_PARTNER.id, UI_HIT.id), 'R8-QA-11 전제: B 에는 기억 없음').toBe('NONE')
+    expect(memoryOf(UI_HIT.id), 'R8-QA-11-HIT 전제: A 의 협상단가가 A 에 기억됨').toBe(pollutedOnB)
+    // B 에 다른 기억단가를 심는다 → 거래처 변경 시 hit 재조회가 라인을 바꾼다.
+    psql(
+      `INSERT INTO partner_product_price_memory (id, partner_id, product_id, unit_price, source,
+         remembered_at, created_at, created_by, is_deleted)
+       VALUES (gen_random_uuid(), '${OTHER_PARTNER.id}', '${UI_HIT.id}', ${B_MEMORY}, 'LINE_SAVE',
+         TIMESTAMP '2026-01-02 03:04:05', CURRENT_TIMESTAMP, 'qa-r8-postfix2', FALSE)`,
+    )
+    expect(memoryOfFor(OTHER_PARTNER.id, UI_HIT.id), 'R8-QA-11-HIT 전제: B 는 자기 기억단가 보유').toBe(`${B_MEMORY}.00/LINE_SAVE`)
+
+    const calls: string[] = []
+    page.on('request', (r) => {
+      if (r.url().includes('/slips/price-memory')) calls.push(`${r.method()} ${r.url()}`)
+    })
 
     await openSalesEdit(page, slipId)
-    await capture(page, '24-r8-qa-11-edit-modal-partnerA-price-913000')
+    const priceField = page.getByLabel('단가(VAT제외) 1')
+    expect((await priceField.inputValue()).replace(/[^0-9]/g, ''), '전제: 진입 시 라인=A 단가').toBe(String(NEGOTIATED_FOR_A))
+    await capture(page, '24-r8-qa-11-hit-edit-modal-partnerA-price-913000')
 
-    // 거래처만 B 로 변경 — 단가는 **손대지 않는다**.
+    // 거래처만 B 로 변경 — 단가는 손대지 않는다.
     await pickAutocomplete(page, '거래처', '거래처 목록', OTHER_PARTNER.name)
     await page.waitForTimeout(2500)
-    await capture(page, '25-r8-qa-11-partner-switched-to-B-price-still-913000-no-banner')
+    await capture(page, '25-r8-qa-11-hit-partner-switched-to-B-reprice-banner-highlight')
 
-    // 관측 — 재조회/고지 부재(판정은 말미에). SlipFormPage 는 같은 조작에 bulk+배너+강조를 한다.
-    const bannerCount = await page.getByTestId('slip-price-refresh-banner').count()
-    const priceAfterSwitch = await page.getByLabel('단가(VAT제외) 1').inputValue()
-    console.log(`[R8-QA-11] 거래처 변경 후 — 배너 count=${bannerCount} · 라인1 단가=${priceAfterSwitch}`)
+    // 🔴 fix 가드 1 — 새 거래처 기준 bulk 재조회 발동.
+    const bulk = calls.filter((c) => c.includes('/slips/price-memory/bulk'))
+    console.log('[R8-QA-11-HIT] price-memory 호출:', JSON.stringify(calls))
+    expect(bulk.length, 'R8-QA-11-HIT fix 가드: 거래처 변경 시 bulk 재조회 미발동(모달 재조회 부재 회귀)').toBeGreaterThan(0)
+
+    // 🔴 fix 가드 2 — 재적용 배너 노출 + 변경행 강조.
+    await expect(
+      page.getByTestId('sales-slip-edit-price-refresh-banner'),
+      'R8-QA-11-HIT fix 가드: 거래처 변경 재적용 배너 미표시',
+    ).toBeVisible({ timeout: 10000 })
+    expect(
+      await page.locator('tr.price-memory-refreshed-row').count(),
+      'R8-QA-11-HIT fix 가드: 변경행 강조(price-memory-refreshed-row) 미적용',
+    ).toBeGreaterThan(0)
+
+    // 🔴 fix 가드 3 — 라인 단가가 B 기억의 VAT제외 환산값으로 갱신(옛 A 단가 소거 + 도메인 정합).
+    //    기억(포함 500000)을 그대로 기입하면 저장 ×1.1 재적용으로 기억이 550000 으로 팽창한다
+    //    (구 드리프트 — 이 단언이 그 회귀도 잡는다: 500000 이 보이면 실패).
+    const priceAfter = (await priceField.inputValue()).replace(/[^0-9]/g, '')
+    console.log(`[R8-QA-11-HIT] 거래처 변경 후 라인 단가=${priceAfter} (기대=round(${B_MEMORY}/1.1)=${B_FIELD_EXPECTED})`)
+    expect(
+      priceAfter,
+      `R8-QA-11-HIT fix 가드: 거래처 변경 후 라인 단가가 B 기억의 제외환산(${B_FIELD_EXPECTED})이 아님 — 옛 A 단가 잔존 or VAT 드리프트 회귀(포함값 ${B_MEMORY} 직기입)`,
+    ).toBe(B_FIELD_EXPECTED)
 
     const putRes = page.waitForResponse(
       (r) => r.request().method() === 'PUT' && r.url().includes(`/slips/${slipId}/sales`),
       { timeout: 30000 },
     )
     await page.getByRole('button', { name: '저장', exact: true }).first().click()
-    expect((await putRes).status(), 'R8-QA-11: 거래처 변경 저장 PUT').toBe(200)
+    expect((await putRes).status(), 'R8-QA-11-HIT: 저장 PUT').toBe(200)
     await page.waitForTimeout(2500)
-    await capture(page, '26-r8-qa-11-saved-partnerB')
-    console.log(`[R8-QA-11] 저장 후 기억 — A=${memoryOf(UI_HIT.id)} · B=${memoryOfFor(OTHER_PARTNER.id, UI_HIT.id)}`)
+    await capture(page, '26-r8-qa-11-hit-saved-partnerB')
+    const bMemAfter = memoryOfFor(OTHER_PARTNER.id, UI_HIT.id)
+    const aMemAfter = memoryOf(UI_HIT.id)
+    console.log(`[R8-QA-11-HIT] 저장 후 기억 — A=${aMemAfter} · B=${bMemAfter}`)
 
-    // 🔴 결함 1 (본질) — A 와 협상한 913,000 이 B 의 '최근단가' 로 각인돼선 안 된다.
+    // 🔴 fix 가드 4 (본질) — B 에 옛 A 협상단가가 각인되면 안 된다(엄밀).
     expect(
-      memoryOfFor(OTHER_PARTNER.id, UI_HIT.id),
-      `R8-QA-11: 거래처 A(${PARTNER.name})와 협상한 단가 ${NEGOTIATED_FOR_A} 이 거래처 B(${OTHER_PARTNER.name})의 최근단가로 각인됨 — 교차 거래처 기억 오염`,
-    ).not.toBe(polluted)
+      bMemAfter,
+      `R8-QA-11-HIT: A(${PARTNER.name}) 협상단가 ${NEGOTIATED_FOR_A} 이 B(${OTHER_PARTNER.name}) 최근단가로 각인됨 — 교차 거래처 오염`,
+    ).not.toBe(pollutedOnB)
+    // B 는 자기 기준 수렴 고정점(필드 454545 저장 → ×1.1 = 499999.50)으로 각인된다.
+    // 550000.00 이 나오면 VAT 드리프트 회귀(포함값 직기입 → ×1.1 복리 팽창)다.
+    expect(bMemAfter, 'R8-QA-11-HIT: B 기억이 수렴 고정점(499999.50)이 아님 — VAT 드리프트 회귀 의심').toBe(bRoundTrip)
+    // A 기억은 그대로 보존(변경 저장이 A 를 건드리지 않음).
+    expect(aMemAfter, 'R8-QA-11-HIT: 원 거래처 A 기억이 변조됨').toBe(pollutedOnB)
 
-    // 🔴 결함 2 (원인) — 거래처가 바뀌었는데 단가 재조회도 고지도 없다(SlipFormPage 는 둘 다 한다).
+    await ctx.close()
+  })
+
+  /**
+   * R8-QA-11-MISS [HIGH·fix 가드] — 새 거래처 B 가 이 품목의 기억이 **없을** 때(miss). R8 잔여1 fix
+   * (모달 miss fallback = 카탈로그 판매가, POST /api/products/lookup)의 라이브 실증.
+   *
+   * fix 전(직전 라운드 라이브 RED 실측): 모달 라인은 카탈로그 판매가를 안 들고 있어 miss fallback =
+   * 현재단가(=옛 A 협상가) → `changed=false` → 무배너·무강조 → 저장 시 A 협상 777,000 이 B 에
+   * 854,700.00 으로 무고지 각인됐다(잔여결함으로 RED 박제 — r8-postfix2 1차 실행분).
+   *
+   * fix 후 기대(전부 단언): 거래처 변경 시 라인이 **카탈로그 판매가의 VAT제외 환산값**으로 전환되고
+   * 배너·강조로 고지되며, 저장 후 B 기억 = **카탈로그 라운드트립 고정점**(round(카탈로그/1.1) × 1.1
+   * scale2)이고 **A 협상가는 미각인**이다.
+   *
+   * 🔴 판정력 전제(코인시던스 가드): 카탈로그 유래 기대값이 A 오염값과 **달라야** 오염 여부를 판정
+   * 가능하다. 카탈로그 판매가를 라이브 조회해 보고하고, 우연히 일치하면 즉시 실패시켜 품목 교체를
+   * 지시한다(우연 일치 green 수용 금지). 카탈로그 미확보(판매가 null) 품목이면 이 테스트 전제가
+   * 깨진 것이므로 그것도 명시적으로 실패한다(그 경우 FE 정직 한계 = 현재값 유지가 스펙).
+   */
+  test('R8-QA-11-MISS [HIGH·fix 가드] 수정 모달 거래처 A→B(B 기억 없음) → 카탈로그 판매가로 전환·배너 고지·옛 A 단가 미각인', async ({ browser }) => {
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
+    const page = await ctx.newPage()
+    const auth = await login(page)
+    resetMemoryPairs([UI_MISS.id])
+    resetMemoryPairsFor(OTHER_PARTNER.id, [UI_MISS.id])
+
+    const NEGOTIATED_FOR_A = 777000
+    const pollutedOnB = '854700.00/LINE_SAVE' // 777000 × 1.1 — B 에 나타나면 오염(fix 회귀)
+
+    // 카탈로그 판매가(VAT 포함 도메인) 라이브 실측 — miss fallback 의 원천이자 기대값의 근거.
+    // FE 와 같은 엔드포인트지만 기대값 산식은 BE 세만틱(÷1.1 원 단위 HALF_UP → ×1.1 scale2)에서
+    // 독립 유도한다. 실측 2026-07-16: AC300CNCDEH-78 = 1,440,000 → 필드 1,309,091 → 기억 1,440,000.10.
+    const lookupRes = await page.request.post(`${API_BASE}/api/products/lookup`, {
+      headers: authHeaders(auth), data: { ids: [UI_MISS.id] },
+    })
+    expect(lookupRes.ok(), 'R8-QA-11-MISS 전제: 카탈로그 lookup 실패').toBeTruthy()
+    const lookupRows = ((await lookupRes.json()).data ?? []) as Array<Record<string, unknown>>
+    const missCatalog = Number(lookupRows.find((r) => r['id'] === UI_MISS.id)?.['sellingPrice'])
+    console.log(`[R8-QA-11-MISS] UI_MISS(${UI_MISS.model}) 실 카탈로그 판매가(VAT포함) = ${missCatalog}`)
+    expect(Number.isFinite(missCatalog) && missCatalog > 0,
+      `R8-QA-11-MISS 전제: 카탈로그 판매가 미확보(${missCatalog}) — miss fallback 스펙상 현재값 유지가 되어 이 테스트로 오염 차단을 실증할 수 없다(품목 교체 필요)`,
+    ).toBe(true)
+    const missFieldExpected = String(Math.round(missCatalog / 1.1)) // BE createFromVatInclusive 미러(원 단위)
+    const missMemoryExpected = `${(Math.round(missCatalog / 1.1) * 1.1).toFixed(2)}/LINE_SAVE` // BE collectPriceMemory 미러(scale2)
+    // 코인시던스 가드 — 기대값이 A 오염값과 같으면 판정 불능이므로 즉시 실패(품목 교체 지시).
+    expect(missMemoryExpected,
+      `R8-QA-11-MISS 판정력 전제: 카탈로그 유래 기대값(${missMemoryExpected})이 A 오염값(${pollutedOnB})과 우연 일치 — 오염/정상 판정 불가, UI_MISS 품목 교체 필요`,
+    ).not.toBe(pollutedOnB)
+
+    const created = await page.request.post(`${API_BASE}/slips`, {
+      headers: authHeaders(auth),
+      data: {
+        slipType: 'OUTBOUND', partnerId: PARTNER.id, partnerName: PARTNER.name,
+        sourceWarehouseId: WAREHOUSE,
+        lines: [{ productId: UI_MISS.id, quantity: 1, unitPrice: NEGOTIATED_FOR_A }],
+      },
+    })
+    expect(created.ok(), 'R8-QA-11-MISS 전제: 전표 생성').toBeTruthy()
+    const slipId = (await created.json()).data.id as string
+    expect(memoryOf(UI_MISS.id), 'R8-QA-11-MISS 전제: A 의 협상단가가 A 에 기억됨').toBe(pollutedOnB)
+    expect(memoryOfFor(OTHER_PARTNER.id, UI_MISS.id), 'R8-QA-11-MISS 전제: B 에는 기억 없음(miss)').toBe('NONE')
+
+    await openSalesEdit(page, slipId)
+    await capture(page, '27-r8-qa-11-miss-edit-modal-partnerA-price-777000')
+
+    await pickAutocomplete(page, '거래처', '거래처 목록', OTHER_PARTNER.name)
+    await page.waitForTimeout(2500)
+
+    // 🔴 fix 가드 1 — miss 라인이 카탈로그 판매가(제외환산)로 전환 + 배너 고지 + 변경행 강조.
+    //    fix 전엔 배너=0·라인=옛 A 단가 잔존이었다(라이브 RED 실측).
+    await expect(
+      page.getByTestId('sales-slip-edit-price-refresh-banner'),
+      'R8-QA-11-MISS fix 가드: miss 재적용 배너 미표시(카탈로그 fallback 미작동 — 잔여결함 회귀)',
+    ).toBeVisible({ timeout: 10000 })
+    const priceAfter = (await page.getByLabel('단가(VAT제외) 1').inputValue()).replace(/[^0-9]/g, '')
+    console.log(`[R8-QA-11-MISS] 거래처 변경 후 라인 단가=${priceAfter} (기대=round(${missCatalog}/1.1)=${missFieldExpected} · 옛 A=${NEGOTIATED_FOR_A})`)
     expect(
-      bannerCount,
-      'R8-QA-11: 수정 모달에서 거래처를 바꿨는데 재적용 배너가 없음 — 사용자는 옛 거래처 단가가 남아있는 줄 모른다(폼/수정모달 비대칭)',
+      priceAfter,
+      `R8-QA-11-MISS fix 가드: miss 라인이 카탈로그 판매가 제외환산(${missFieldExpected})으로 전환되지 않음 — 옛 A 단가(${NEGOTIATED_FOR_A}) 잔존이면 잔여결함 회귀`,
+    ).toBe(missFieldExpected)
+    expect(
+      await page.locator('tr.price-memory-refreshed-row').count(),
+      'R8-QA-11-MISS fix 가드: 변경행 강조 미적용',
     ).toBeGreaterThan(0)
+    await capture(page, '28-r8-qa-11-miss-partner-switched-to-B-catalog-fallback-banner')
+
+    const putRes = page.waitForResponse(
+      (r) => r.request().method() === 'PUT' && r.url().includes(`/slips/${slipId}/sales`),
+      { timeout: 30000 },
+    )
+    await page.getByRole('button', { name: '저장', exact: true }).first().click()
+    expect((await putRes).status(), 'R8-QA-11-MISS: 저장 PUT').toBe(200)
+    await page.waitForTimeout(2500)
+    const bMemAfter = memoryOfFor(OTHER_PARTNER.id, UI_MISS.id)
+    const aMemAfter = memoryOf(UI_MISS.id)
+    console.log(`[R8-QA-11-MISS] 저장 후 기억 — A=${aMemAfter} · B=${bMemAfter} (기대 B=${missMemoryExpected})`)
+    await capture(page, '29-r8-qa-11-miss-saved-partnerB-catalog-memory')
+
+    // 🔴 fix 가드 2 (본질) — B 에 옛 A 협상단가가 각인되면 안 된다.
+    expect(
+      bMemAfter,
+      `R8-QA-11-MISS: A(${PARTNER.name}) 협상단가 ${NEGOTIATED_FOR_A} 이 B(${OTHER_PARTNER.name}) 최근단가로 각인됨 — miss 카탈로그 fallback 회귀(교차 거래처 오염)`,
+    ).not.toBe(pollutedOnB)
+    // 🔴 fix 가드 3 — B 기억 = 카탈로그 라운드트립 고정점(엄밀 값).
+    expect(
+      bMemAfter,
+      `R8-QA-11-MISS: B 기억이 카탈로그 라운드트립 고정점(${missMemoryExpected})이 아님 — 관측값이 BE VAT 수학과 불일치(결함)`,
+    ).toBe(missMemoryExpected)
+    // 🔴 fix 가드 4 — 원 거래처 A 기억은 그대로 보존.
+    expect(aMemAfter, 'R8-QA-11-MISS: 원 거래처 A 기억이 변조됨').toBe(pollutedOnB)
+
+    await ctx.close()
+  })
+
+  /**
+   * R8-QA-13 [MEDIUM·라이브 API 가드 신설] — D-R8-13 계보 게이트를 **라이브 API 로** 실증한다
+   * (BE IT 미러 SlipUpdateLineIdContractTest 의 라이브 확인).
+   *
+   * 마커(lineIdContract=true)는 자기신고라, 계보 보유 문서에서 lineId 를 하나도 안 실으면 서버가
+   * 마커만 보고 전 라인 교체를 수행해 세트 계보를 파괴할 수 있다(R8-QA-1 을 마커라는 다른 문으로
+   * 재개방). D-R8-13 은 마커를 **라인 내용과 대조**해 그 우회를 차단한다:
+   *  - Part 1: 계보 보유 + 마커 + lineId 0개 = **400 거부**(LINEAGE_REJECTION_MESSAGE) · 계보/구성품 기억 보존.
+   *  - Part 2: 계보 **없는** 평면 전표 + 마커 + lineId 0개(전 라인 교체) = **정상 200**(오탐 없음).
+   */
+  test('R8-QA-13 [MEDIUM·라이브 API 가드] 계보 보유+마커+lineId 전무 PUT → 400·계보/기억 보존 / 평면 전표 전라인 교체 → 200(오탐 없음)', async ({ browser }) => {
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
+    const page = await ctx.newPage()
+    const auth = await login(page)
+
+    // ── Part 1: 계보 보유(BUNDLE_SET) 전표 — 마커 + lineId 전무 → 400 거부 ──
+    resetMemoryPairs([COMP_HEAD.id, COMP_TAIL.id, SINGLE.id])
+    const bundleSlipId = await createBundlePlusSingleSlip(page, auth)
+    const beforeLineage = lineageOf(bundleSlipId)
+    expect(beforeLineage, 'R8-QA-13 전제: 세트 계보').toBe(
+      `${COMP_HEAD.model}:true:${BUNDLE.model}|${COMP_TAIL.model}:false:${BUNDLE.model}|${SINGLE.model}:false:-`,
+    )
+    expect(memoryOf(COMP_HEAD.id), 'R8-QA-13 전제: head 구성품 미기억').toBe('NONE')
+    expect(memoryOf(COMP_TAIL.id), 'R8-QA-13 전제: 구성품 미기억').toBe('NONE')
+    await page.goto(`${BASE_URL}/sales/${bundleSlipId}`)
+    await expect(page.getByText(COMP_HEAD.model).first()).toBeVisible({ timeout: 30000 })
+    await capture(page, '30-r8-qa-13-bundle-slip-lineage-before-guard')
+
+    const detail1 = (await (await page.request.get(`${API_BASE}/slips/${bundleSlipId}`, { headers: authHeaders(auth) })).json()).data
+    const res1 = await page.request.put(`${API_BASE}/slips/${bundleSlipId}/sales`, {
+      headers: authHeaders(auth),
+      data: {
+        updatedAt: detail1.updatedAt,
+        lineIdContract: true, // 마커 O — require() 통과. 그러나 계보 보유 문서에 lineId 0개 → 계보 게이트 400.
+        partnerId: detail1.partnerId, partnerName: detail1.partnerName, partnerCode: detail1.partnerCode,
+        memo: detail1.memo, businessNumber: detail1.businessNumber,
+        deliveryAddress: detail1.deliveryAddress, supervisionAddress: detail1.supervisionAddress,
+        projectName: detail1.projectName, recipientPhone: detail1.recipientPhone, paymentDueDate: detail1.paymentDueDate,
+        lines: detail1.lines.map((l: Record<string, unknown>) => ({
+          productId: l['productId'], productName: l['productName'], modelName: l['modelName'],
+          specification: l['specification'], quantity: l['quantity'],
+          unitPrice: String(l['unitPrice']), note: l['note'], // lineId 전무(0개)
+        })),
+      },
+    })
+    expect(res1.status(), 'R8-QA-13 Part1: 계보 보유 + 마커 + lineId 0개 → 400 거부').toBe(400)
+    const body1 = await res1.json().catch(() => ({}))
+    console.log('[R8-QA-13] Part1 400 message:', JSON.stringify(body1.message ?? ''))
+    // 마커 부재 사유(REJECTION_MESSAGE)가 아니라 계보 사유(LINEAGE_REJECTION_MESSAGE)로 거부돼야 한다.
+    expect(
+      String(body1.message ?? ''),
+      'R8-QA-13 Part1: 400 사유가 계보 거부(LINEAGE_REJECTION_MESSAGE)가 아님 — 다른 게이트가 선차단',
+    ).toContain('세트 구성품이 포함된 전표는 기존 라인 정보')
+    // 거부됐으므로 계보 무손상 + 구성품 기억 미각인.
+    expect(lineageOf(bundleSlipId), 'R8-QA-13 Part1: 거부된 PUT 이 세트 계보를 건드림').toBe(beforeLineage)
+    expect(memoryOf(COMP_HEAD.id), 'R8-QA-13 Part1: 거부됐는데 head 구성품 배분가 각인됨').toBe('NONE')
+    expect(memoryOf(COMP_TAIL.id), 'R8-QA-13 Part1: 거부됐는데 구성품 배분가 각인됨').toBe('NONE')
+    await page.reload()
+    await expect(page.getByText(COMP_HEAD.model).first()).toBeVisible({ timeout: 30000 })
+    await capture(page, '31-r8-qa-13-bundle-lineage-preserved-after-400')
+
+    // ── Part 2: 계보 없는 평면 전표 — 마커 + lineId 전무(전 라인 교체) → 정상 200(오탐 금지) ──
+    const flatCreated = await page.request.post(`${API_BASE}/slips`, {
+      headers: authHeaders(auth),
+      data: {
+        slipType: 'OUTBOUND', partnerId: PARTNER.id, partnerName: PARTNER.name,
+        sourceWarehouseId: WAREHOUSE,
+        lines: [{ productId: SINGLE.id, quantity: 1, unitPrice: 400000 }],
+      },
+    })
+    expect(flatCreated.ok(), 'R8-QA-13 Part2 전제: 평면 전표 생성').toBeTruthy()
+    const flatSlipId = (await flatCreated.json()).data.id as string
+    expect(
+      psql(`SELECT count(*) FROM slip_lines WHERE slip_id='${flatSlipId}' AND is_deleted=false AND parent_set_model IS NOT NULL`),
+      'R8-QA-13 Part2 전제: 평면 전표는 계보 없음',
+    ).toBe('0')
+
+    const detail2 = (await (await page.request.get(`${API_BASE}/slips/${flatSlipId}`, { headers: authHeaders(auth) })).json()).data
+    const NEW_FLAT_PRICE = '450000'
+    const res2 = await page.request.put(`${API_BASE}/slips/${flatSlipId}/sales`, {
+      headers: authHeaders(auth),
+      data: {
+        updatedAt: detail2.updatedAt,
+        lineIdContract: true,
+        partnerId: detail2.partnerId, partnerName: detail2.partnerName, partnerCode: detail2.partnerCode,
+        memo: detail2.memo, businessNumber: detail2.businessNumber,
+        deliveryAddress: detail2.deliveryAddress, supervisionAddress: detail2.supervisionAddress,
+        projectName: detail2.projectName, recipientPhone: detail2.recipientPhone, paymentDueDate: detail2.paymentDueDate,
+        lines: detail2.lines.map((l: Record<string, unknown>) => ({
+          productId: l['productId'], productName: l['productName'], modelName: l['modelName'],
+          specification: l['specification'], quantity: l['quantity'],
+          unitPrice: NEW_FLAT_PRICE, note: l['note'], // lineId 전무 = 전 라인 교체(정상)
+        })),
+      },
+    })
+    expect(res2.status(), 'R8-QA-13 Part2: 평면 전표 전라인 교체(lineId 0개)는 정상 200 — 오탐 금지').toBe(200)
+    // 교체가 실제로 반영됐는지(활성 라인 단가 갱신).
+    expect(
+      psql(`SELECT unit_price FROM slip_lines WHERE slip_id='${flatSlipId}' AND is_deleted=false`),
+      'R8-QA-13 Part2: 전 라인 교체가 반영되지 않음',
+    ).toBe('450000.00')
+    await page.goto(`${BASE_URL}/sales/${flatSlipId}`)
+    await expect(page.getByText(SINGLE.model).first()).toBeVisible({ timeout: 30000 })
+    await capture(page, '32-r8-qa-13-flat-slip-full-replace-200')
+
+    await ctx.close()
+  })
+
+  /**
+   * R8-QA-14 [회귀 가드·신설] — R8 재fix 회귀 교정(모달 재가격의 세트 구성품 제외) 라이브 실증.
+   *
+   * 직전 라이브 관측(회귀): 모달 거래처 변경 재조회의 카탈로그 fallback 이 **세트 구성품 라인에도**
+   * 적용돼 배분가가 ÷1.1 변형됐다(88,000→80,000 · 55,000→50,000 — DB 실측, 전표 2026/07/16-94).
+   * fix = `bundleComponentLineIds`(parentSetModel 비공백, head 포함 — BE isBundleComponent 미러)
+   * 라인을 재가격 후보에서 제외. 구성품 배분가는 세트 전개가 정한 값이라 거래처 변경으로
+   * 재가격되면 안 된다.
+   *
+   * 🔑 **bait 설계 — "miss 라서 안 바뀜" 반증 봉쇄**: 새 거래처 B 에 구성품 품목의 기억단가
+   * (999,000)를 미리 심는다. 제외가 없다면 그 hit 가 구성품 필드를 round(999000/1.1)=908,182 로
+   * 바꿨을 것이다. 필드가 불변이면 "기억이 없어서" 가 아니라 **"계보 제외라서"** 임이 증명된다.
+   *
+   * Part 1 (순세트 전표 — 구성품 2행뿐): 재가격 대상 0 → **재조회 API 호출 자체가 0**(bulk 0 ·
+   *   products/lookup 0), 배너 미표시, 강조 0, 구성품 필드 88,000/55,000 불변. 저장 후 DB 배분가
+   *   보존 + 계보 보존 + B 기억 delta 0(bait 불변·tail NONE).
+   * Part 2 (혼합 전표 — 구성품 2 + 단품 1): **단품만** 재가격(bulk·lookup 요청 body 에 단품
+   *   productId 만 — 구성품 productId 미포함), 배너 표시, 강조 1행, 구성품 불변·단품은 B 기억
+   *   기준(770,000→필드 700,000). 저장 후 DB: 구성품 88,000/55,000 + 단품 700,000, B 기억 =
+   *   단품 770,000.00(고정점)·구성품 bait 불변, A 기억 불변.
+   */
+  test('R8-QA-14 [회귀 가드·신설] 모달 거래처 변경 재가격 — 세트 구성품 제외(배분가 불변) · 순세트=재조회 0 · 혼합=단품만', async ({ browser }) => {
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
+    const page = await ctx.newPage()
+    const auth = await login(page)
+
+    const BAIT_B_COMPONENT = 999000 // B 에 심는 구성품 기억 bait — 적용되면 필드 908182 로 변형됐을 값
+    const seedBait = (productId: string) => {
+      resetMemoryPairsFor(OTHER_PARTNER.id, [productId])
+      psql(
+        `INSERT INTO partner_product_price_memory (id, partner_id, product_id, unit_price, source,
+           remembered_at, created_at, created_by, is_deleted)
+         VALUES (gen_random_uuid(), '${OTHER_PARTNER.id}', '${productId}', ${BAIT_B_COMPONENT}, 'LINE_SAVE',
+           TIMESTAMP '2026-01-02 03:04:05', CURRENT_TIMESTAMP, 'qa-r8-postfix2-14', FALSE)`,
+      )
+    }
+    const priceMemoryCalls: string[] = []
+    const lookupCalls: string[] = []
+    page.on('request', (r) => {
+      if (r.method() === 'POST' && r.url().includes('/slips/price-memory/bulk')) priceMemoryCalls.push(r.postData() ?? '')
+      if (r.method() === 'POST' && r.url().includes('/api/products/lookup')) lookupCalls.push(r.postData() ?? '')
+    })
+
+    // ── Part 1: 순세트 전표(구성품 2행뿐) — 재가격 대상 0 → 재조회 자체가 없어야 한다 ──
+    seedBait(COMP_HEAD.id) // 🔑 bait: 제외가 없다면 이 hit 가 head 필드를 908182 로 바꾼다.
+    resetMemoryPairsFor(OTHER_PARTNER.id, [COMP_TAIL.id])
+    const pureCreated = await page.request.post(`${API_BASE}/slips`, {
+      headers: authHeaders(auth),
+      data: {
+        slipType: 'OUTBOUND', partnerId: PARTNER.id, partnerName: PARTNER.name,
+        sourceWarehouseId: WAREHOUSE,
+        lines: [{ productId: BUNDLE.id, quantity: 1, unitPrice: 1000000 }],
+      },
+    })
+    expect(pureCreated.ok(), 'R8-QA-14 Part1 전제: 순세트 전표 생성').toBeTruthy()
+    const pureSlipId = (await pureCreated.json()).data.id as string
+    expect(lineageOf(pureSlipId), 'R8-QA-14 Part1 전제: 세트 전개 계보').toBe(
+      `${COMP_HEAD.model}:true:${BUNDLE.model}|${COMP_TAIL.model}:false:${BUNDLE.model}`,
+    )
+
+    await openSalesEdit(page, pureSlipId)
+    await expect(page.getByLabel('단가(VAT제외) 1')).toHaveValue(/88,?000/)
+    await expect(page.getByLabel('단가(VAT제외) 2')).toHaveValue(/55,?000/)
+    await capture(page, '33-r8-qa-14-pure-set-edit-modal-components-88000-55000')
+
+    await pickAutocomplete(page, '거래처', '거래처 목록', OTHER_PARTNER.name)
+    await page.waitForTimeout(2500)
+
+    // 🔴 가드 1 — 구성품 필드 불변(bait hit 908182 도, 카탈로그 80000/50000 도 아님).
+    await expect(
+      page.getByLabel('단가(VAT제외) 1'),
+      'R8-QA-14 Part1: head 배분가가 재가격됨(88,000 이탈) — 구성품 제외 회귀',
+    ).toHaveValue(/^88,?000$/)
+    await expect(
+      page.getByLabel('단가(VAT제외) 2'),
+      'R8-QA-14 Part1: tail 배분가가 재가격됨(55,000 이탈) — 구성품 제외 회귀',
+    ).toHaveValue(/^55,?000$/)
+    // 🔴 가드 2 — 재가격 대상 0 이므로 재조회 API 호출 자체가 없어야 한다(bulk 0 · lookup 0).
+    console.log(`[R8-QA-14] Part1 재조회 호출 — bulk=${priceMemoryCalls.length} · products/lookup=${lookupCalls.length}`)
+    expect(priceMemoryCalls.length, 'R8-QA-14 Part1: 순세트 전표인데 bulk 재조회 발생(구성품이 후보에 포함됨)').toBe(0)
+    expect(lookupCalls.length, 'R8-QA-14 Part1: 순세트 전표인데 카탈로그 lookup 발생(구성품이 후보에 포함됨)').toBe(0)
+    // 🔴 가드 3 — 재가격 대상 0 = 배너 미표시 · 강조 0.
+    expect(
+      await page.getByTestId('sales-slip-edit-price-refresh-banner').filter({ hasText: '거래처 변경으로' }).count(),
+      'R8-QA-14 Part1: 재가격 대상 0 인데 재적용 배너 표시',
+    ).toBe(0)
+    expect(await page.locator('tr.price-memory-refreshed-row').count(), 'R8-QA-14 Part1: 강조 행 존재').toBe(0)
+    await capture(page, '34-r8-qa-14-pure-set-partner-changed-no-banner-components-unchanged')
+
+    const putRes1 = page.waitForResponse(
+      (r) => r.request().method() === 'PUT' && r.url().includes(`/slips/${pureSlipId}/sales`),
+      { timeout: 30000 },
+    )
+    await page.getByRole('button', { name: '저장', exact: true }).first().click()
+    expect((await putRes1).status(), 'R8-QA-14 Part1: 거래처 변경 저장 PUT').toBe(200)
+    await page.waitForTimeout(2500)
+
+    // 🔴 가드 4 — DB 배분가·계보 보존 + B 기억 delta 0(bait 불변·tail NONE).
+    expect(
+      psql(`SELECT string_agg(model_name || ':' || unit_price, '|' ORDER BY created_at)
+              FROM slip_lines WHERE slip_id='${pureSlipId}' AND is_deleted=false`),
+      'R8-QA-14 Part1: 저장 후 구성품 배분가가 DB 에서 변형됨(88,000/55,000 이탈)',
+    ).toBe(`${COMP_HEAD.model}:88000.00|${COMP_TAIL.model}:55000.00`)
+    expect(lineageOf(pureSlipId), 'R8-QA-14 Part1: 저장 후 계보 변형').toBe(
+      `${COMP_HEAD.model}:true:${BUNDLE.model}|${COMP_TAIL.model}:false:${BUNDLE.model}`,
+    )
+    expect(
+      memoryOfFor(OTHER_PARTNER.id, COMP_HEAD.id),
+      'R8-QA-14 Part1: B 의 head bait 기억이 변조됨(구성품이 각인 경로에 노출)',
+    ).toBe(`${BAIT_B_COMPONENT}.00/LINE_SAVE`)
+    expect(memoryOfFor(OTHER_PARTNER.id, COMP_TAIL.id), 'R8-QA-14 Part1: B 에 tail 기억이 생김(구성품 각인)').toBe('NONE')
+
+    // ── Part 2: 혼합 전표(구성품 2 + 단품 1) — 단품만 재가격·구성품 불변 ──
+    priceMemoryCalls.length = 0
+    lookupCalls.length = 0
+    seedBait(COMP_HEAD.id)
+    resetMemoryPairsFor(OTHER_PARTNER.id, [COMP_TAIL.id])
+    resetMemoryPairs([COMP_HEAD.id, COMP_TAIL.id, SINGLE.id])
+    // B 의 단품 기억 = 770,000(포함) → 필드 round(770000/1.1)=700,000 → 저장 ×1.1 = 770,000.00 고정점.
+    resetMemoryPairsFor(OTHER_PARTNER.id, [SINGLE.id])
+    psql(
+      `INSERT INTO partner_product_price_memory (id, partner_id, product_id, unit_price, source,
+         remembered_at, created_at, created_by, is_deleted)
+       VALUES (gen_random_uuid(), '${OTHER_PARTNER.id}', '${SINGLE.id}', 770000, 'LINE_SAVE',
+         TIMESTAMP '2026-01-02 03:04:05', CURRENT_TIMESTAMP, 'qa-r8-postfix2-14', FALSE)`,
+    )
+    const mixedSlipId = await createBundlePlusSingleSlip(page, auth)
+    const aSingleMemory = memoryOf(SINGLE.id) // 생성 각인(367840.00) — 저장 후 불변이어야 함
+    expect(aSingleMemory, 'R8-QA-14 Part2 전제: A 단품 기억').toBe('367840.00/LINE_SAVE')
+
+    await openSalesEdit(page, mixedSlipId)
+    await expect(page.getByLabel('단가(VAT제외) 3')).toHaveValue(/334,?400/)
+    await capture(page, '35-r8-qa-14-mixed-edit-modal-3lines')
+
+    await pickAutocomplete(page, '거래처', '거래처 목록', OTHER_PARTNER.name)
+    await page.waitForTimeout(2500)
+
+    // 🔴 가드 5 — 구성품 필드 불변 · 단품만 B 기억 기준으로 재가격(700,000).
+    await expect(
+      page.getByLabel('단가(VAT제외) 1'),
+      'R8-QA-14 Part2: 혼합 전표 head 배분가가 재가격됨 — 구성품 제외 회귀',
+    ).toHaveValue(/^88,?000$/)
+    await expect(
+      page.getByLabel('단가(VAT제외) 2'),
+      'R8-QA-14 Part2: 혼합 전표 tail 배분가가 재가격됨 — 구성품 제외 회귀',
+    ).toHaveValue(/^55,?000$/)
+    await expect(
+      page.getByLabel('단가(VAT제외) 3'),
+      'R8-QA-14 Part2: 단품이 B 기억 제외환산(700,000)으로 재가격되지 않음 — 단품 재가격까지 깨짐(과잉 제외)',
+    ).toHaveValue(/^700,?000$/)
+    // 🔴 가드 6 — 재조회 요청 body 에 단품 productId 만(구성품 미포함).
+    console.log(`[R8-QA-14] Part2 재조회 body — bulk=${JSON.stringify(priceMemoryCalls)} · lookup=${JSON.stringify(lookupCalls)}`)
+    expect(priceMemoryCalls.length, 'R8-QA-14 Part2: bulk 재조회가 정확히 1건이 아님').toBe(1)
+    expect(lookupCalls.length, 'R8-QA-14 Part2: 카탈로그 lookup 이 정확히 1건이 아님').toBe(1)
+    const bulkBody = priceMemoryCalls[0] ?? ''
+    const lookupBody = lookupCalls[0] ?? ''
+    expect(bulkBody, 'R8-QA-14 Part2: bulk 에 단품 productId 누락').toContain(SINGLE.id)
+    expect(bulkBody, 'R8-QA-14 Part2: bulk 에 head 구성품 productId 포함(제외 회귀)').not.toContain(COMP_HEAD.id)
+    expect(bulkBody, 'R8-QA-14 Part2: bulk 에 tail 구성품 productId 포함(제외 회귀)').not.toContain(COMP_TAIL.id)
+    expect(lookupBody, 'R8-QA-14 Part2: lookup 에 단품 productId 누락').toContain(SINGLE.id)
+    expect(lookupBody, 'R8-QA-14 Part2: lookup 에 head 구성품 productId 포함(제외 회귀)').not.toContain(COMP_HEAD.id)
+    expect(lookupBody, 'R8-QA-14 Part2: lookup 에 tail 구성품 productId 포함(제외 회귀)').not.toContain(COMP_TAIL.id)
+    // 🔴 가드 7 — 배너 표시 + 강조는 단품 1행만.
+    await expect(
+      page.getByTestId('sales-slip-edit-price-refresh-banner'),
+      'R8-QA-14 Part2: 단품 재가격 배너 미표시',
+    ).toBeVisible({ timeout: 10000 })
+    expect(await page.locator('tr.price-memory-refreshed-row').count(), 'R8-QA-14 Part2: 강조가 단품 1행이 아님').toBe(1)
+    await capture(page, '36-r8-qa-14-mixed-partner-changed-single-repriced-components-unchanged')
+
+    const putRes2 = page.waitForResponse(
+      (r) => r.request().method() === 'PUT' && r.url().includes(`/slips/${mixedSlipId}/sales`),
+      { timeout: 30000 },
+    )
+    await page.getByRole('button', { name: '저장', exact: true }).first().click()
+    expect((await putRes2).status(), 'R8-QA-14 Part2: 저장 PUT').toBe(200)
+    await page.waitForTimeout(2500)
+    await capture(page, '37-r8-qa-14-mixed-saved-db-preserved')
+
+    // 🔴 가드 8 — DB: 구성품 88,000/55,000 보존 + 단품 700,000 · 계보 보존.
+    expect(
+      psql(`SELECT string_agg(model_name || ':' || unit_price, '|' ORDER BY created_at)
+              FROM slip_lines WHERE slip_id='${mixedSlipId}' AND is_deleted=false`),
+      'R8-QA-14 Part2: 저장 후 라인 단가가 기대와 다름(구성품 변형 or 단품 미반영)',
+    ).toBe(`${COMP_HEAD.model}:88000.00|${COMP_TAIL.model}:55000.00|${SINGLE.model}:700000.00`)
+    expect(lineageOf(mixedSlipId), 'R8-QA-14 Part2: 저장 후 계보 변형').toBe(
+      `${COMP_HEAD.model}:true:${BUNDLE.model}|${COMP_TAIL.model}:false:${BUNDLE.model}|${SINGLE.model}:false:-`,
+    )
+    // 🔴 가드 9 — 기억: B 단품 = 770,000.00 고정점 · B 구성품 bait 불변·tail NONE · A 불변.
+    console.log(`[R8-QA-14] Part2 저장 후 기억 — B단품=${memoryOfFor(OTHER_PARTNER.id, SINGLE.id)} · B head=${memoryOfFor(OTHER_PARTNER.id, COMP_HEAD.id)} · A단품=${memoryOf(SINGLE.id)}`)
+    expect(
+      memoryOfFor(OTHER_PARTNER.id, SINGLE.id),
+      'R8-QA-14 Part2: B 단품 기억이 고정점(770,000.00)이 아님',
+    ).toBe('770000.00/LINE_SAVE')
+    expect(
+      memoryOfFor(OTHER_PARTNER.id, COMP_HEAD.id),
+      'R8-QA-14 Part2: B 의 head bait 기억이 변조됨(구성품 각인)',
+    ).toBe(`${BAIT_B_COMPONENT}.00/LINE_SAVE`)
+    expect(memoryOfFor(OTHER_PARTNER.id, COMP_TAIL.id), 'R8-QA-14 Part2: B 에 tail 기억이 생김(구성품 각인)').toBe('NONE')
+    expect(memoryOf(SINGLE.id), 'R8-QA-14 Part2: A 단품 기억이 변조됨').toBe(aSingleMemory)
 
     await ctx.close()
   })
