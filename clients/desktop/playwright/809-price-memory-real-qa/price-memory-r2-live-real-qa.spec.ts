@@ -3,7 +3,8 @@
  *
  * 대상: R4 적대검증 27건 fix 6개 배치(BE·DevOps·FE·Design·통합·sweep) 적용 워킹트리
  * (base 71a6f0412 — R3 fix 3커밋 위). 실 게이트웨이(:8080) → 재배포 slip-service(V58 적용 실측)
- * → 실 Postgres. 합성/fixture 없음. 판정은 전부 실 GUI, DB 는 뒷받침 실측용.
+ * → 실 Postgres. 품목은 프로젝트 seeder가 만든 QA 모델을 실 서버·실 DB에서 조회해 사용한다.
+ * 판정은 전부 실 GUI, DB 는 뒷받침 실측용이며, "합성 없음"·"운영 카탈로그" 주장은 하지 않는다.
  * (단 08 의 R4-F4 in-flight 관측 1곳만 실서버 응답을 그대로 전달하며 지연을 주입하고,
  *  11 은 정상 coedit 가 거래처 autocomplete 를 잠그는 현재 제약 때문에 초기 coedit GET 만 실패시켜
  *  앱 자체의 의도된 평문 폼 fallback 에 진입한다. 가격 조회/PUT 응답 내용 변조 없음. 각 주석 참조.)
@@ -16,10 +17,10 @@
  * 전표 생성 자체가 403 이다(R1 INFO-1, #809 회귀 아님). 본 QA 는 `sales.slip.create` +
  * `purchases.slip.edit` 전권인 "매니저" 그룹 계정 `dev_manager` 로 수행한다.
  *
- * 픽스처 (R8-postfix 기준 — 🔴 **더 이상 하드코딩하지 않는다**, 파일 스코프 beforeAll 이 실 API 로 해석):
+ * 픽스처 (R8-postfix 기준 — 프로젝트 seeder 생성 QA 모델, 파일 스코프 beforeAll 이 실 API 로 해석):
  *  - 거래처A 부산냉난방테크 (e8ae9c86-…-1f5a2bf31313) — 실 DB 생존 확인
  *  - 거래처B 전주에어시스템 (1021fcf7-…-6518ab4c27c9) — 실 DB 생존 확인
- *  - 품목X/Y/세트 = **실 카탈로그 품목**. id 만 고정하고 판매가·품목명은 `GET /api/products/{id}`
+ *  - 품목X/Y/세트 = **seeder QA 품목의 실 DB 행**. id 만 고정하고 판매가·품목명은 `GET /api/products/{id}`
  *    응답에서 읽는다 → 카탈로그 가격이 바뀌어도 단언이 자동 정합.
  *    R8-postfix 실행 실측: X=PC1NWSK1NRR(인테리어핏 중형)/202,400 · Y=ACM-B102N(전력 분배기)/275,000 ·
  *    세트=AF17B6474GZS/1,813,000 (구성품 2종 AF17B6474GZN=head · AF17B6470DCX)
@@ -29,7 +30,8 @@
  *  스택 재시드로 **전량 소멸**했다(R8·R8-postfix 실측: id·model_code·model_name 어느 축으로도 0건).
  *  결과 = **0 passed / 10 failed / 9 did not run** — 01 이 실패하며 describe.serial 이 연쇄 skip 돼
  *  **19건의 계약이 2개 라운드 동안 라이브 검증되지 않았다**(코드 회귀 아님 · 순수 픽스처 소멸).
- *  처방 = 시더 의존 제거(실 카탈로그 해석 + legacy 견적 자체 생성). 단언 강도는 일절 손대지 않았다.
+ *  처방 = 소멸한 구 seed UUID 의존 제거(현 seeder 모델 API 해석 + legacy 견적 자체 생성).
+ *  seeder 계보 자체를 없애진 못했으며, 단언 강도는 일절 손대지 않았다.
  *  R8-postfix 재실행 결과: **19 passed / 0 failed**.
  *
  * 시나리오: A 견적 자동채움 · B BUNDLE_SET · C 거래처 변경 재조회(bulk 1회 + 배너 + 변경행 강조) ·
@@ -108,10 +110,9 @@
  *  - [R6-H3] 신규 16a/16b — 버전이력 스냅샷 계보 왕복: 전표/견적 EDIT 후 최초 revision 복원 →
  *    세트 계보 보존 + 복원·후속 무수정 PUT 전 구간 기억행 delta 0.
  *
- * 단계별 캡처 → docs/qa/809-partner-product-price-memory/r8-postfix/r2-suite/
+ * 단계별 캡처 → docs/qa/809-partner-product-price-memory/r9-postfix/
  * (r2/·r4/·r4-postfix/·r5/·r5-postfix/·r6/·r6-postfix/·r8/ 는 전부 불가침 증거 보존 —
- *  본 스펙 재실행이 덮어쓰지 않도록 R8 fix 재검증 캡처만 r8-postfix/r2-suite/ 에 기록한다.
- *  r8-postfix/ 직하는 R8 적대 스펙 몫이라 파일명 충돌을 피해 한 겹 내렸다.)
+ *  R8 이력 디렉터리는 불가침으로 두고 R9 재검증분만 신규 r9-postfix/ 에 기록한다.)
  *
  * ⚠️ R6 커버리지 갭 중 본 라운드 정직 미커버(사유 박제):
  *  - G3(bulk 부분 실패 failedProductIds): 실서버 단일 트랜잭션에서 부분 실패를 자연 유발할 수
@@ -139,11 +140,11 @@ const BASE_URL = process.env['QA_BASE_URL'] ?? 'http://localhost:5211'
 const API_BASE = process.env['API_BASE'] ?? 'http://localhost:8080'
 const PASSWORD = process.env['DEV_PASSWORD'] ?? 'dev_p05_pass!'
 const ACCOUNT = 'dev_manager'
-// [R8-postfix] 캡처는 r8-postfix/r2-suite/ — r2/·r4/·r4-postfix/·r5/·r5-postfix/·r6/·r6-postfix/·r8/
-// 전부 불가침(덮어쓰기 금지). 본 스펙의 직전 캡처는 r6-postfix/ 에 박제돼 있으므로 R8 fix 후
-// 재실행분은 별도 디렉토리로 분리한다. R8 적대 스펙(r8-postfix/ 직하)과도 파일명이 겹치므로
-// r2-suite/ 하위로 한 겹 더 내린다.
-const SHOTS = path.resolve(_dirname, '../../../../docs/qa/809-partner-product-price-memory/r8-postfix2/r2-suite')
+// R9 캡처는 신규 r9-postfix/ 에만 기록한다. r2/·r4/·r4-postfix/·r5/·r5-postfix/
+// r6/·r6-postfix/·r8/·r8-postfix/·r8-postfix2/ 는 전부 불가침(덮어쓰기 금지).
+// [R9 08-fix 재검증] r9-postfix/ 직하는 R9 fix 라운드 증거(87장)로 보존 — 08 GREEN 전환
+// 재실행분은 r2-suite/ 하위로 분리해 덮어쓰기를 피한다(코디네이터 지시 경로).
+const SHOTS = path.resolve(_dirname, '../../../../docs/qa/809-partner-product-price-memory/r9-postfix/r2-suite')
 fs.mkdirSync(SHOTS, { recursive: true })
 
 const PARTNER_A = { name: '부산냉난방테크', query: '부산냉난방', id: 'e8ae9c86-afe1-3364-b484-1f5a2bf31313' }
@@ -157,17 +158,18 @@ const PARTNER_B = { name: '전주에어시스템', query: '전주에어', id: '1
 // (0 passed / 10 failed / 9 did not run — 01 실패 → describe.serial 연쇄 skip).
 // R8 실측: `products` 1116행 중 위 3종 **0건**(id·model_code·model_name 어느 축으로도 부재).
 //
-// 처방 = **시더 의존 제거**. 값을 코드에 박지 않고 `resolveFixtures()` 가 실 API 로 조회해 채운다:
+// 처방 = **소멸한 구 seed UUID 의존 제거**. 현 seeder QA 모델의 id는 핀하되,
+// 가격·품목명은 `resolveFixtures()` 가 실 API 로 조회해 채운다:
 //  - 존재 확인이 **beforeAll 에서 1회, 명시적 메시지로** 터진다(종전: totalElements=0 → 01 만
 //    실패하고 나머지 9건은 조용히 skip → 원인 파악에 라운드 하나를 소모).
 //  - 판매가/품목명을 **서버 응답에서 읽으므로** 카탈로그 가격이 바뀌어도 단언이 자동 정합된다
 //    (종전: 하드코딩 판매가가 실제와 어긋나면 전 라인 false-RED).
 // ⚠️ **단언 강도는 그대로다** — 픽스처 출처만 바뀌고 각 테스트의 검증 내용은 일절 손대지 않았다.
 //
-// 왜 '생성' 이 아니라 '실 카탈로그 고정' 인가: 세트(BUNDLE)는 `bundle_component` 링크가 있어야
+// 왜 테스트 내 '생성' 이 아니라 seeder 모델 고정인가: 세트(BUNDLE)는 `bundle_component` 링크가 있어야
 // 전개되는데 그 링크는 시트동기화/이카운트 임포트 경로 산물이라 `POST /products` 공개 API 로
 // 만들 수 없다(`CreateProductRequest` 에 구성품 배열이 없음). 반면 실 카탈로그에는 전개가
-// 실증된 세트가 있다 — R8 적대 스펙이 같은 이유로 이미 AF17B6474GZS 를 쓴다.
+// seeder가 만든 실 DB 세트 행이 있다. 즉 서버·DB는 실제이지만 품목 출처는 seeder이다.
 // [R8-postfix2] 스택 재시드로 구 픽스처(PC1NWSK1NRR / ACM-B102N / AF17B6474GZS)가 소멸 →
 // 현 실재 카탈로그로 재-핀(2026-07-16 실측: /slips/lookup-product·/api/products 조회 성공).
 // resolveFixtures 가 name·sellingPrice 를 API 로 채우므로 id·model 만 갱신한다.
@@ -1414,8 +1416,11 @@ test.describe.serial('#809 R4-postfix — R4 적대 fix 후 라이브 재검증'
     ).toEqual([PRODUCT_X.id, PRODUCT_Y.id].sort())
 
     // 배너 + 변경행 강조 — 값이 실제 바뀐 라인1(estimate-form-line-0)만
+    // [R9 실측 확정] 견적 배너 카피가 마커별 카운트 요약형으로 업그레이드됨(EstimateFormPage:954-960
+    // — remembered/catalog/unavailable 카운트 + 변경 N행 join). 본 시나리오 결정적 기대:
+    // hit X 1건(최근단가) · miss Y 1건(판매가) · USER 라인 제외 · 실변경 = 라인1 뿐.
     await expect(estBanner, '견적 거래처 변경 배너 미표시').toHaveText(
-      '거래처 변경으로 최근단가 재적용 · 변경된 행을 확인해 주세요.',
+      '거래처 변경 단가 확인 완료 · 최근단가 1건 · 판매가 1건 · 변경 1행',
     )
     const highlighted = estimateHighlightedRows(page)
     await expect(highlighted, '견적 변경행 강조가 정확히 1행이 아님').toHaveCount(1)
@@ -1434,12 +1439,16 @@ test.describe.serial('#809 R4-postfix — R4 적대 fix 후 라이브 재검증'
     await expect(catalogMarkers(page), '견적 판매가 마커는 라인3 1개여야 함').toHaveCount(1)
     await estBanner.scrollIntoViewIfNeeded()
     await capture(page, '17-KEY-estimate-partner-changed-to-B-banner-highlight-row1-555000')
-    // [R6-M5 대칭 가드] 견적은 재조회 시 announcement 클리어가 이미 배선돼 있다(:669) — 강조
-    // 해제(USER 입력) 후 배너가 stale 단건 고지('라인 3 판매가 적용')로 되돌아가면 회귀다.
+    // [R6-M5 대칭 가드 → R9 08-fix 계약으로 재정의] USER 단가 편집 시 견적도 모달처럼 **라인별**
+    // 해제된다(updateLine:USER → 그 행의 outcome 만 제거 · EstimateFormPage:893-905, 파생 배너가
+    // 잔여 자동행만 집계). 따라서 변경행 X(라인1) 편집 후 기대 = X 기여 소거(최근단가 항목 소멸·
+    // 변경 0행) + 잔여 Y(판매가 1건) 현재상태 유지. 구 '' 기대는 one-shot 문자열 세만틱의 산물이며,
+    // 가드의 본래 의도(stale 단건 고지 '라인 3 판매가 적용' 재표출 금지)는 exact 일치가 그대로 막는다.
     await page.getByLabel('라인 1 단가').fill('444444')
-    await expect(estBanner, '견적 재조회 배너 해제 후 stale 단건 고지 재표출(R6-M5 대칭 회귀)').toHaveText('', {
-      timeout: 5000,
-    })
+    await expect(
+      estBanner,
+      '견적 재조회 배너 라인별 해제 실패 — 편집행 기여가 남거나(최근단가/변경 1행 잔존) stale 단건 고지 재표출(R6-M5 회귀)',
+    ).toHaveText('거래처 변경 단가 확인 완료 · 판매가 1건 · 변경 0행', { timeout: 5000 })
     await page.unroute('**/slips/price-memory/bulk')
     await ctx.close()
   })
@@ -1568,9 +1577,10 @@ test.describe.serial('#809 R4-postfix — R4 적대 fix 후 라이브 재검증'
     expect(bulkBody.partnerId, '사후 선택 bulk partnerId 불일치').toBe(PARTNER_A.id)
     expect(bulkBody.productIds, '사후 선택 bulk productIds 불일치').toEqual([PRODUCT_X.id])
     // 값이 실제 변한 라인(1200000→888000)이므로 배너 + 강조 1행
+    // [R9 실측 확정] 요약형 카피(위 08 과 동일 근거) — 단일 라인 hit 전환: 최근단가 1건 · 변경 1행.
     const estBanner = page.getByTestId('estimate-price-refresh-banner')
     await expect(estBanner, '사후 거래처 선택 배너 미표시').toHaveText(
-      '거래처 변경으로 최근단가 재적용 · 변경된 행을 확인해 주세요.',
+      '거래처 변경 단가 확인 완료 · 최근단가 1건 · 변경 1행',
     )
     await expect(estimateHighlightedRows(page), '사후 선택 강조가 정확히 1행이 아님').toHaveCount(1)
     await capture(page, '23-KEY-estimate-late-partner-select-rehit-888000-banner-highlight')

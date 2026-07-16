@@ -39,11 +39,9 @@ const BASE_URL = process.env['QA_BASE_URL'] ?? 'http://localhost:5218'
 const API_BASE = process.env['API_BASE'] ?? 'http://localhost:8080'
 const PASSWORD = process.env['DEV_PASSWORD'] ?? 'dev_p05_pass!'
 const ACCOUNT = 'dev_manager'
-// r2/·r4/·r4-postfix/·r5/·r5-postfix/·r6/·r6-postfix/·r8/·r8-postfix/ 는 이력 보존 — 불가침.
-// R8 적대리뷰 자체의 증거는 r8/ 에, R8 fix 1차 검증은 r8-postfix/ 에 박제돼 있다. 본 스펙을
-// R8 fix 2차 후 재실행하면 그 증거를 덮어쓰므로, post-fix2 재검증 캡처는 r8-postfix2/ 신규
-// 디렉토리로 분리한다(결함 재현 → 교정 거동 fix-guard 로 전환한 라운드).
-const SHOTS = path.resolve(_dirname, '../../../../docs/qa/809-partner-product-price-memory/r8-postfix2')
+// r2/·r4/·r4-postfix/·r5/·r5-postfix/·r6/·r6-postfix/·r8/·r8-postfix/·r8-postfix2/ 는
+// 이력 보존 — 불가침. R9 fix 재검증 캡처는 신규 r9-postfix/ 에만 기록한다.
+const SHOTS = path.resolve(_dirname, '../../../../docs/qa/809-partner-product-price-memory/r9-postfix')
 fs.mkdirSync(SHOTS, { recursive: true })
 
 // ⚠️ [R8-postfix2] 공유 dev 스택의 product_db·partner_db 가 재시드돼 R8/R8-postfix 시점의 합성
@@ -211,6 +209,26 @@ async function openSalesEdit(page: Page, slipId: string): Promise<void> {
   await page.waitForTimeout(1500)
 }
 
+/** 매입 상세 진입 + 수정 인라인 폼. 매출 미러의 고유 testid 로 분리한다. */
+async function openPurchaseEdit(page: Page, slipId: string): Promise<void> {
+  await page.goto(`${BASE_URL}/purchases/${slipId}`)
+  await page.getByTestId('purchase-slip-edit-open').waitFor({ state: 'visible', timeout: 30000 })
+  await page.getByTestId('purchase-slip-edit-open').click()
+  await expect(page.getByTestId('purchase-slip-edit-modal')).toBeVisible({ timeout: 30000 })
+  await expect(page.getByLabel('단가(VAT제외) 1')).toBeEnabled({ timeout: 30000 })
+  await page.waitForTimeout(1500)
+}
+
+/** 테스트 전용 기억행 시드 — 대상 쌍은 호출 전 reset 한다. */
+function seedMemory(partnerId: string, productId: string, unitPrice: number, actor: string): void {
+  psql(
+    `INSERT INTO partner_product_price_memory (id, partner_id, product_id, unit_price, source,
+       remembered_at, created_at, created_by, is_deleted)
+     VALUES (gen_random_uuid(), '${partnerId}', '${productId}', ${unitPrice}, 'LINE_SAVE',
+       TIMESTAMP '2026-01-02 03:04:05', CURRENT_TIMESTAMP, '${actor}', FALSE)`,
+  )
+}
+
 test.describe('#809 R8 — OPUS 4.8 적대검증 라이브 재현', () => {
   /**
    * R8-QA-1 [BLOCKING] — lineId 미전송 PUT 이 세트 계보를 파괴하고 구성품 배분가를 각인한다.
@@ -352,7 +370,6 @@ test.describe('#809 R8 — OPUS 4.8 적대검증 라이브 재현', () => {
     resetMemoryPairs([COMP_HEAD.id, COMP_TAIL.id, SINGLE.id])
     const slipId = await createBundlePlusSingleSlip(pageA, auth)
     const NEW_SINGLE_PRICE = '299000' // 수신창이 단품 라인에 새로 입력할 단가(VAT 제외)
-    const expectedMemory = '328900.00/LINE_SAVE' // 299000 × 1.1
     // 생성 직후 단품 기억 = 334400 × 1.1. 저장이 정상(2xx)이면 328900 으로 갱신돼야 한다.
     expect(memoryOf(SINGLE.id), 'R8-QA-2b 전제: 생성 시 단품은 라인 단가 기준으로 기억됨').toBe('367840.00/LINE_SAVE')
 
@@ -377,6 +394,7 @@ test.describe('#809 R8 — OPUS 4.8 적대검증 라이브 재현', () => {
     await pageA.getByRole('button', { name: '행 삭제', exact: true }).click()
     const delStatus = (await delRes).status()
     console.log('[R8-QA-2b] 창A 서버측 행삭제 DELETE 상태:', delStatus)
+    expect(delStatus, 'R9-QA #7: 창A DELETE 가 204 성공이 아니면 경합이 유발되지 않아 후속 판정이 false-green').toBe(204)
     await pageA.waitForTimeout(1500)
     await capture(pageA, '08-r8-qa-2b-windowA-after-server-side-row-delete')
 
@@ -400,6 +418,11 @@ test.describe('#809 R8 — OPUS 4.8 적대검증 라이브 재현', () => {
 
     const finalLineage = lineageOf(slipId)
     console.log('[R8-QA-2b] 저장 후 계보:', finalLineage)
+    expect(putStatus, 'R9-QA #7: 피어 저장은 per-line 계보 게이트의 정확한 400으로만 거부돼야 함(409 등 다른 선차단 허용 금지)').toBe(400)
+    expect(
+      finalLineage,
+      'R9-QA #8: head DELETE 후 잔존 tail 의 parent_set_model 이 NULL 로 소실되거나 단품에 계보가 이식됨',
+    ).toBe(`${COMP_TAIL.model}:false:${BUNDLE.model}|${SINGLE.model}:false:-`)
 
     // 🔴 불변식 1 — 세트와 무관한 단품은 어떤 경우에도 세트 구성품이 될 수 없다.
     expect(
@@ -415,15 +438,10 @@ test.describe('#809 R8 — OPUS 4.8 적대검증 라이브 재현', () => {
       `R8-QA-2b: 삭제된 head 의 setHead 가 잔존 구성품으로 이식됨 (계보=${finalLineage} · PUT=${putStatus})`,
     ).toBe('0')
 
-    // 🔴 판정 — 성공(2xx)이면 사용자 입력 기억, 거부(4xx)면 충돌 안내 배너로 사용자 인지.
-    if (putStatus >= 200 && putStatus < 300) {
-      console.log('[R8-QA-2b] 경로 (a) — 저장 성공, 계보 무손상 + 사용자 입력 기억 검증')
-      expect(
-        memoryOf(SINGLE.id),
-        `R8-QA-2b(a): 저장이 ${putStatus} 로 성공했는데 사용자 입력 단가(${NEW_SINGLE_PRICE})의 기억이 증발함`,
-      ).toBe(expectedMemory)
-    } else {
-      console.log('[R8-QA-2b] 경로 (b) — 저장 400 거부, 충돌 안내 배너(R8-QA-12 fix) 검증')
+    // 🔴 판정 — R9 계약은 정확히 400. 비-2xx 모두를 허용하면 409 등 다른 선차단이
+    //    근본 fix 실증으로 둥갑하는 false-green 이 된다. 거부된 입력은 기억에도 반영되지 않아야 한다.
+    console.log('[R8-QA-2b] R9 경로 — 저장 400 거부, 충돌 안내 배너(R8-QA-12 fix) 검증')
+    expect(memoryOf(SINGLE.id), 'R9-QA #7: 400 거부된 피어 입력이 단가 기억에 각인됨').toBe('367840.00/LINE_SAVE')
       // 🔴 R8-QA-12 fix 가드 — 400 은 막다른 "입력값 확인" 이 아니라 복구 가능한 충돌 배너여야 한다.
       const banner = pageB.getByTestId('sales-slip-edit-conflict-banner')
       await expect(banner, 'R8-QA-2b(b): 400 거부인데 충돌 안내 배너가 없음(R8-QA-12 미fix — 사용자 인지 불가)')
@@ -445,8 +463,6 @@ test.describe('#809 R8 — OPUS 4.8 적대검증 라이브 재현', () => {
         pageB.getByTestId('sales-slip-edit-reload'),
         'R8-QA-2b(b): "최신 내용 불러오기" 복구 버튼 미표시',
       ).toBeVisible()
-    }
-
     await pageB.reload()
     await pageB.getByTestId('sales-slip-edit-button').waitFor({ state: 'visible', timeout: 30000 })
     await capture(pageB, '11-r8-qa-2b-final-detail-after-save')
@@ -984,6 +1000,10 @@ test.describe('#809 R8 — OPUS 4.8 적대검증 라이브 재현', () => {
       await page.locator('tr.price-memory-refreshed-row').count(),
       'R8-QA-11-HIT fix 가드: 변경행 강조(price-memory-refreshed-row) 미적용',
     ).toBeGreaterThan(0)
+    await expect(
+      page.getByRole('note', { name: /이 거래처에 마지막으로 저장된 단가/ }),
+      'R9-QA #14: HIT 수정 모달 마커 미표시',
+    ).toHaveText('거래처 최근단가')
 
     // 🔴 fix 가드 3 — 라인 단가가 B 기억의 VAT제외 환산값으로 갱신(옛 A 단가 소거 + 도메인 정합).
     //    기억(포함 500000)을 그대로 기입하면 저장 ×1.1 재적용으로 기억이 550000 으로 팽창한다
@@ -1103,6 +1123,10 @@ test.describe('#809 R8 — OPUS 4.8 적대검증 라이브 재현', () => {
       await page.locator('tr.price-memory-refreshed-row').count(),
       'R8-QA-11-MISS fix 가드: 변경행 강조 미적용',
     ).toBeGreaterThan(0)
+    await expect(
+      page.getByRole('note', { name: '이 거래처에 저장된 최근단가가 없어 판매가를 적용했습니다' }),
+      'R9-QA #14: MISS 수정 모달 마커 미표시',
+    ).toHaveText('판매가')
     await capture(page, '28-r8-qa-11-miss-partner-switched-to-B-catalog-fallback-banner')
 
     const putRes = page.waitForResponse(
@@ -1134,16 +1158,98 @@ test.describe('#809 R8 — OPUS 4.8 적대검증 라이브 재현', () => {
   })
 
   /**
-   * R8-QA-13 [MEDIUM·라이브 API 가드 신설] — D-R8-13 계보 게이트를 **라이브 API 로** 실증한다
-   * (BE IT 미러 SlipUpdateLineIdContractTest 의 라이브 확인).
+   * R9-QA-4 [#9 fail-open 차단 + #3 저장 race + #14 마커] — 수정 모달의 카탈로그
+   * batch lookup 자체가 실패한다. 가격기억 bulk 는 실 서버에서 B miss 를 반환하고,
+   * lookup 요청은 Playwright가 도착을 관측한 뒤 503 장애만 주입한다(가격 값 합성 없음).
+   * 대기 중에는 저장을 차단하고, 실패 확정 후에는 옛 A 단가를 유지하지 않고 공백 +
+   * `단가 확인 필요` + 저장 차단으로 수렴해야 한다. B 기억행은 실 DB에서 NONE 이어야 한다.
+   */
+  test('R9-QA-4 [#9·#3·#14] 카탈로그 lookup 503 + B miss → in-flight 저장 disabled → UNAVAILABLE 공백·마커·저장 차단·미오염', async ({ browser }) => {
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
+    const page = await ctx.newPage()
+    const auth = await login(page)
+    resetMemoryPairs([UI_MISS.id])
+    resetMemoryPairsFor(OTHER_PARTNER.id, [UI_MISS.id])
+
+    const OLD_A_PRICE = 777000
+    const oldAMemory = '854700.00/LINE_SAVE'
+    const created = await page.request.post(`${API_BASE}/slips`, {
+      headers: authHeaders(auth),
+      data: {
+        slipType: 'OUTBOUND', partnerId: PARTNER.id, partnerName: PARTNER.name,
+        sourceWarehouseId: WAREHOUSE,
+        lines: [{ productId: UI_MISS.id, quantity: 1, unitPrice: OLD_A_PRICE }],
+      },
+    })
+    expect(created.ok(), 'R9-QA-4 전제: 매출 전표 생성').toBeTruthy()
+    const slipId = (await created.json()).data.id as string
+    expect(memoryOf(UI_MISS.id), 'R9-QA-4 전제: A 옛 단가 기억').toBe(oldAMemory)
+    expect(memoryOfFor(OTHER_PARTNER.id, UI_MISS.id), 'R9-QA-4 전제: B miss').toBe('NONE')
+
+    let releaseCatalog!: () => void
+    const catalogGate = new Promise<void>((resolve) => { releaseCatalog = resolve })
+    await page.route('**/api/products/lookup', async (route) => {
+      await catalogGate
+      await route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({ message: 'R9 QA injected catalog outage' }),
+      })
+    })
+    const putBodies: string[] = []
+    page.on('request', (request) => {
+      if (request.method() === 'PUT' && request.url().includes(`/slips/${slipId}/sales`)) {
+        putBodies.push(request.postData() ?? '')
+      }
+    })
+
+    await openSalesEdit(page, slipId)
+    const lookupStarted = page.waitForRequest(
+      (request) => request.method() === 'POST' && request.url().includes('/api/products/lookup'),
+      { timeout: 15000 },
+    )
+    await pickAutocomplete(page, '거래처', '거래처 목록', OTHER_PARTNER.name)
+    await lookupStarted
+
+    // #3 경합 가드: lookup hold 중 저장 불가 + busy 고지.
+    const save = page.getByTestId('sales-slip-edit-save')
+    await expect(save, 'R9-QA #3: 거래처 재조회 in-flight 중 저장 버튼이 활성').toBeDisabled()
+    await expect(page.getByTestId('sales-slip-edit-price-refresh-banner')).toContainText('저장은 확인 완료 후 가능')
+    await capture(page, '30-r9-qa-4-catalog-inflight-save-disabled')
+
+    releaseCatalog()
+    const unavailableMarker = page.getByRole('note', {
+      name: '카탈로그 판매가를 확인할 수 없어 단가를 비웠습니다. 직접 입력해 주세요',
+    })
+    await expect(unavailableMarker, 'R9-QA #14: fail 마커 미표시').toHaveText('단가 확인 필요', { timeout: 15000 })
+    await expect(page.getByLabel('단가(VAT제외) 1'), 'R9-QA #9: 카탈로그 미확보인데 옛 A 단가가 잔존').toHaveValue('')
+    await expect(save, 'R9-QA #9: UNAVAILABLE 단가 미확인 상태에서 저장 활성').toBeDisabled()
+    const banner = page.getByTestId('sales-slip-edit-price-refresh-banner')
+    await expect(banner).toContainText('단가 확인 필요 1건')
+    await expect(banner).toHaveAttribute('role', 'alert')
+    expect(putBodies, 'R9-QA #9: disabled 상태에서 PUT 전송').toHaveLength(0)
+    expect(memoryOfFor(OTHER_PARTNER.id, UI_MISS.id), 'R9-QA #9: 저장 차단인데 B 에 옛 A 단가 각인').toBe('NONE')
+    expect(memoryOf(UI_MISS.id), 'R9-QA #9: A 기억 변조').toBe(oldAMemory)
+    await capture(page, '31-r9-qa-4-catalog-unavailable-marker-save-blocked')
+
+    await page.unroute('**/api/products/lookup')
+    await ctx.close()
+  })
+
+  /**
+   * R8-QA-13 + R9-QA-1 [BE per-line 라이브 API 가드] — 요청 마커만 보던 개수 게이트에서
+   * 구성품별 lineId 대조로 강화된 계약을 실 DB 계보로 실증한다.
    *
    * 마커(lineIdContract=true)는 자기신고라, 계보 보유 문서에서 lineId 를 하나도 안 실으면 서버가
    * 마커만 보고 전 라인 교체를 수행해 세트 계보를 파괴할 수 있다(R8-QA-1 을 마커라는 다른 문으로
    * 재개방). D-R8-13 은 마커를 **라인 내용과 대조**해 그 우회를 차단한다:
    *  - Part 1: 계보 보유 + 마커 + lineId 0개 = **400 거부**(LINEAGE_REJECTION_MESSAGE) · 계보/구성품 기억 보존.
-   *  - Part 2: 계보 **없는** 평면 전표 + 마커 + lineId 0개(전 라인 교체) = **정상 200**(오탐 없음).
+   *  - Part 1b: 구성품 1개 lineId 누락 + 익명 신규 라인 = **정확히 400**·계보 무손상.
+   *  - Part 2: 전 구성품 lineId 유지 + 부분편집 + 익명 신규 라인 = **200**(과잉차단 없음).
+   *  - Part 3: 계보 견적 `lines: []` 명시 전삭제 = **200**(익명 재생성과 구분).
+   *  - Part 4: 계보 **없는** 평면 전표 + lineId 0개 전교체 = **200**(기존 오탐 가드 유지).
    */
-  test('R8-QA-13 [MEDIUM·라이브 API 가드] 계보 보유+마커+lineId 전무 PUT → 400·계보/기억 보존 / 평면 전표 전라인 교체 → 200(오탐 없음)', async ({ browser }) => {
+  test('R9-QA-1 [BE per-line] 구성품 1 lineId 누락+익명 라인=400 / 전 ID 유지·명시 전삭제=200 / 계보 무손상', async ({ browser }) => {
     const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
     const page = await ctx.newPage()
     const auth = await login(page)
@@ -1181,11 +1287,15 @@ test.describe('#809 R8 — OPUS 4.8 적대검증 라이브 재현', () => {
     expect(res1.status(), 'R8-QA-13 Part1: 계보 보유 + 마커 + lineId 0개 → 400 거부').toBe(400)
     const body1 = await res1.json().catch(() => ({}))
     console.log('[R8-QA-13] Part1 400 message:', JSON.stringify(body1.message ?? ''))
-    // 마커 부재 사유(REJECTION_MESSAGE)가 아니라 계보 사유(LINEAGE_REJECTION_MESSAGE)로 거부돼야 한다.
+    // 마커 부재 사유(REJECTION_MESSAGE '구버전 앱…')가 아니라 계보 사유(LINEAGE_REJECTION_MESSAGE)
+    // 로 거부돼야 한다. [R9 실측 확정] BE R9 가 개수 게이트를 per-line 대조로 강화하며 메시지를
+    // "일부 세트 구성품의 기존 라인 정보(lineId)가 누락된 채…" 단일본으로 통합했다(구
+    // "…전체 교체할 수 없습니다" 문구는 BE 소스에서 소멸 — grep 0건). 전무(0개) 케이스도
+    // per-line 판정(E⊄R + 익명 라인 존재)에 포섭되므로 같은 메시지가 정답이다.
     expect(
       String(body1.message ?? ''),
       'R8-QA-13 Part1: 400 사유가 계보 거부(LINEAGE_REJECTION_MESSAGE)가 아님 — 다른 게이트가 선차단',
-    ).toContain('세트 구성품이 포함된 전표는 기존 라인 정보')
+    ).toContain('세트 구성품의 기존 라인 정보')
     // 거부됐으므로 계보 무손상 + 구성품 기억 미각인.
     expect(lineageOf(bundleSlipId), 'R8-QA-13 Part1: 거부된 PUT 이 세트 계보를 건드림').toBe(beforeLineage)
     expect(memoryOf(COMP_HEAD.id), 'R8-QA-13 Part1: 거부됐는데 head 구성품 배분가 각인됨').toBe('NONE')
@@ -1194,7 +1304,106 @@ test.describe('#809 R8 — OPUS 4.8 적대검증 라이브 재현', () => {
     await expect(page.getByText(COMP_HEAD.model).first()).toBeVisible({ timeout: 30000 })
     await capture(page, '31-r8-qa-13-bundle-lineage-preserved-after-400')
 
-    // ── Part 2: 계보 없는 평면 전표 — 마커 + lineId 전무(전 라인 교체) → 정상 200(오탐 금지) ──
+    // ── Part 1b: 구성품 1개 ID 누락 + 익명 신규 라인 → 정확히 400 ──
+    const mirrorSlipLine = (line: Record<string, unknown>) => ({
+      lineId: line['id'],
+      productId: line['productId'], productName: line['productName'], modelName: line['modelName'],
+      specification: line['specification'], quantity: line['quantity'], unitPrice: String(line['unitPrice']), note: line['note'],
+    })
+    const head = (detail1.lines as Array<Record<string, unknown>>).find((line) => line['productId'] === COMP_HEAD.id)
+    const single = (detail1.lines as Array<Record<string, unknown>>).find((line) => line['productId'] === SINGLE.id)
+    expect(head && single, 'R9-QA-1 Part1b 전제: head/단품 라인 응답 미확보').toBeTruthy()
+    const partialReject = await page.request.put(`${API_BASE}/slips/${bundleSlipId}/sales`, {
+      headers: authHeaders(auth),
+      data: {
+        updatedAt: detail1.updatedAt,
+        lineIdContract: true,
+        partnerId: detail1.partnerId, partnerName: detail1.partnerName, partnerCode: detail1.partnerCode,
+        memo: detail1.memo, businessNumber: detail1.businessNumber,
+        deliveryAddress: detail1.deliveryAddress, supervisionAddress: detail1.supervisionAddress,
+        projectName: detail1.projectName, recipientPhone: detail1.recipientPhone, paymentDueDate: detail1.paymentDueDate,
+        lines: [
+          mirrorSlipLine(head!), // head lineId 유지
+          mirrorSlipLine(single!), // 평면 단품 lineId 유지
+          // tail lineId 누락 + 익명 신규. [R9 실측] BE @NotBlank(productName) 신설로 불완전
+          // payload 는 계보 게이트 이전에 "품목명은 필수입니다" 400 으로 선차단된다 — 계보
+          // 게이트를 겨냥하도록 실 카탈로그 값으로 완전한 라인을 보낸다(AC200CNCDEH-77 실측명).
+          { productId: UI_HIT.id, productName: '삼성 천장형 4톤', modelName: UI_HIT.model,
+            specification: null, quantity: 1, unitPrice: '150000', note: null },
+        ],
+      },
+    })
+    expect(partialReject.status(), 'R9-QA-1 Part1b: 구성품 1 ID 누락+익명 라인은 정확히 400').toBe(400)
+    const partialBody = await partialReject.json().catch(() => ({}))
+    expect(String(partialBody.message ?? ''), 'R9-QA-1 Part1b: 다른 게이트가 선차단').toContain('세트 구성품의 기존 라인 정보')
+    expect(lineageOf(bundleSlipId), 'R9-QA-1 Part1b: 400 후 계보 변형').toBe(beforeLineage)
+    expect(memoryOf(COMP_TAIL.id), 'R9-QA-1 Part1b: 거부된 tail 배분가 각인').toBe('NONE')
+
+    // ── Part 2: 전 구성품 ID 유지 + 부분편집 + 익명 신규 라인 → 200 ──
+    const retainedCreated = await page.request.post(`${API_BASE}/slips`, {
+      headers: authHeaders(auth),
+      data: {
+        slipType: 'OUTBOUND', partnerId: PARTNER.id, partnerName: PARTNER.name,
+        sourceWarehouseId: WAREHOUSE,
+        lines: [{ productId: BUNDLE.id, quantity: 1, unitPrice: 1000000 }],
+      },
+    })
+    expect(retainedCreated.ok(), 'R9-QA-1 Part2 전제: 순세트 전표 생성').toBeTruthy()
+    const retainedSlipId = (await retainedCreated.json()).data.id as string
+    const retainedDetail = (await (await page.request.get(`${API_BASE}/slips/${retainedSlipId}`, { headers: authHeaders(auth) })).json()).data
+    const retainedLines = (retainedDetail.lines as Array<Record<string, unknown>>).map((line, index) => ({
+      ...mirrorSlipLine(line),
+      quantity: index === 0 ? Number(line['quantity']) + 1 : line['quantity'],
+    }))
+    const retainedUpdate = await page.request.put(`${API_BASE}/slips/${retainedSlipId}/sales`, {
+      headers: authHeaders(auth),
+      data: {
+        updatedAt: retainedDetail.updatedAt,
+        lineIdContract: true,
+        partnerId: retainedDetail.partnerId, partnerName: retainedDetail.partnerName, partnerCode: retainedDetail.partnerCode,
+        memo: retainedDetail.memo, businessNumber: retainedDetail.businessNumber,
+        deliveryAddress: retainedDetail.deliveryAddress, supervisionAddress: retainedDetail.supervisionAddress,
+        projectName: retainedDetail.projectName, recipientPhone: retainedDetail.recipientPhone, paymentDueDate: retainedDetail.paymentDueDate,
+        // [R9 실측 확정] 수정 경로 익명 신규 라인은 create 경로와 달리 카탈로그 이름 보강이 없어
+        // productName 누락 시 slip_lines.product_name NOT NULL(23502) → 409 로 실패한다(계보
+        // 게이트와 무관·실 데스크톱은 항상 이름을 실음). 실 카탈로그 값으로 완전한 라인을 보낸다.
+        lines: [...retainedLines, {
+          productId: SINGLE.id, productName: '삼성 천장형 20톤', modelName: SINGLE.model,
+          specification: null, quantity: 1, unitPrice: '450000', note: null,
+        }],
+      },
+    })
+    expect(retainedUpdate.status(), 'R9-QA-1 Part2: 전 구성품 ID 유지+익명 신규는 200').toBe(200)
+    expect(lineageOf(retainedSlipId), 'R9-QA-1 Part2: 정상 부분편집 후 계보 손상').toBe(
+      `${COMP_HEAD.model}:true:${BUNDLE.model}|${COMP_TAIL.model}:false:${BUNDLE.model}|${SINGLE.model}:false:-`,
+    )
+
+    // ── Part 3: 계보 견적 lines: [] 명시 전삭제 → 200 ──
+    const estimateCreated = await page.request.post(`${API_BASE}/slips/estimates`, {
+      headers: authHeaders(auth),
+      data: {
+        partnerId: PARTNER.id, partnerName: PARTNER.name,
+        lines: [{ productId: BUNDLE.id, quantity: 1, unitPrice: '1000000', priceVatInclusive: true }],
+      },
+    })
+    expect(estimateCreated.ok(), 'R9-QA-1 Part3 전제: 세트 견적 생성').toBeTruthy()
+    const estimateId = (await estimateCreated.json()).data.id as string
+    expect(psql(`SELECT count(*) FROM estimate_lines WHERE estimate_id='${estimateId}' AND is_deleted=false AND parent_set_model IS NOT NULL`), 'R9-QA-1 Part3 전제: 견적 계보').toBe('2')
+    const estimateDetail = (await (await page.request.get(`${API_BASE}/slips/estimates/${estimateId}`, { headers: authHeaders(auth) })).json()).data
+    const estimateDelete = await page.request.put(`${API_BASE}/slips/estimates/${estimateId}`, {
+      headers: authHeaders(auth),
+      data: {
+        lineIdContract: true,
+        partnerId: estimateDetail.partnerId, partnerName: estimateDetail.partnerName,
+        partnerBusinessNo: estimateDetail.partnerBusinessNo, partnerAddress: estimateDetail.partnerAddress,
+        validUntil: estimateDetail.validUntil, memo: estimateDetail.memo,
+        lines: [],
+      },
+    })
+    expect(estimateDelete.status(), 'R9-QA-1 Part3: lines:[] 명시 전삭제는 200').toBe(200)
+    expect(psql(`SELECT count(*) FROM estimate_lines WHERE estimate_id='${estimateId}' AND is_deleted=false`), 'R9-QA-1 Part3: 명시 전삭제 미반영').toBe('0')
+
+    // ── Part 4: 계보 없는 평면 전표 — 마커 + lineId 전무(전 라인 교체) → 정상 200(오탐 금지) ──
     const flatCreated = await page.request.post(`${API_BASE}/slips`, {
       headers: authHeaders(auth),
       data: {
@@ -1203,11 +1412,11 @@ test.describe('#809 R8 — OPUS 4.8 적대검증 라이브 재현', () => {
         lines: [{ productId: SINGLE.id, quantity: 1, unitPrice: 400000 }],
       },
     })
-    expect(flatCreated.ok(), 'R8-QA-13 Part2 전제: 평면 전표 생성').toBeTruthy()
+    expect(flatCreated.ok(), 'R8-QA-13 Part4 전제: 평면 전표 생성').toBeTruthy()
     const flatSlipId = (await flatCreated.json()).data.id as string
     expect(
       psql(`SELECT count(*) FROM slip_lines WHERE slip_id='${flatSlipId}' AND is_deleted=false AND parent_set_model IS NOT NULL`),
-      'R8-QA-13 Part2 전제: 평면 전표는 계보 없음',
+      'R8-QA-13 Part4 전제: 평면 전표는 계보 없음',
     ).toBe('0')
 
     const detail2 = (await (await page.request.get(`${API_BASE}/slips/${flatSlipId}`, { headers: authHeaders(auth) })).json()).data
@@ -1228,11 +1437,11 @@ test.describe('#809 R8 — OPUS 4.8 적대검증 라이브 재현', () => {
         })),
       },
     })
-    expect(res2.status(), 'R8-QA-13 Part2: 평면 전표 전라인 교체(lineId 0개)는 정상 200 — 오탐 금지').toBe(200)
+    expect(res2.status(), 'R8-QA-13 Part4: 평면 전표 전라인 교체(lineId 0개)는 정상 200 — 오탐 금지').toBe(200)
     // 교체가 실제로 반영됐는지(활성 라인 단가 갱신).
     expect(
       psql(`SELECT unit_price FROM slip_lines WHERE slip_id='${flatSlipId}' AND is_deleted=false`),
-      'R8-QA-13 Part2: 전 라인 교체가 반영되지 않음',
+      'R8-QA-13 Part4: 전 라인 교체가 반영되지 않음',
     ).toBe('450000.00')
     await page.goto(`${BASE_URL}/sales/${flatSlipId}`)
     await expect(page.getByText(SINGLE.model).first()).toBeVisible({ timeout: 30000 })
@@ -1441,6 +1650,237 @@ test.describe('#809 R8 — OPUS 4.8 적대검증 라이브 재현', () => {
     ).toBe(`${BAIT_B_COMPONENT}.00/LINE_SAVE`)
     expect(memoryOfFor(OTHER_PARTNER.id, COMP_TAIL.id), 'R8-QA-14 Part2: B 에 tail 기억이 생김(구성품 각인)').toBe('NONE')
     expect(memoryOf(SINGLE.id), 'R8-QA-14 Part2: A 단품 기억이 변조됨').toBe(aSingleMemory)
+
+    await ctx.close()
+  })
+
+  /**
+   * R9-QA-10 [매입 미러] — 매출 반대 INBOUND 수정 표면에서 HIT/MISS 모두를 실증한다.
+   * HIT 는 세트+단품 혼합 전표로 구성품 제외까지 함께 본다. B 구성품 기억 bait 가
+   * 있어도 bulk/lookup body 는 단품 1개만 실어야 하고, 배분가·계보·기억은 불변이다.
+   * MISS 는 실 카탈로그 판매가 라운드트립과 `판매가` 마커, 옛 A 단가 미각인을 고정한다.
+   */
+  test('R9-QA-10 [매입 미러] INBOUND HIT/MISS 재조회·배너·마커·오염 차단 + 세트 구성품 제외', async ({ browser }) => {
+    test.slow()
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
+    const page = await ctx.newPage()
+    const auth = await login(page)
+
+    // ── HIT: 혼합 매입 전표, 단품만 B 최근단가로 재가격 ──
+    resetMemoryPairs([COMP_HEAD.id, COMP_TAIL.id, SINGLE.id])
+    resetMemoryPairsFor(OTHER_PARTNER.id, [COMP_HEAD.id, COMP_TAIL.id, SINGLE.id])
+    seedMemory(OTHER_PARTNER.id, COMP_HEAD.id, 999000, 'qa-r9-purchase-hit-bait')
+    seedMemory(OTHER_PARTNER.id, SINGLE.id, 770000, 'qa-r9-purchase-hit')
+    const hitCreated = await page.request.post(`${API_BASE}/slips`, {
+      headers: authHeaders(auth),
+      data: {
+        slipType: 'INBOUND', partnerId: PARTNER.id, partnerName: PARTNER.name,
+        destinationWarehouseId: WAREHOUSE,
+        lines: [
+          { productId: BUNDLE.id, quantity: 1, unitPrice: 1000000 },
+          { productId: SINGLE.id, quantity: 1, unitPrice: 334400 },
+        ],
+      },
+    })
+    expect(hitCreated.ok(), 'R9-QA-10 HIT 전제: INBOUND 혼합 전표 생성').toBeTruthy()
+    const hitSlipId = (await hitCreated.json()).data.id as string
+    const hitLineage = `${COMP_HEAD.model}:true:${BUNDLE.model}|${COMP_TAIL.model}:false:${BUNDLE.model}|${SINGLE.model}:false:-`
+    expect(lineageOf(hitSlipId), 'R9-QA-10 HIT 전제: 매입 세트 계보').toBe(hitLineage)
+    const componentsBefore = psql(
+      `SELECT string_agg(product_id::text || ':' || unit_price, '|' ORDER BY created_at)
+       FROM slip_lines WHERE slip_id='${hitSlipId}' AND is_deleted=false AND parent_set_model IS NOT NULL`,
+    )
+    const aSingleBefore = memoryOf(SINGLE.id)
+
+    const hitBulkBodies: string[] = []
+    const hitLookupBodies: string[] = []
+    page.on('request', (request) => {
+      if (request.method() === 'POST' && request.url().includes('/slips/price-memory/bulk')) hitBulkBodies.push(request.postData() ?? '')
+      if (request.method() === 'POST' && request.url().includes('/api/products/lookup')) hitLookupBodies.push(request.postData() ?? '')
+    })
+    await openPurchaseEdit(page, hitSlipId)
+    const comp1Before = await page.getByLabel('단가(VAT제외) 1').inputValue()
+    const comp2Before = await page.getByLabel('단가(VAT제외) 2').inputValue()
+    await pickAutocomplete(page, '거래처', '거래처 목록', OTHER_PARTNER.name)
+    await page.waitForTimeout(2500)
+
+    await expect(page.getByLabel('단가(VAT제외) 1'), '매입 HIT: head 구성품 배분가 변형').toHaveValue(comp1Before)
+    await expect(page.getByLabel('단가(VAT제외) 2'), '매입 HIT: tail 구성품 배분가 변형').toHaveValue(comp2Before)
+    await expect(page.getByLabel('단가(VAT제외) 3'), '매입 HIT: B 기억 제외환산 미적용').toHaveValue(/^700,?000$/)
+    expect(hitBulkBodies, '매입 HIT: bulk 정확히 1건').toHaveLength(1)
+    expect(hitLookupBodies, '매입 HIT: catalog lookup 정확히 1건').toHaveLength(1)
+    for (const [label, body] of [['bulk', hitBulkBodies[0] ?? ''], ['lookup', hitLookupBodies[0] ?? '']] as const) {
+      expect(body, `매입 HIT: ${label} 단품 productId 누락`).toContain(SINGLE.id)
+      expect(body, `매입 HIT: ${label} head 구성품 포함`).not.toContain(COMP_HEAD.id)
+      expect(body, `매입 HIT: ${label} tail 구성품 포함`).not.toContain(COMP_TAIL.id)
+    }
+    const purchaseBanner = page.getByTestId('purchase-slip-edit-price-refresh-banner')
+    await expect(purchaseBanner).toContainText('최근단가 1건')
+    await expect(page.locator('tr.price-memory-refreshed-row'), '매입 HIT: 변경 단품 1행만 강조').toHaveCount(1)
+    await expect(page.getByRole('note', { name: /이 거래처에 마지막으로 저장된 단가/ })).toHaveText('거래처 최근단가')
+    await capture(page, '38-r9-purchase-hit-single-repriced-components-excluded')
+
+    const hitPut = page.waitForResponse(
+      (response) => response.request().method() === 'PUT' && response.url().endsWith(`/slips/${hitSlipId}`),
+      { timeout: 30000 },
+    )
+    await page.getByTestId('purchase-slip-edit-submit').click()
+    expect((await hitPut).status(), '매입 HIT 저장 PUT').toBe(200)
+    await page.waitForTimeout(2500)
+    expect(lineageOf(hitSlipId), '매입 HIT 저장 후 계보 변형').toBe(hitLineage)
+    expect(
+      psql(`SELECT string_agg(product_id::text || ':' || unit_price, '|' ORDER BY created_at)
+            FROM slip_lines WHERE slip_id='${hitSlipId}' AND is_deleted=false AND parent_set_model IS NOT NULL`),
+      '매입 HIT 저장 후 구성품 배분가 변형',
+    ).toBe(componentsBefore)
+    expect(memoryOfFor(OTHER_PARTNER.id, SINGLE.id), '매입 HIT: B 단품 기억').toBe('770000.00/LINE_SAVE')
+    expect(memoryOfFor(OTHER_PARTNER.id, COMP_HEAD.id), '매입 HIT: head bait 변조').toBe('999000.00/LINE_SAVE')
+    expect(memoryOfFor(OTHER_PARTNER.id, COMP_TAIL.id), '매입 HIT: tail 구성품 각인').toBe('NONE')
+    expect(memoryOf(SINGLE.id), '매입 HIT: A 단품 기억 오염').toBe(aSingleBefore)
+
+    // ── MISS: B 기억 없음 → 실 카탈로그 판매가 + 판매가 마커 ──
+    resetMemoryPairs([UI_MISS.id])
+    resetMemoryPairsFor(OTHER_PARTNER.id, [UI_MISS.id])
+    const catalogRes = await page.request.post(`${API_BASE}/api/products/lookup`, {
+      headers: authHeaders(auth), data: { ids: [UI_MISS.id] },
+    })
+    expect(catalogRes.ok(), '매입 MISS 전제: 카탈로그 lookup').toBeTruthy()
+    const catalogRows = ((await catalogRes.json()).data ?? []) as Array<Record<string, unknown>>
+    const catalogInclusive = Number(catalogRows.find((row) => row['id'] === UI_MISS.id)?.['sellingPrice'])
+    expect(Number.isFinite(catalogInclusive) && catalogInclusive > 0, '매입 MISS 전제: 판매가 미확보').toBe(true)
+    const missField = String(Math.round(catalogInclusive / 1.1))
+    const missMemory = `${(Math.round(catalogInclusive / 1.1) * 1.1).toFixed(2)}/LINE_SAVE`
+    const missCreated = await page.request.post(`${API_BASE}/slips`, {
+      headers: authHeaders(auth),
+      data: {
+        slipType: 'INBOUND', partnerId: PARTNER.id, partnerName: PARTNER.name,
+        destinationWarehouseId: WAREHOUSE,
+        lines: [{ productId: UI_MISS.id, quantity: 1, unitPrice: 777000 }],
+      },
+    })
+    expect(missCreated.ok(), '매입 MISS 전제: INBOUND 전표 생성').toBeTruthy()
+    const missSlipId = (await missCreated.json()).data.id as string
+    const missABefore = memoryOf(UI_MISS.id)
+    expect(memoryOfFor(OTHER_PARTNER.id, UI_MISS.id), '매입 MISS 전제: B 기억 잔존').toBe('NONE')
+    await openPurchaseEdit(page, missSlipId)
+    await pickAutocomplete(page, '거래처', '거래처 목록', OTHER_PARTNER.name)
+    await page.waitForTimeout(2500)
+    await expect(page.getByLabel('단가(VAT제외) 1'), '매입 MISS: 카탈로그 제외환산 미적용').toHaveValue(new RegExp(`^${missField}$`))
+    await expect(page.getByTestId('purchase-slip-edit-price-refresh-banner')).toContainText('판매가 1건')
+    await expect(page.locator('tr.price-memory-refreshed-row'), '매입 MISS: 변경 1행 강조').toHaveCount(1)
+    await expect(
+      page.getByRole('note', { name: '이 거래처에 저장된 최근단가가 없어 판매가를 적용했습니다' }),
+    ).toHaveText('판매가')
+    await capture(page, '39-r9-purchase-miss-catalog-marker')
+    const missPut = page.waitForResponse(
+      (response) => response.request().method() === 'PUT' && response.url().endsWith(`/slips/${missSlipId}`),
+      { timeout: 30000 },
+    )
+    await page.getByTestId('purchase-slip-edit-submit').click()
+    expect((await missPut).status(), '매입 MISS 저장 PUT').toBe(200)
+    await page.waitForTimeout(2500)
+    expect(memoryOfFor(OTHER_PARTNER.id, UI_MISS.id), '매입 MISS: B 카탈로그 고정점 불일치').toBe(missMemory)
+    expect(memoryOf(UI_MISS.id), '매입 MISS: A 기억 오염').toBe(missABefore)
+
+    await ctx.close()
+  })
+
+  /**
+   * R9-QA-5 [견적 수정 대칭] — 새 견적 폼이 아닌 기존 견적 edit hydrate 상태에서 A→B 변경.
+   * 세트 구성품 2행은 후보·요청·강조·각인에서 제외되고, 평면 단품 1행만 B 최근단가로
+   * 재조회되어 배너·마커·강조가 나타나야 한다. 저장 후 실 estimate_lines 계보와 DB 기억으로 판정한다.
+   */
+  test('R9-QA-5 [견적 수정 대칭] edit A→B 재조회·배너·강조·마커 + 세트 구성품 제외·미오염', async ({ browser }) => {
+    test.slow()
+    const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
+    const page = await ctx.newPage()
+    const auth = await login(page)
+    resetMemoryPairs([BUNDLE.id, COMP_HEAD.id, COMP_TAIL.id, SINGLE.id])
+    resetMemoryPairsFor(OTHER_PARTNER.id, [BUNDLE.id, COMP_HEAD.id, COMP_TAIL.id, SINGLE.id])
+    seedMemory(OTHER_PARTNER.id, COMP_HEAD.id, 999000, 'qa-r9-estimate-bait')
+    seedMemory(OTHER_PARTNER.id, SINGLE.id, 770000, 'qa-r9-estimate-hit')
+
+    const created = await page.request.post(`${API_BASE}/slips/estimates`, {
+      headers: authHeaders(auth),
+      data: {
+        partnerId: PARTNER.id, partnerName: PARTNER.name,
+        lines: [
+          { productId: BUNDLE.id, quantity: 1, unitPrice: '1000000', priceVatInclusive: true },
+          { productId: SINGLE.id, quantity: 1, unitPrice: '334400', priceVatInclusive: true },
+        ],
+      },
+    })
+    expect(created.ok(), 'R9-QA-5 전제: 세트+단품 견적 생성').toBeTruthy()
+    const estimateId = (await created.json()).data.id as string
+    const lineageBefore = psql(
+      `SELECT string_agg(model_name || ':' || set_head || ':' || coalesce(parent_set_model,'-'), '|' ORDER BY line_no)
+       FROM estimate_lines WHERE estimate_id='${estimateId}' AND is_deleted=false`,
+    )
+    expect(lineageBefore, 'R9-QA-5 전제: 견적 세트 계보').toBe(
+      `${COMP_HEAD.model}:true:${BUNDLE.model}|${COMP_TAIL.model}:false:${BUNDLE.model}|${SINGLE.model}:false:-`,
+    )
+    const componentPricesBefore = psql(
+      `SELECT string_agg(product_id::text || ':' || coalesce(unit_price_with_vat, unit_price)::text, '|' ORDER BY line_no)
+       FROM estimate_lines WHERE estimate_id='${estimateId}' AND is_deleted=false AND parent_set_model IS NOT NULL`,
+    )
+    const aSingleBefore = memoryOf(SINGLE.id)
+
+    await page.goto(`${BASE_URL}/sales/estimates/${estimateId}/edit`)
+    await expect(page.getByLabel('라인 3 단가'), '견적 edit hydrate 3행 미표시').toBeVisible({ timeout: 30000 })
+    const comp1Before = await page.getByLabel('라인 1 단가').inputValue()
+    const comp2Before = await page.getByLabel('라인 2 단가').inputValue()
+    const bulkBodies: string[] = []
+    const lookupBodies: string[] = []
+    page.on('request', (request) => {
+      if (request.method() === 'POST' && request.url().includes('/slips/price-memory/bulk')) bulkBodies.push(request.postData() ?? '')
+      if (request.method() === 'POST' && request.url().includes('/api/products/lookup')) lookupBodies.push(request.postData() ?? '')
+    })
+
+    await pickAutocomplete(page, '거래처 검색', '거래처 목록', OTHER_PARTNER.name)
+    await page.waitForTimeout(2500)
+    await expect(page.getByLabel('라인 1 단가'), '견적 edit: head 구성품 재가격').toHaveValue(comp1Before)
+    await expect(page.getByLabel('라인 2 단가'), '견적 edit: tail 구성품 재가격').toHaveValue(comp2Before)
+    await expect(page.getByLabel('라인 3 단가'), '견적 edit: B 단품 최근단가 미적용').toHaveValue(/^770,?000$/)
+    expect(bulkBodies, '견적 edit: bulk 정확히 1건').toHaveLength(1)
+    expect(lookupBodies, '견적 edit: lookup 정확히 1건').toHaveLength(1)
+    for (const [label, body] of [['bulk', bulkBodies[0] ?? ''], ['lookup', lookupBodies[0] ?? '']] as const) {
+      expect(body, `견적 edit ${label}: 단품 누락`).toContain(SINGLE.id)
+      expect(body, `견적 edit ${label}: head 구성품 포함`).not.toContain(COMP_HEAD.id)
+      expect(body, `견적 edit ${label}: tail 구성품 포함`).not.toContain(COMP_TAIL.id)
+    }
+    await expect(page.getByTestId('estimate-price-refresh-banner')).toContainText('최근단가 1건')
+    // [R9 실측 확정] 견적 데스크톱 행 강조는 클래스가 아니라 inline style 관례다 —
+    // EstimateFormPage:1629-1630 `borderLeft: var(--action-brand)` + `background: var(--surface-selected)`
+    // (`price-memory-refreshed-row` 클래스는 모바일 카드 렌더러:361 전용). r2 스위트의 검증된
+    // estimateHighlightedRows 관측자와 동일 셀렉터로 판정한다 — 강조 1행 요구는 그대로다.
+    await expect(
+      page.locator('[data-testid^="estimate-form-line-"][data-price-source][style*="surface-selected"]'),
+      '견적 edit: 단품 1행 강조',
+    ).toHaveCount(1)
+    await expect(page.getByRole('note', { name: /이 거래처에 마지막으로 저장된 단가/ })).toHaveText('거래처 최근단가')
+    await capture(page, '40-r9-estimate-edit-partner-reprice-single-only')
+
+    const update = page.waitForResponse(
+      (response) => response.request().method() === 'PUT' && response.url().includes(`/slips/estimates/${estimateId}`),
+      { timeout: 30000 },
+    )
+    await page.getByTestId('estimate-form-save-button').click()
+    expect((await update).status(), '견적 edit 저장 PUT').toBe(200)
+    await page.waitForTimeout(2500)
+    expect(
+      psql(`SELECT string_agg(model_name || ':' || set_head || ':' || coalesce(parent_set_model,'-'), '|' ORDER BY line_no)
+            FROM estimate_lines WHERE estimate_id='${estimateId}' AND is_deleted=false`),
+      '견적 edit 저장 후 계보 변형',
+    ).toBe(lineageBefore)
+    expect(
+      psql(`SELECT string_agg(product_id::text || ':' || coalesce(unit_price_with_vat, unit_price)::text, '|' ORDER BY line_no)
+            FROM estimate_lines WHERE estimate_id='${estimateId}' AND is_deleted=false AND parent_set_model IS NOT NULL`),
+      '견적 edit 저장 후 구성품 배분가 변형',
+    ).toBe(componentPricesBefore)
+    expect(memoryOfFor(OTHER_PARTNER.id, SINGLE.id), '견적 edit: B 단품 기억').toBe('770000.00/LINE_SAVE')
+    expect(memoryOfFor(OTHER_PARTNER.id, COMP_HEAD.id), '견적 edit: head bait 변조').toBe('999000.00/LINE_SAVE')
+    expect(memoryOfFor(OTHER_PARTNER.id, COMP_TAIL.id), '견적 edit: tail 구성품 각인').toBe('NONE')
+    expect(memoryOf(SINGLE.id), '견적 edit: A 단품 기억 오염').toBe(aSingleBefore)
 
     await ctx.close()
   })

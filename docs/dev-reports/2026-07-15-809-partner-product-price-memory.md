@@ -1076,3 +1076,33 @@ R8 한 슬라이스를 하루 종일 iterate(리뷰→fix→QA→잔여→fix…
 - **단가 입력 표기 불일치**(R6 Design 차원 관찰): 전표 LineRow 는 단가를 콤마 포맷으로 표시
   (`LineRow.tsx:218` `toLocaleString`)하고 견적 폼은 raw 문자열 입력을 그대로 표시한다 — #809
   이전부터의 화면 간 불일치로 후속 통일 후보.
+
+## R9 — CODEX SOL 5.6 2차 적대검증 + fix (종합 1회 · 개발책임자 페이싱 바운드)
+
+> 캐논 5단계. 개발책임자 결정 = **"R9 1회 종합 후 머지"**(한 코너씩 재QA 금지 · 일괄 disposition · 재수렴 1회). `mcp__codex__codex` 5차원 직접(`gpt-5.6-sol` · read-only 정적분석 · effort high). 리뷰 게시 [issuecomment-4993173406](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4993173406).
+
+### R9 종합 findings — 1 BLOCKING · 7 HIGH · 6 MEDIUM · 1 LOW (15건)
+R8 fix 2차(라이브 13/13 · CI green)를 CODEX 5차원이 적대검토해 **PM one-corner 라이브 QA 가 놓친 실 결함 15건** 포착. HIGH 다수가 **수정모달 재조회(D-R8-10) 한 지점**에 집중. **CI green 이나 QA false-green(스펙 약단언)이라 green 이 정합성 미보장** 실증 = R9 가 제 값을 했다.
+- **BE** #1[BLOCKING] 게이트가 전체 lineId 개수만 검사 → **부분형 계보 파괴 잔존**(구성품만 lineId 빼면 setHead/parent 소실) · #2 견적 빈삭제 오탐.
+- **FE** #3 재조회 완료 전 저장(race) · #4 카탈로그 미확보 fail-open · #5 **견적 수정 재조회 전무(slip/estimate 비대칭)** · #6 vatPrice `Math.round` 경계.
+- **QA** #7·8·9 스펙 false-green(DELETE/finalLineage/MISS fail-open 미단언) · #10 매입 무테스트 · #11 픽스처 주장.
+- **Design** #12 강조행 다크 대비 1.27:1 · #13 변경행 a11y · #14 수정모달 마커 미렌더.
+- **DevOps** #15 mock 권한.
+
+### R9 fix (batch · CODEX SOL 5.6 라운드 모델 · 개발책임자 "전건 일괄")
+- **BE #1**: 개수 → **집합 계약**(E=기존 계보구성품 lineId · R=요청 lineId · A=익명 라인). `E⊆R` 또는 익명無 명시삭제 또는 빈삭제 또는 평면 전교체 = 통과; **`(E⊄R)∧A`(구성품 익명 재생성)만 400**. 삭제 vs 재생성 모호성 보수적 거부. #2 견적 빈삭제 허용.
+- **FE** #3 재조회 in-flight 저장 차단 · #4 **fail-open→UNAVAILABLE**(옛단가 공백+저장차단+`단가 확인 필요` 마커) · #5 견적 대칭(공용 훅 `usePartnerPriceRefresh`·구성품 제외) · #6 BigInt HALF_UP · #12 다크 override · #13 변경행 텍스트/aria · #14 hit/miss/fail 마커.
+- **QA** false-green 5건 강화(DELETE 204·PUT 400 정확·finalLineage·503 fault→UNAVAILABLE·매입 신설·정직 정정) + per-line 400 대조군.
+
+### 라이브 재QA 가 잔여 3건 포착 → 전건 fix (정직 — fix 가 또 국소 잔여를 냄)
+- **[FE·확정]** 견적 폼 배너 stale(사용자 단가 편집 후 announcement 잔존 · **또 slip/estimate 비대칭**) → 라인별 해제(모달 `clearRepriceHighlight` 패리티)로 fix. 회귀 테스트 RED→GREEN.
+- **[BE·LOW]** 익명 신규 라인 productName 미검증 → 오도성 409(23502) → `@NotBlank` **400 "품목명은 필수입니다"**(3경로 대칭·거부 계약).
+- **[nit]** 계보 400 메시지 '일부' 카피 → 전무/일부 공통 정확 문구.
+
+### R9 검증 실측 (PM 독립)
+- **BE genuine 1,361 / 0 fail / 0 error / 0 skip**(`--rerun-tasks --no-build-cache` · 실 PostgreSQL IT · @NotBlank+per-line 무회귀). ⚠️ PM 전체 스위트가 codex focused 가 놓친 IT 회귀 1건(구계약 fixture)을 포착 → BE 근거(FE 가 lineId 전송함을 코드로 실증)와 함께 갱신 → 재확인.
+- **FE** typecheck 0 · vitest **785 / 0**(110 파일).
+- **라이브(실서버 · mock OFF · dev_manager)**: `price-memory-r8-adversarial-real-qa` **16/16** + `price-memory-r2-live-real-qa` **19/19** = **35/35** · 스샷 `r9-postfix/`. 신규 라이브 실증: **UNAVAILABLE**(저장차단·마커·PUT 0·B기억 NONE) · **매입 HIT/MISS** · **per-line 400 대조군**(부분누락+익명=400 / 전유지+익명=200 / 빈삭제=200 / 평면=200) · **견적 대칭** · **마커 3종**.
+
+### 수렴 판정 (개발책임자 페이싱 바운드)
+R8(OPUS 4.8) · R9(CODEX SOL 5.6) 양측 적대검증 완주 + 각 findings 전건 fix · 라이브 실증. R9 fix 의 라이브 잔여 3건도 fix · 재확인(35/35). 개발책임자 결정 **"R9 1회 종합 후 재수렴 1회 후 머지"**에 따라 이를 terminal 로 판정(strict 무한 0수렴 대신 **페이싱 바운드** 적용 — `.claude/memory/feedback_pm_regulate_slice_effort.md`). 잔여 = 없음(카피 미세 nit "변경 0행" 1건만 기록 · R10/후속 판단).
