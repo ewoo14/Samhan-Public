@@ -16,16 +16,21 @@
  * 전표 생성 자체가 403 이다(R1 INFO-1, #809 회귀 아님). 본 QA 는 `sales.slip.create` +
  * `purchases.slip.edit` 전권인 "매니저" 그룹 계정 `dev_manager` 로 수행한다.
  *
- * 실 시드(R4 당일 실 DB + 실 게이트웨이 API 로 재확인 — R2 당시 시드는 스택 재시드로 전량 소멸):
- *  - 거래처A 부산냉난방테크 (e8ae9c86-…-1f5a2bf31313) — /admin/partners/search?q=부산냉난방 total=1 실측
- *  - 거래처B 전주에어시스템 (1021fcf7-…-6518ab4c27c9) — q=전주에어 total=1 실측
- *  - 품목X AC200CNCDEH-77 / 삼성 천장형 4톤 (a6992eb0-…-7accfe06288c) 판매가 1,200,000
- *  - 품목Y AC300CNCDEH-78 / 삼성 천장형 5톤 (841e6a99-…-5227de864a62) 판매가 1,440,000
- *  - 세트 QA797-SET-01 / QA797 상업 시각폴리시 테스트 (1ea24f99-…-be1901284769) 판매가 1,000,000
- *    · 기본 구성품 2종(PART-01 7de11ab7 기본2개 / PART-02 ed278526 기본1개) — POST /slips 201 실측
- *    ⚠️ 다른 세트 TEST-BUNDLE-SET-01 은 시드 결함(bundle_component.component_product_code 에
- *      product_code 아닌 model명이 시드됨 → 구성품 resolve 실패)으로 저장 자체가 404 라 사용 불가
- *      (#809 무관 — pre-existing expand 경로 · 재시드 산물).
+ * 픽스처 (R8-postfix 기준 — 🔴 **더 이상 하드코딩하지 않는다**, 파일 스코프 beforeAll 이 실 API 로 해석):
+ *  - 거래처A 부산냉난방테크 (e8ae9c86-…-1f5a2bf31313) — 실 DB 생존 확인
+ *  - 거래처B 전주에어시스템 (1021fcf7-…-6518ab4c27c9) — 실 DB 생존 확인
+ *  - 품목X/Y/세트 = **실 카탈로그 품목**. id 만 고정하고 판매가·품목명은 `GET /api/products/{id}`
+ *    응답에서 읽는다 → 카탈로그 가격이 바뀌어도 단언이 자동 정합.
+ *    R8-postfix 실행 실측: X=PC1NWSK1NRR(인테리어핏 중형)/202,400 · Y=ACM-B102N(전력 분배기)/275,000 ·
+ *    세트=AF17B6474GZS/1,813,000 (구성품 2종 AF17B6474GZN=head · AF17B6470DCX)
+ *
+ * ⚠️ **[R8-QA-7] 왜 바뀌었나 — 이 스펙은 R8 라운드에 통째로 죽어 있었다**:
+ *  구 픽스처(AC200CNCDEH-77 / AC300CNCDEH-78 / QA797-SET-01)는 **합성 시드 품목**이었고
+ *  스택 재시드로 **전량 소멸**했다(R8·R8-postfix 실측: id·model_code·model_name 어느 축으로도 0건).
+ *  결과 = **0 passed / 10 failed / 9 did not run** — 01 이 실패하며 describe.serial 이 연쇄 skip 돼
+ *  **19건의 계약이 2개 라운드 동안 라이브 검증되지 않았다**(코드 회귀 아님 · 순수 픽스처 소멸).
+ *  처방 = 시더 의존 제거(실 카탈로그 해석 + legacy 견적 자체 생성). 단언 강도는 일절 손대지 않았다.
+ *  R8-postfix 재실행 결과: **19 passed / 0 failed**.
  *
  * 시나리오: A 견적 자동채움 · B BUNDLE_SET · C 거래처 변경 재조회(bulk 1회 + 배너 + 변경행 강조) ·
  *          D 최근가/판매가 마커 · E 수정경로 ×1.1 정규화 · F 전표 회귀 ·
@@ -103,9 +108,10 @@
  *  - [R6-H3] 신규 16a/16b — 버전이력 스냅샷 계보 왕복: 전표/견적 EDIT 후 최초 revision 복원 →
  *    세트 계보 보존 + 복원·후속 무수정 PUT 전 구간 기억행 delta 0.
  *
- * 단계별 캡처 → docs/qa/809-partner-product-price-memory/r6-postfix/
- * (r5-postfix/ 이하 기존 라운드 디렉토리는 불가침 증거 보존 — 본 스펙 재실행이 덮어쓰지 않도록
- *  R6 fix 재검증 캡처는 r6-postfix/ 신규 디렉토리에 기록한다. r6/ 는 R6 적대리뷰 자체 증거.)
+ * 단계별 캡처 → docs/qa/809-partner-product-price-memory/r8-postfix/r2-suite/
+ * (r2/·r4/·r4-postfix/·r5/·r5-postfix/·r6/·r6-postfix/·r8/ 는 전부 불가침 증거 보존 —
+ *  본 스펙 재실행이 덮어쓰지 않도록 R8 fix 재검증 캡처만 r8-postfix/r2-suite/ 에 기록한다.
+ *  r8-postfix/ 직하는 R8 적대 스펙 몫이라 파일명 충돌을 피해 한 겹 내렸다.)
  *
  * ⚠️ R6 커버리지 갭 중 본 라운드 정직 미커버(사유 박제):
  *  - G3(bulk 부분 실패 failedProductIds): 실서버 단일 트랜잭션에서 부분 실패를 자연 유발할 수
@@ -133,20 +139,43 @@ const BASE_URL = process.env['QA_BASE_URL'] ?? 'http://localhost:5211'
 const API_BASE = process.env['API_BASE'] ?? 'http://localhost:8080'
 const PASSWORD = process.env['DEV_PASSWORD'] ?? 'dev_p05_pass!'
 const ACCOUNT = 'dev_manager'
-// [R6] 캡처는 r6-postfix/ 신규 디렉토리 — r2/·r4/·r4-postfix/·r5/·r5-postfix/·r6/ 불가침(덮어쓰기 금지).
-const SHOTS = path.resolve(_dirname, '../../../../docs/qa/809-partner-product-price-memory/r6-postfix')
+// [R8-postfix] 캡처는 r8-postfix/r2-suite/ — r2/·r4/·r4-postfix/·r5/·r5-postfix/·r6/·r6-postfix/·r8/
+// 전부 불가침(덮어쓰기 금지). 본 스펙의 직전 캡처는 r6-postfix/ 에 박제돼 있으므로 R8 fix 후
+// 재실행분은 별도 디렉토리로 분리한다. R8 적대 스펙(r8-postfix/ 직하)과도 파일명이 겹치므로
+// r2-suite/ 하위로 한 겹 더 내린다.
+const SHOTS = path.resolve(_dirname, '../../../../docs/qa/809-partner-product-price-memory/r8-postfix/r2-suite')
 fs.mkdirSync(SHOTS, { recursive: true })
 
 const PARTNER_A = { name: '부산냉난방테크', query: '부산냉난방', id: 'e8ae9c86-afe1-3364-b484-1f5a2bf31313' }
 const PARTNER_B = { name: '전주에어시스템', query: '전주에어', id: '1021fcf7-f63d-3fcd-9769-6518ab4c27c9' }
 // D-R4-1: miss 자동채움 실체 = product.sellingPrice(제품 등록 화면 '판매가') — 구 상수명 listPrice
 // 는 출고가 계열 별칭('정가')을 연상시켜 오도이므로 sellingPrice 로 정정(값 불변, R4-postfix).
-const PRODUCT_X = { model: 'AC200CNCDEH-77', name: '삼성 천장형 4톤', sellingPrice: '1200000', id: 'a6992eb0-81fc-3b3d-957b-7accfe06288c' }
-const PRODUCT_Y = { model: 'AC300CNCDEH-78', name: '삼성 천장형 5톤', sellingPrice: '1440000', id: '841e6a99-06fe-3252-8a4f-5227de864a62' }
-const BUNDLE = { model: 'QA797-SET-01', sellingPrice: '1000000', id: '1ea24f99-631f-4e19-937f-be1901284769' }
+//
+// 🔴 [R8-QA-7 fix · 픽스처 자급] 이 상수들은 **beforeAll 이 실 카탈로그 API 로 채운다**.
+// 종전엔 합성 시드 품목(AC200CNCDEH-77 / AC300CNCDEH-78 / QA797-SET-01)의 UUID·판매가를
+// 하드코딩했는데, 스택 재시드로 그 품목이 **전량 소멸**해 R8 라운드에 이 스펙이 통째로 붕괴했다
+// (0 passed / 10 failed / 9 did not run — 01 실패 → describe.serial 연쇄 skip).
+// R8 실측: `products` 1116행 중 위 3종 **0건**(id·model_code·model_name 어느 축으로도 부재).
+//
+// 처방 = **시더 의존 제거**. 값을 코드에 박지 않고 `resolveFixtures()` 가 실 API 로 조회해 채운다:
+//  - 존재 확인이 **beforeAll 에서 1회, 명시적 메시지로** 터진다(종전: totalElements=0 → 01 만
+//    실패하고 나머지 9건은 조용히 skip → 원인 파악에 라운드 하나를 소모).
+//  - 판매가/품목명을 **서버 응답에서 읽으므로** 카탈로그 가격이 바뀌어도 단언이 자동 정합된다
+//    (종전: 하드코딩 판매가가 실제와 어긋나면 전 라인 false-RED).
+// ⚠️ **단언 강도는 그대로다** — 픽스처 출처만 바뀌고 각 테스트의 검증 내용은 일절 손대지 않았다.
+//
+// 왜 '생성' 이 아니라 '실 카탈로그 고정' 인가: 세트(BUNDLE)는 `bundle_component` 링크가 있어야
+// 전개되는데 그 링크는 시트동기화/이카운트 임포트 경로 산물이라 `POST /products` 공개 API 로
+// 만들 수 없다(`CreateProductRequest` 에 구성품 배열이 없음). 반면 실 카탈로그에는 전개가
+// 실증된 세트가 있다 — R8 적대 스펙이 같은 이유로 이미 AF17B6474GZS 를 쓴다.
+const PRODUCT_X = { model: 'PC1NWSK1NRR', name: '', sellingPrice: '', id: 'e80287b2-869a-47d6-a2c0-2dc5ca050d74' }
+const PRODUCT_Y = { model: 'ACM-B102N', name: '', sellingPrice: '', id: '0145fc75-2c8e-4726-b150-7d9fc983b33f' }
+/** 실 카탈로그 세트 — bundle_component 2종(기본)이 전개된다. R8 적대 스펙과 동일 세트. */
+const BUNDLE = { model: 'AF17B6474GZS', sellingPrice: '', id: '21b20ce9-d972-46d3-81dc-a2571c782d09' }
+/** 세트 전개 구성품 — [0] = head(실내기), [1] = 구성품(실외기). 순서 계약은 2179 가 의존한다. */
 const BUNDLE_COMPONENT_IDS = [
-  '7de11ab7-e70c-421e-80a4-7c6b51a2c6e9', // QA797-PART-01 (기본 2개)
-  'ed278526-0e16-427d-8a92-2ca06164254a', // QA797-PART-02 (기본 1개)
+  'f199c745-0629-496f-b04a-8e30e529549e', // AF17B6474GZN (head · INDOOR · 기본)
+  'c9c200ad-c75a-44a6-b1cd-a813267bfc45', // AF17B6470DCX (OUTDOOR · 기본)
 ]
 
 /** 라운드 고유값 — 판매가/직전 라운드 값과 명백히 구분되는 단가. */
@@ -466,6 +495,70 @@ interface LegacyEstimateTarget {
   unitPrice: string
 }
 
+/**
+ * [R8-QA-7 fix · 픽스처 자급] legacy 견적이 실 DB 에 없으면 **직접 만든다**.
+ *
+ * legacy 견적 = `partner_id IS NULL` + `unit_price_with_vat IS NULL` 인 견적 — partner_id 컬럼과
+ * VAT 포함단가 provenance 가 도입되기 **이전**에 저장된 행의 형태다. R5 당시 1,926건이 있었으나
+ * 스택 재시드로 **0건**이 됐고(R8 실측 · 본 라운드 재확인: `partner_id IS NULL` = 0 / 전체 11),
+ * 그 결과 11 은 "시나리오 전제 소진" 으로 영구 RED 였다.
+ *
+ * 이 형태는 **실 API 로 직접 만들 수 없다** — 견적 생성 API 는 partnerId 를 요구하고
+ * 저장 경로가 `unit_price_with_vat` 를 채운다. 그래서 **실 GUI 로 정상 견적을 만든 뒤**
+ * 그 두 컬럼만 legacy 형태로 되돌린다. 합성 데이터가 아니라 **과거 스키마 상태의 재현**이며,
+ * 값·구조는 전부 실 저장 경로가 만든 것이다.
+ *
+ * ⚠️ 이 함수는 **전제를 구성**할 뿐 단언을 완화하지 않는다 — 11 의 검증(공급단가 불변 ·
+ * 9.1% 하락 배제 · provenance)은 그대로다.
+ */
+async function ensureLegacyEstimateFixture(page: Page): Promise<void> {
+  const existing = Number(
+    psql(
+      `SELECT COUNT(*) FROM estimates e
+       JOIN estimate_lines el ON el.estimate_id=e.id
+       WHERE e.is_deleted=false AND el.is_deleted=false
+         AND e.status IN ('QUOTE_DRAFT','QUOTE_SENT')
+         AND e.partner_id IS NULL
+         AND e.partner_name='${PARTNER_A.name}'
+         AND el.unit_price_with_vat IS NULL
+         AND (SELECT COUNT(*) FROM estimate_lines a WHERE a.estimate_id=e.id AND a.is_deleted=false)=1`
+        .replace(/\s+/g, ' '),
+    ),
+  )
+  if (existing >= 1) {
+    console.log(`[#809 R8-QA-7] legacy 견적 픽스처 — 실 DB 에 ${existing}건 존재, 생성 생략`)
+    return
+  }
+
+  // 실 GUI 로 거래처A + 품목X 단일라인 견적을 만든다(정상 저장 경로 — 값은 전부 실 산출물).
+  // 앞선 테스트가 (A,X) 기억을 남겼으면 자동채움이 기억단가가 되어 픽스처 단가가 비결정적이다 —
+  // 먼저 비워 miss(=판매가 채움)로 고정한다.
+  resetMemoryPair(PARTNER_A.id, PRODUCT_X.id)
+  await openEstimateForm(page)
+  await pickAutocomplete(page, '거래처 검색', '거래처 목록', PARTNER_A.query)
+  await expect(page.getByLabel('거래처명')).toHaveValue(PARTNER_A.name, { timeout: 15000 })
+  await fillEstimateModel(page, 1, PRODUCT_X.model)
+  await expectUnitPriceDigits(page, PRODUCT_X.sellingPrice, 1, 'legacy 픽스처 생성 — 판매가 채움')
+  const estimateId = await saveEstimateDraftAndGetId(page)
+
+  // legacy 화 — partner_id 와 unit_price_with_vat 를 컬럼 도입 이전 상태로 되돌린다.
+  psql(`UPDATE estimates SET partner_id=NULL WHERE id='${estimateId}'`)
+  psql(`UPDATE estimate_lines SET unit_price_with_vat=NULL WHERE estimate_id='${estimateId}'`)
+  // 이 픽스처가 만든 기억행은 11 의 "사전 기억 부재" 전제를 오염시키므로 제거한다.
+  resetMemoryPair(PARTNER_A.id, PRODUCT_X.id)
+
+  const shape = psql(
+    `SELECT e.status || '|' || COALESCE(e.partner_id::text,'NULL') || '|' || e.partner_name
+            || '|' || COALESCE(el.unit_price_with_vat::text,'NULL')
+     FROM estimates e JOIN estimate_lines el ON el.estimate_id=e.id
+     WHERE e.id='${estimateId}' AND el.is_deleted=false`.replace(/\s+/g, ' '),
+  )
+  expect(shape, '[R8-QA-7] legacy 견적 픽스처 형태 구성 실패').toBe(
+    `QUOTE_DRAFT|NULL|${PARTNER_A.name}|NULL`,
+  )
+  console.log(`[#809 R8-QA-7] legacy 견적 픽스처 생성 — ${estimateId} (${shape})`)
+}
+
 /** 실 DB 의 편집 가능 legacy 견적 중 단일라인 1건을 동적으로 선택한다(합성/seed 없음). */
 function findLegacyEstimateTarget(): LegacyEstimateTarget {
   const raw = psql(
@@ -652,6 +745,77 @@ function restoreLegacyEstimateRows(snapshot: LegacyRowSnapshots): void {
   )
 }
 
+/**
+ * [R8-QA-7 fix] 픽스처 자급 — 실 카탈로그 API 로 품목 3종을 해석해 상수를 채운다.
+ *
+ * 이 훅이 없으면 카탈로그가 바뀔 때마다 스펙이 **조용히** 무너진다(R8: 01 만 RED 로 보이고
+ * 02~10 은 serial skip, 11~16b 는 제각각 실패 → 원인 규명에 라운드 하나 소모). 여기서 실패하면
+ * **어느 품목이 왜 없는지**가 첫 줄에 찍힌다.
+ *
+ * 파일 스코프 훅이라 각 describe 의 beforeAll(기억행 초기화) 보다 **먼저** 돈다 —
+ * 그 훅들이 `PRODUCT_X.id` 등을 읽으므로 순서가 계약이다.
+ */
+test.beforeAll(async ({ browser }) => {
+  const ctx = await browser.newContext()
+  const page = await ctx.newPage()
+  try {
+    const auth = await realLogin(page, ACCOUNT)
+    const resolve = async (fixture: { model: string; id: string; sellingPrice: string }, label: string) => {
+      // 게이트웨이 경로는 `/api/products/**` (StripPrefix=1 → product-service `/products/**`).
+      // 앱의 productApi.ts 와 동일 경로를 쓴다 — `/products` 직행은 게이트웨이가 404 로 막는다.
+      const res = await page.request.get(`${API_BASE}/api/products/${fixture.id}`, { headers: authHeaders(auth) })
+      expect(
+        res.ok(),
+        `[R8-QA-7] 픽스처 품목 소멸 — ${label} ${fixture.model} (${fixture.id}) 조회 실패 HTTP ${res.status()}. `
+          + '실 카탈로그가 재시드된 경우 이 상수의 id/model 을 실재 품목으로 갱신하라 '
+          + '(docker exec samhan-postgres psql -U samhan -d product_db -tAc "SELECT id, model_code, selling_price FROM products WHERE model_code=\'...\'").',
+      ).toBeTruthy()
+      const p = (await res.json()).data as { id: string; modelName?: string; name?: string; sellingPrice?: number | string }
+      expect(p.id, `[R8-QA-7] ${label} id 불일치`).toBe(fixture.id)
+      // 판매가·품목명은 **서버가 권위**다 — 하드코딩하면 카탈로그 가격 변경 시 전 라인 false-RED.
+      fixture.sellingPrice = String(Number(p.sellingPrice ?? 0))
+      expect(
+        Number(fixture.sellingPrice),
+        `[R8-QA-7] ${label} ${fixture.model} 판매가가 0 — miss 자동채움 단언이 무의미해진다`,
+      ).toBeGreaterThan(0)
+      return p
+    }
+
+    const x = await resolve(PRODUCT_X, '품목X')
+    PRODUCT_X.name = x.name ?? ''
+    const y = await resolve(PRODUCT_Y, '품목Y')
+    PRODUCT_Y.name = y.name ?? ''
+    await resolve(BUNDLE, '세트')
+
+    // 픽스처 전제 — X 와 Y 의 판매가가 같으면 "교체 시 Y 기준 재적용"(09) 류 단언이 무력해진다.
+    expect(
+      PRODUCT_X.sellingPrice,
+      '[R8-QA-7] 픽스처 전제 붕괴 — 품목X 와 품목Y 의 판매가가 동일해 교체 단언이 무의미',
+    ).not.toBe(PRODUCT_Y.sellingPrice)
+    // 라운드 고유 단가와 겹치면 "자동채움인지 사용자 입력인지" 구분이 사라진다.
+    for (const [label, price] of [['X', PRODUCT_X.sellingPrice], ['Y', PRODUCT_Y.sellingPrice], ['세트', BUNDLE.sellingPrice]] as const) {
+      expect(
+        [PRICE_P, PRICE_B, PRICE_BUNDLE, PRICE_USER_LINE, EDIT_Q_EXCL_VAT, EDIT_Q_INCL_VAT],
+        `[R8-QA-7] 픽스처 전제 붕괴 — ${label} 판매가(${price})가 라운드 고유 단가와 충돌해 판정 불가`,
+      ).not.toContain(price)
+    }
+
+    // 세트 전개 구성품 2종 실재 확인 — 계보 단언(12a/14a/15/16)의 전제.
+    for (const componentId of BUNDLE_COMPONENT_IDS) {
+      const res = await page.request.get(`${API_BASE}/api/products/${componentId}`, { headers: authHeaders(auth) })
+      expect(res.ok(), `[R8-QA-7] 세트 구성품 소멸 — ${componentId} HTTP ${res.status()}`).toBeTruthy()
+    }
+
+    console.log(
+      `[#809 R8-QA-7] 픽스처 해석 완료 — X=${PRODUCT_X.model}/${PRODUCT_X.sellingPrice}(${PRODUCT_X.name})`
+        + ` · Y=${PRODUCT_Y.model}/${PRODUCT_Y.sellingPrice}(${PRODUCT_Y.name})`
+        + ` · 세트=${BUNDLE.model}/${BUNDLE.sellingPrice}`,
+    )
+  } finally {
+    await ctx.close()
+  }
+})
+
 test.describe.serial('#809 R4-postfix — R4 적대 fix 후 라이브 재검증', () => {
   test.beforeAll(async () => {
     // 재실행 안전성 — "최초 = miss" 를 실제로 만들기 위해 본 스펙이 쓰는 (거래처,품목) 쌍만
@@ -709,7 +873,7 @@ test.describe.serial('#809 R4-postfix — R4 적대 fix 후 라이브 재검증'
       page.getByText('라인 1 판매가 적용', { exact: true }),
       'lookup 고지 문구가 페이지에 1곳(단일 region)이 아님 — 이중 live region 의심(R5-M4 회귀)',
     ).toHaveCount(1)
-    await capture(page, '01-slip-miss-list-price-1200000-catalog-marker-no-recent-marker')
+    await capture(page, '01-slip-miss-sellingprice-filled-catalog-marker-no-recent-marker')
 
     await unitPriceInput(page).fill(PRICE_P)
     await page.getByLabel('라인 1 수량').fill('2')
@@ -953,7 +1117,7 @@ test.describe.serial('#809 R4-postfix — R4 적대 fix 후 라이브 재검증'
     await page.waitForTimeout(1200)
     // 거래처별 격리 — B 는 A 의 888000 이 아니라 판매가여야 한다
     await expectUnitPriceDigits(page, PRODUCT_X.sellingPrice, 1, '거래처B 격리(판매가)')
-    await capture(page, '08-partnerB-isolated-list-price-1200000')
+    await capture(page, '08-partnerB-isolated-sellingprice-filled')
     await unitPriceInput(page).fill(PRICE_B)
     await saveSlipAndWait(page)
     await expectMemoryRowEventually(PARTNER_B.id, PRODUCT_X.id, PRICE_B)
@@ -987,7 +1151,7 @@ test.describe.serial('#809 R4-postfix — R4 적대 fix 후 라이브 재검증'
     await pickAutocomplete(page, '라인 3 품목', '품목 목록', PRODUCT_Y.model)
     await page.waitForTimeout(1000)
     await expectUnitPriceDigits(page, PRODUCT_Y.sellingPrice, 3, '라인3 (A,Y) miss 판매가')
-    await capture(page, '09-before-partner-change-A-888000-user-111111-autoY-1440000')
+    await capture(page, '09-before-partner-change-A-hit-888000-user-111111-autoY-sellingprice')
 
     // 거래처를 B 로 변경 → 자동 라인(1·3)은 bulk 1회로 재조회, 라인2(USER)는 보존
     const callsBefore = net.calls.length
@@ -1045,7 +1209,7 @@ test.describe.serial('#809 R4-postfix — R4 적대 fix 후 라이브 재검증'
     await capture(page, '10-KEY-partner-changed-to-B-refresh-banner-visible')
     await highlighted.scrollIntoViewIfNeeded()
     await page.waitForTimeout(300)
-    await capture(page, '11-KEY-partner-changed-bulk1-highlight-row1-555000-user-preserved-missY-1440000')
+    await capture(page, '11-KEY-partner-changed-bulk1-highlight-row1-555000-user-preserved-missY-sellingprice')
     // [R6-M5] 재조회 배너 해제 후 stale 단건 고지가 재낭독되면 안 된다 — 마지막 단건 고지는
     // '라인 3 판매가 적용'(라인3 품목 선택 시점). 라인1에 USER 입력을 넣어 강조/배너를 해제하면
     // 전표도 재조회 시점에 announcement 를 클리어했어야 하므로 배너는 빈 텍스트여야 한다.
@@ -1203,7 +1367,7 @@ test.describe.serial('#809 R4-postfix — R4 적대 fix 후 라이브 재검증'
     await page.waitForTimeout(400)
     await fillEstimateModel(page, 3, PRODUCT_Y.model)
     await expectUnitPriceDigits(page, PRODUCT_Y.sellingPrice, 3, '견적 라인3 (A,Y) miss 판매가')
-    await capture(page, '15-estimate-3lines-A-888000-user-111111-autoY-1440000')
+    await capture(page, '15-estimate-3lines-A-888000-user-111111-autoY-sellingprice')
 
     // 거래처 B 로 변경 — bulk 지연 창에서 R4-F4(busy + 저장차단) 를 실측한다
     const callsBefore = net.calls.length
@@ -1317,7 +1481,7 @@ test.describe.serial('#809 R4-postfix — R4 적대 fix 후 라이브 재검증'
     const swappedCatalogMarker = catalogMarkers(page).first()
     await expect(swappedCatalogMarker, 'Y(miss) 라인 판매가 마커 미표시').toBeVisible({ timeout: 10000 })
     await expect(swappedCatalogMarker, '판매가 마커 라벨 불일치(D-R4-1)').toHaveText('판매가')
-    await capture(page, '19-KEY-estimate-swap-x-to-y-sellingprice-1440000-no-inheritance')
+    await capture(page, '19-KEY-estimate-swap-x-to-y-sellingprice-no-inheritance')
 
     // 3) 역방향 Y → X 재교체 — (A,X) 재hit(재조회 생존, D-R4-4 의 '재조회 자격 보존' 반증 방지)
     await fillEstimateModel(page, 1, PRODUCT_X.model)
@@ -1335,7 +1499,7 @@ test.describe.serial('#809 R4-postfix — R4 적대 fix 후 라이브 재검증'
     await expectUnitPriceDigits(page, PRODUCT_Y.sellingPrice, 1, '최종 Y 판매가')
     const estimateId = await saveEstimateDraftAndGetId(page)
     console.log('[#809 R4-postfix] 09 POST /estimates 신규 ID:', estimateId)
-    await capture(page, '21-estimate-final-y-1440000-saved')
+    await capture(page, '21-estimate-final-y-sellingprice-saved')
     const line = psql(
       `SELECT el.product_id || '|' || el.unit_price_with_vat FROM estimate_lines el
        JOIN estimates e ON e.id = el.estimate_id
@@ -1421,6 +1585,10 @@ test.describe('#809 R5-postfix — R4 false-green 커버리지 구멍 실서버 
     let memoryPairToReset: string | null = null
 
     try {
+      // [R8-QA-7] 픽스처 자급 — 스택 재시드로 legacy 견적이 0건이 되면 이 시나리오는 전제 소진으로
+      // 영구 RED 였다(R8·본 라운드 실측: partner_id IS NULL = 0건). 없으면 직접 만든다.
+      await ensureLegacyEstimateFixture(page)
+
       // [R6-L6] census 는 시점 가변값 — 고정 단언(구 toBe '1926')은 legacy 가 1건이라도 정식
       // 저장되면 스위트 영구 false-RED 를 만든다. "동적 선택이 가능한가(≥1)" 만 단언하고 실측치는
       // drift 추적용으로 기록한다(선택된 target 자체가 아래 exact 단언들의 대상).
@@ -1902,6 +2070,8 @@ test.describe('#809 R5-postfix — R4 false-green 커버리지 구멍 실서버 
 
 /** [R6] raw wire 형태 — 필요한 필드만 좁게 타입. BigDecimal 은 JSON number 로 온다. */
 interface SlipLineWire {
+  /** 서버 라인 id — [D-R8-9] lineId 계약의 왕복 대상. 상세 응답의 `lines[].id`. */
+  id?: string
   productId: string
   productName: string | null
   modelName: string | null
@@ -1930,6 +2100,8 @@ interface SlipDetailWire {
 }
 
 interface EstimateLineWire {
+  /** 서버 라인 id — [D-R8-9] lineId 계약의 왕복 대상. `EstimateLineResponse.id`. */
+  id?: string
   lineNo: number
   productId: string
   productName: string | null
@@ -1960,6 +2132,12 @@ interface RevisionWire {
 /** 전표 라인 mirror — GET 값 verbatim(1-패스 exact fingerprint 성립 조건). */
 function mirrorSlipLine(line: SlipLineWire): Record<string, unknown> {
   return {
+    // [D-R8-9] lineId 왕복 — 이 헬퍼는 **정상 최신 클라이언트의 무수정 PUT** 을 흉내낸다.
+    // `apiPut` 이 요청 레벨 마커(lineIdContract:true)를 싣는 이상 라인도 lineId 를 실어야
+    // 계약이 성립한다. 마커만 싣고 lineId 를 빼면 서버는 전 라인을 **신규 평면 라인**으로 읽어
+    // 세트 계보를 조용히 파괴한다(200) — R8-QA-1 이 적발한 파괴 신호와 동일하다.
+    // 실 앱은 Y.Doc lineId 직독(`resolveServerLineId`)으로 항상 실어 보낸다.
+    lineId: line.id ?? null,
     productId: line.productId,
     productName: line.productName,
     modelName: line.modelName,
@@ -2001,6 +2179,8 @@ function mirrorEstimateHeader(detail: EstimateDetailWire): Record<string, unknow
 /** 견적 라인 mirror — 앱과 동일하게 VAT 포함 단가 + priceVatInclusive=true 로 재전송. */
 function mirrorEstimateLine(line: EstimateLineWire): Record<string, unknown> {
   return {
+    // [D-R8-9] lineId 왕복 — mirrorSlipLine 과 동일 사유(견적/전표 대칭).
+    lineId: line.id ?? null,
     productId: line.productId,
     productName: line.productName,
     modelName: line.modelName,
