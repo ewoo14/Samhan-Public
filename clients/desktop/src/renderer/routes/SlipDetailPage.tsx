@@ -108,6 +108,7 @@ import { OUTBOUND_DELIVERY_TAG_LABELS } from '../api/slipCutoff'
 import {
   usePartnerPriceRefresh,
   type PartnerRepriceCandidate,
+  type PartnerRepriceOutcome,
 } from '../utils/usePartnerPriceRefresh'
 import { lookupProducts } from '../api/productApi'
 import { vatExclusiveOf, vatInclusiveOf } from '../utils/vatPrice'
@@ -330,6 +331,60 @@ export function bundleComponentLineIds(
     if (line.id && (line.parentSetModel ?? '').trim() !== '') ids.add(line.id)
   }
   return ids
+}
+
+type PartnerRepriceSourceView = Pick<PartnerRepriceOutcome, 'source' | 'updatedAt'>
+
+/** 수정모달 라인 출처 마커 문구 — hit/miss/미확보를 색상 외 텍스트와 AT 의미로 구분한다. */
+export function partnerRepriceMarkerText(outcome: PartnerRepriceSourceView): {
+  label: string
+  description: string
+} {
+  if (outcome.source === 'REMEMBERED') {
+    return {
+      label: '거래처 최근단가',
+      description: `이 거래처에 마지막으로 저장된 단가${outcome.updatedAt ? ` · ${outcome.updatedAt.slice(0, 10)} 저장` : ''}`,
+    }
+  }
+  if (outcome.source === 'CATALOG') {
+    return {
+      label: '판매가',
+      description: '이 거래처에 저장된 최근단가가 없어 판매가를 적용했습니다',
+    }
+  }
+  return {
+    label: '단가 확인 필요',
+    description: '카탈로그 판매가를 확인할 수 없어 단가를 비웠습니다. 직접 입력해 주세요',
+  }
+}
+
+/** 거래처 변경 배너 — miss를 "최근단가 재적용"으로 오인하지 않도록 출처별 건수를 고지한다. */
+export function partnerRepriceBannerText(
+  outcomes: ReadonlyArray<Pick<PartnerRepriceOutcome, 'source'>>,
+  changedCount: number,
+): string {
+  if (outcomes.length === 0) return ''
+  const remembered = outcomes.filter((outcome) => outcome.source === 'REMEMBERED').length
+  const catalog = outcomes.filter((outcome) => outcome.source === 'CATALOG').length
+  const unavailable = outcomes.filter((outcome) => outcome.source === 'UNAVAILABLE').length
+  return [
+    '거래처 변경 단가 확인 완료',
+    remembered > 0 ? `최근단가 ${remembered}건` : null,
+    catalog > 0 ? `판매가 ${catalog}건` : null,
+    unavailable > 0 ? `단가 확인 필요 ${unavailable}건` : null,
+    `변경 ${changedCount}행`,
+  ].filter(Boolean).join(' · ')
+}
+
+function EditPriceChangeIndicator({ id }: { id: string }) {
+  return (
+    <span id={id} className="price-change-indicator">
+      <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+        <path d="M3 2v7m0 0L1.5 7.5M3 9l1.5-1.5M9 10V3m0 0L7.5 4.5M9 3l1.5 1.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+      단가 변경
+    </span>
+  )
 }
 
 /**
@@ -584,13 +639,20 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
   // 뒤집을 수 있다. 세션 seq 로 카탈로그 단계에서 선차단한다.
   const modalRepriceSeqRef = useRef(0)
   const [repriceChangedLineIds, setRepriceChangedLineIds] = useState<ReadonlySet<string>>(() => new Set())
+  const [repriceOutcomeByLineId, setRepriceOutcomeByLineId] = useState<ReadonlyMap<string, PartnerRepriceOutcome>>(() => new Map())
+  // 카탈로그 조회 단계까지 포함한 수정모달 재조회 pending — 저장 버튼 race 차단용.
+  const [modalRepricePending, setModalRepricePending] = useState(false)
   const salesEditLinesRef = useRef(salesEditLines)
   salesEditLinesRef.current = salesEditLines
   const purchaseEditLinesRef = useRef(purchaseEditLines)
   purchaseEditLinesRef.current = purchaseEditLines
   // 편집 세션 종료(두 폼 모두 닫힘) 시 재조회 강조 초기화 — 다음 세션에 이전 강조가 잔존하지 않도록.
   useEffect(() => {
-    if (!salesEditOpen && !purchaseEditOpen) setRepriceChangedLineIds(new Set())
+    if (!salesEditOpen && !purchaseEditOpen) {
+      setRepriceChangedLineIds(new Set())
+      setRepriceOutcomeByLineId(new Map())
+      setModalRepricePending(false)
+    }
   }, [salesEditOpen, purchaseEditOpen])
 
   const detailQuery = useQuery({
@@ -1491,8 +1553,8 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
    * 판매가를 조회해 후보 catalogFallback 으로 공급한다. 종전(fallback=현재단가)은 miss 시 옛
    * 거래처 협상단가가 그대로 남아 저장 시 새 거래처에 각인됐다(라이브 실증: A 협상 777,000 → B
    * miss → B 기억 854,700). 폼(SlipFormPage 의 catalogUnitPrice 스냅샷)과 동일 처방의 모달판이다.
-   * 카탈로그 미확보 라인(품목 삭제/조회 실패/판매가 null)만 종전대로 현재값 유지(변경 없음) —
-   * 값을 지어내지 않는다.
+   * 카탈로그 미확보 라인(품목 삭제/조회 실패/판매가 null)은 현재값을 비우고 UNAVAILABLE 마커와
+   * 저장 차단을 적용한다. 값을 지어내지 않으면서 옛 거래처 단가의 조용한 각인도 허용하지 않는다.
    *
    * <p><b>VAT 도메인 변환</b> (R8 잔여 2 — 드리프트): 기억·카탈로그는 VAT <b>포함</b>, 수정 필드는
    * VAT <b>제외</b> 공급단가다(utils/vatPrice.ts 에 BE 실증 기록). 후보는 포함 도메인으로 승격해
@@ -1517,8 +1579,11 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
     if (!partnerId) {
       partnerReprice.invalidate()
       setRepriceChangedLineIds(new Set())
+      setRepriceOutcomeByLineId(new Map())
+      setModalRepricePending(false)
       return
     }
+    setModalRepricePending(true)
     const editLines = mode === 'OUTBOUND' ? salesEditLinesRef.current : purchaseEditLinesRef.current
     const provider = slipFormCoeditProvider
     const setEditLines = mode === 'OUTBOUND' ? setSalesEditLines : setPurchaseEditLines
@@ -1535,6 +1600,8 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
     )
     if (targets.length === 0) {
       setRepriceChangedLineIds(new Set())
+      setRepriceOutcomeByLineId(new Map())
+      setModalRepricePending(false)
       return
     }
     // 필드(VAT제외) 스냅샷 — 적용 시 실변경 판정 기준(build 시점).
@@ -1542,70 +1609,73 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
       targets.map((line) => [line.lineId!, String(line.unitPrice ?? '').trim()]),
     )
     // 1단계: 카탈로그 판매가(VAT포함) 조회 — miss fallback 원천.
-    const catalogProducts = await lookupProducts(targets.map((line) => line.productId!))
-    if (modalRepriceSeqRef.current !== seq) return // 더 새 거래처 선택이 시작됨 — 이 세션 폐기
-    const catalogInclusiveByProductId = new Map<string, string>()
-    for (const product of catalogProducts) {
-      if (product.id && product.sellingPrice != null && Number.isFinite(product.sellingPrice)) {
-        catalogInclusiveByProductId.set(product.id, String(product.sellingPrice))
+    try {
+      const catalogProducts = await lookupProducts(targets.map((line) => line.productId!))
+      if (modalRepriceSeqRef.current !== seq) return // 더 새 거래처 선택이 시작됨 — 이 세션 폐기
+      const catalogInclusiveByProductId = new Map<string, string>()
+      for (const product of catalogProducts) {
+        if (product.id && product.sellingPrice != null && Number.isFinite(product.sellingPrice)) {
+          catalogInclusiveByProductId.set(product.id, String(product.sellingPrice))
+        }
       }
-    }
-    // 2단계: 후보를 기억 도메인(VAT포함)으로 승격해 공용 훅 실행.
-    const candidates: PartnerRepriceCandidate[] = targets.map((line) => {
-      const currentInclusive = vatInclusiveOf(currentExclusiveByLineId.get(line.lineId!) ?? '')
-      return {
-        key: line.lineId!,
-        productId: line.productId!,
-        currentUnitPrice: currentInclusive,
-        // 카탈로그 미확보 라인은 현재값(포함 승격) fallback — miss 여도 실변경 없음(값 안 지어냄).
-        catalogFallback: catalogInclusiveByProductId.get(line.productId!) ?? currentInclusive,
+      // 2단계: 후보를 기억 도메인(VAT포함)으로 승격해 공용 훅 실행.
+      const candidates: PartnerRepriceCandidate[] = targets.map((line) => {
+        const currentInclusive = vatInclusiveOf(currentExclusiveByLineId.get(line.lineId!) ?? '')
+        return {
+          key: line.lineId!,
+          productId: line.productId!,
+          currentUnitPrice: currentInclusive,
+          // 삭제품목·sellingPrice null·조회 실패는 null — 공용 훅이 UNAVAILABLE 로 명시한다.
+          catalogFallback: catalogInclusiveByProductId.get(line.productId!) ?? null,
+        }
+      })
+      const { outcomes, isCurrent } = await partnerReprice.run(partnerId, candidates)
+      if (!isCurrent() || modalRepriceSeqRef.current !== seq) return
+      // in-flight 편집 재검증 원천 — provider 있으면 Y.Doc(원격 포함 최신), 없으면 로컬 state 최신 ref.
+      const liveExclusiveOf = (lineId: string): string => {
+        if (provider) return provider.getItemValueById(lineId, 'unitPrice').trim()
+        const line = editLinesRef.current.find((candidate) => candidate.lineId === lineId)
+        return line === undefined ? '' : String(line.unitPrice ?? '').trim()
       }
-    })
-    const { outcomes, isCurrent } = await partnerReprice.run(partnerId, candidates)
-    if (!isCurrent() || modalRepriceSeqRef.current !== seq) return
-    // in-flight 편집 재검증 원천 — provider 있으면 Y.Doc(원격 포함 최신), 없으면 로컬 state 최신 ref.
-    const liveExclusiveOf = (lineId: string): string => {
-      if (provider) return provider.getItemValueById(lineId, 'unitPrice').trim()
-      const line = editLinesRef.current.find((candidate) => candidate.lineId === lineId)
-      return line === undefined ? '' : String(line.unitPrice ?? '').trim()
-    }
-    // 3단계: outcome(포함 도메인)을 필드 도메인(VAT제외)으로 변환해 실변경만 적용.
-    const changed = new Set<string>()
-    const priceByLineId = new Map<string, string>()
-    for (const outcome of outcomes) {
-      const nextExclusive = vatExclusiveOf(outcome.unitPrice)
-      const currentExclusive = currentExclusiveByLineId.get(outcome.key)
-      if (!nextExclusive || currentExclusive === undefined) continue
-      // in-flight 편집 가드: 조회 대기 중 이 라인 단가가 직접 편집됐으면(로컬/원격) 건너뛴다 —
-      // 사용자 확정값을 재조회 결과로 덮지 않는다(폼 priceSource=USER 재검증과 동일 의도).
-      // 삭제된 라인(provider miss='')도 여기서 자연 제외된다.
-      if (liveExclusiveOf(outcome.key) !== currentExclusive) continue
-      // 실변경 판정은 변환 후 필드 도메인 수치 비교 — 포함 도메인 hint(outcome.changed)는
-      // 원 미만 표현 차(예: 기억 499,999.5 vs 현재 승격 500,000)로 거짓 강조를 낼 수 있다.
-      if (Number(nextExclusive) === Number(currentExclusive)) continue
-      changed.add(outcome.key)
-      priceByLineId.set(outcome.key, nextExclusive)
-    }
-    if (priceByLineId.size > 0) {
-      if (provider) {
-        // Y.Doc 에 써서 원격 전파 + doc-sync 되돌림 방지. applyProviderState 가 라인 state 로 반영.
-        provider.doc.transact(() => {
-          for (const [lineId, unitPrice] of priceByLineId) {
-            provider.setItemValueById(lineId, 'unitPrice', unitPrice)
-          }
-        })
-      } else {
-        // 평문 모드(provider 없음) — 로컬 state 직접 갱신.
-        setEditLines((lines) =>
-          lines.map((line) =>
-            line.lineId && priceByLineId.has(line.lineId)
-              ? { ...line, unitPrice: priceByLineId.get(line.lineId)! }
-              : line,
-          ),
-        )
+      // 3단계: outcome(포함 도메인)을 필드 도메인(VAT제외)으로 변환한다.
+      const changed = new Set<string>()
+      const priceByLineId = new Map<string, string>()
+      const appliedOutcomes = new Map<string, PartnerRepriceOutcome>()
+      for (const outcome of outcomes) {
+        const nextExclusive = outcome.source === 'UNAVAILABLE' ? '' : vatExclusiveOf(outcome.unitPrice)
+        const currentExclusive = currentExclusiveByLineId.get(outcome.key)
+        if (currentExclusive === undefined || (outcome.source !== 'UNAVAILABLE' && !nextExclusive)) continue
+        // 조회 중 직접 편집된 값과 삭제된 라인은 결과로 덮지 않는다.
+        if (liveExclusiveOf(outcome.key) !== currentExclusive) continue
+        appliedOutcomes.set(outcome.key, outcome)
+        if (nextExclusive === currentExclusive || (
+          nextExclusive !== '' && Number(nextExclusive) === Number(currentExclusive)
+        )) continue
+        changed.add(outcome.key)
+        priceByLineId.set(outcome.key, nextExclusive)
       }
+      if (priceByLineId.size > 0) {
+        if (provider) {
+          provider.doc.transact(() => {
+            for (const [lineId, unitPrice] of priceByLineId) {
+              provider.setItemValueById(lineId, 'unitPrice', unitPrice)
+            }
+          })
+        } else {
+          setEditLines((lines) =>
+            lines.map((line) =>
+              line.lineId && priceByLineId.has(line.lineId)
+                ? { ...line, unitPrice: priceByLineId.get(line.lineId)! }
+                : line,
+            ),
+          )
+        }
+      }
+      setRepriceChangedLineIds(changed)
+      setRepriceOutcomeByLineId(appliedOutcomes)
+    } finally {
+      if (modalRepriceSeqRef.current === seq) setModalRepricePending(false)
     }
-    setRepriceChangedLineIds(changed)
   }
 
   const searchSlipPartnerOptions = async (q: string): Promise<PartnerOption[]> => {
@@ -1623,7 +1693,16 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
   const slipPartnerOption = (name: string, bizNo: string, partnerId: string): PartnerOption | null =>
     name ? { id: partnerId || undefined, partnerCode: bizNo, name, bizNo } : null
 
+  const hasUnavailableReprice = Array.from(repriceOutcomeByLineId.values())
+    .some((outcome) => outcome.source === 'UNAVAILABLE')
+  const repriceBannerText = partnerRepriceBannerText(
+    Array.from(repriceOutcomeByLineId.values()),
+    repriceChangedLineIds.size,
+  )
+
   const handlePurchaseEditSave = () => {
+    // R9 #3/#4: 재조회 중이거나 카탈로그 미확보 단가를 직접 확인하지 않은 상태는 저장 금지.
+    if (modalRepricePending || partnerReprice.isPending || hasUnavailableReprice) return
     purchaseUpdateMutation.mutate({
       updatedAt: purchaseUpdatedAt ?? slip.updatedAt,
       // D-R8-7: null 이면 BE 가 기존 거래처를 보존한다(계약 주석과 동일).
@@ -1650,6 +1729,8 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
   }
 
   const handleSalesEditSave = () => {
+    // 매출·매입 미러 — B 거래처에 A 단가가 각인되는 저장 race/fail-open을 이중 방어한다.
+    if (modalRepricePending || partnerReprice.isPending || hasUnavailableReprice) return
     salesUpdateMutation.mutate({
       updatedAt: salesUpdatedAt ?? slip.updatedAt,
       // D-R8-7: null 이면 BE 가 기존 거래처를 보존한다(계약 주석과 동일).
@@ -1702,8 +1783,8 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
           <Button
             type="button"
             variant="primary"
-            loading={salesUpdateMutation.isPending}
-            disabled={salesUpdateMutation.isPending || slipFormCoeditPending || salesEditLines.length === 0}
+            loading={salesUpdateMutation.isPending || modalRepricePending || partnerReprice.isPending}
+            disabled={salesUpdateMutation.isPending || slipFormCoeditPending || modalRepricePending || partnerReprice.isPending || hasUnavailableReprice || salesEditLines.length === 0}
             data-testid="sales-slip-edit-save"
             onClick={handleSalesEditSave}
           >
@@ -1736,14 +1817,14 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
 
       {/* D-R8-10/R8-QA-11: 거래처 변경 최근단가 재적용 배너(폼과 동일 문구/역할). 상시 마운트 live region. */}
       <div
-        className={repriceChangedLineIds.size > 0 ? 'price-memory-refresh-banner' : undefined}
-        role="status"
+        className={repriceOutcomeByLineId.size > 0 ? 'price-memory-refresh-banner' : undefined}
+        role={hasUnavailableReprice ? 'alert' : 'status'}
         aria-live="polite"
         data-testid="sales-slip-edit-price-refresh-banner"
       >
-        {repriceChangedLineIds.size > 0
-          ? '거래처 변경으로 최근단가 재적용 · 변경된 행을 확인해 주세요.'
-          : null}
+        {modalRepricePending || partnerReprice.isPending
+          ? '거래처 변경 단가 확인 중… 저장은 확인 완료 후 가능합니다.'
+          : repriceBannerText}
       </div>
 
       <div className="detail-grid" data-testid="sales-slip-edit-form">
@@ -1859,10 +1940,15 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
             </tr>
           </thead>
           <tbody>
-            {salesEditLines.map((line, index) => (
-              <tr
+            {salesEditLines.map((line, index) => {
+              const outcome = line.lineId ? repriceOutcomeByLineId.get(line.lineId) : undefined
+              const marker = outcome ? partnerRepriceMarkerText(outcome) : null
+              const sourceStatusId = `sales-edit-price-source-${line.key}`
+              const changedStatusId = `sales-edit-price-changed-${line.key}`
+              const changed = Boolean(line.lineId && repriceChangedLineIds.has(line.lineId))
+              return <tr
                 key={line.key}
-                className={line.lineId && repriceChangedLineIds.has(line.lineId) ? 'price-memory-refreshed-row' : undefined}
+                className={changed ? 'price-memory-refreshed-row' : undefined}
               >
                 <td>
                   <CollaborativeSlipInput
@@ -1911,7 +1997,17 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
                     value={String(line.unitPrice)}
                     onValueChange={(value) => updateSalesLine(index, { unitPrice: value })}
                     aria-label={`단가(VAT제외) ${index + 1}`}
+                    aria-describedby={[
+                      marker ? sourceStatusId : null,
+                      changed ? changedStatusId : null,
+                    ].filter(Boolean).join(' ') || undefined}
                   />
+                  {marker ? (
+                    <span id={sourceStatusId} role="note" aria-label={marker.description} title={marker.description} className="price-source-note">
+                      {marker.label}
+                    </span>
+                  ) : null}
+                  {changed ? <EditPriceChangeIndicator id={changedStatusId} /> : null}
                 </td>
                 <td className="td-right">
                   {(Number(line.quantity) * Number(line.unitPrice || 0)).toLocaleString('ko-KR')}원
@@ -1928,7 +2024,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
                   </Button>
                 </td>
               </tr>
-            ))}
+            })}
           </tbody>
         </table>
         </div>
@@ -1962,8 +2058,8 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
           <Button
             type="button"
             variant="primary"
-            loading={purchaseUpdateMutation.isPending}
-            disabled={purchaseUpdateMutation.isPending || slipFormCoeditPending || purchaseEditLines.length === 0}
+            loading={purchaseUpdateMutation.isPending || modalRepricePending || partnerReprice.isPending}
+            disabled={purchaseUpdateMutation.isPending || slipFormCoeditPending || modalRepricePending || partnerReprice.isPending || hasUnavailableReprice || purchaseEditLines.length === 0}
             data-testid="purchase-slip-edit-submit"
             onClick={handlePurchaseEditSave}
           >
@@ -1996,14 +2092,14 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
 
       {/* D-R8-10/R8-QA-11: 거래처 변경 최근단가 재적용 배너(매출 폼과 동일 계약·미러). */}
       <div
-        className={repriceChangedLineIds.size > 0 ? 'price-memory-refresh-banner' : undefined}
-        role="status"
+        className={repriceOutcomeByLineId.size > 0 ? 'price-memory-refresh-banner' : undefined}
+        role={hasUnavailableReprice ? 'alert' : 'status'}
         aria-live="polite"
         data-testid="purchase-slip-edit-price-refresh-banner"
       >
-        {repriceChangedLineIds.size > 0
-          ? '거래처 변경으로 최근단가 재적용 · 변경된 행을 확인해 주세요.'
-          : null}
+        {modalRepricePending || partnerReprice.isPending
+          ? '거래처 변경 단가 확인 중… 저장은 확인 완료 후 가능합니다.'
+          : repriceBannerText}
       </div>
 
       <div className="detail-grid" data-testid="purchase-slip-edit-form">
@@ -2101,10 +2197,15 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
             </tr>
           </thead>
           <tbody>
-            {purchaseEditLines.map((line, index) => (
-              <tr
+            {purchaseEditLines.map((line, index) => {
+              const outcome = line.lineId ? repriceOutcomeByLineId.get(line.lineId) : undefined
+              const marker = outcome ? partnerRepriceMarkerText(outcome) : null
+              const sourceStatusId = `purchase-edit-price-source-${line.key}`
+              const changedStatusId = `purchase-edit-price-changed-${line.key}`
+              const changed = Boolean(line.lineId && repriceChangedLineIds.has(line.lineId))
+              return <tr
                 key={line.key}
-                className={line.lineId && repriceChangedLineIds.has(line.lineId) ? 'price-memory-refreshed-row' : undefined}
+                className={changed ? 'price-memory-refreshed-row' : undefined}
               >
                 <td>
                   <CollaborativeSlipInput
@@ -2153,7 +2254,17 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
                     value={String(line.unitPrice)}
                     onValueChange={(value) => updatePurchaseLine(index, { unitPrice: value })}
                     aria-label={`단가(VAT제외) ${index + 1}`}
+                    aria-describedby={[
+                      marker ? sourceStatusId : null,
+                      changed ? changedStatusId : null,
+                    ].filter(Boolean).join(' ') || undefined}
                   />
+                  {marker ? (
+                    <span id={sourceStatusId} role="note" aria-label={marker.description} title={marker.description} className="price-source-note">
+                      {marker.label}
+                    </span>
+                  ) : null}
+                  {changed ? <EditPriceChangeIndicator id={changedStatusId} /> : null}
                 </td>
                 <td className="td-right">
                   {(Number(line.quantity) * Number(line.unitPrice || 0)).toLocaleString('ko-KR')}원
@@ -2170,7 +2281,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
                   </Button>
                 </td>
               </tr>
-            ))}
+            })}
           </tbody>
         </table>
         </div>
@@ -3784,6 +3895,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
   }
 
   function removePurchaseLine(index: number) {
+    clearRepriceHighlight(purchaseEditLinesRef.current[index]?.lineId)
     setPurchaseEditLines((prev) => {
       const next = prev.filter((_, i) => i !== index)
       slipFormCoeditProvider?.replaceItems(next)
@@ -3809,9 +3921,17 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
       next.delete(lineId)
       return next
     })
+    // 사용자가 단가를 직접 확정하면 자동 출처/미확보 경고도 해제한다.
+    setRepriceOutcomeByLineId((prev) => {
+      if (!prev.has(lineId)) return prev
+      const next = new Map(prev)
+      next.delete(lineId)
+      return next
+    })
   }
 
   function removeSalesLine(index: number) {
+    clearRepriceHighlight(salesEditLinesRef.current[index]?.lineId)
     setSalesEditLines((prev) => {
       const next = prev.filter((_, i) => i !== index)
       slipFormCoeditProvider?.replaceItems(next)

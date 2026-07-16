@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { renderHook } from '@testing-library/react'
+import { act, renderHook } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { usePartnerPriceRefresh, type PartnerRepriceCandidate } from './usePartnerPriceRefresh'
 
@@ -11,6 +11,12 @@ const candidate = (over: Partial<PartnerRepriceCandidate> = {}): PartnerRepriceC
   catalogFallback: '900',
   ...over,
 })
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((next) => { resolve = next })
+  return { promise, resolve }
+}
 
 describe('usePartnerPriceRefresh (D-R8-10 공용 재조회 훅)', () => {
   it('hit=REMEMBERED·miss=CATALOG fallback 로 해석하고 changed 를 판정한다', async () => {
@@ -40,6 +46,39 @@ describe('usePartnerPriceRefresh (D-R8-10 공용 재조회 훅)', () => {
 
     expect(run.isCurrent()).toBe(true)
     expect(run.outcomes[0]).toMatchObject({ unitPrice: '900', source: 'CATALOG', changed: true, updatedAt: null })
+  })
+
+  it('카탈로그 판매가가 미확보면 옛 거래처 단가를 보존하지 않고 UNAVAILABLE 로 반환한다', async () => {
+    const fetchMemories = vi.fn().mockResolvedValue({ hits: [], failedProductIds: [] })
+    const { result } = renderHook(() => usePartnerPriceRefresh({ fetchMemories }))
+
+    const run = await result.current.run('partnerX', [candidate({
+      currentUnitPrice: '777000',
+      catalogFallback: null,
+    })])
+
+    expect(run.outcomes[0]).toMatchObject({
+      unitPrice: '',
+      source: 'UNAVAILABLE',
+      changed: true,
+      updatedAt: null,
+    })
+  })
+
+  it('재조회 Promise 가 끝날 때까지 isPending=true 를 유지한다', async () => {
+    const pending = deferred<{ hits: []; failedProductIds: string[] }>()
+    const fetchMemories = vi.fn().mockReturnValue(pending.promise)
+    const { result } = renderHook(() => usePartnerPriceRefresh({ fetchMemories }))
+
+    let runPromise!: ReturnType<typeof result.current.run>
+    act(() => { runPromise = result.current.run('partnerX', [candidate()]) })
+    expect(result.current.isPending).toBe(true)
+
+    await act(async () => {
+      pending.resolve({ hits: [], failedProductIds: [] })
+      await runPromise
+    })
+    expect(result.current.isPending).toBe(false)
   })
 
   it('후속 run 이 이전 run 을 supersede 한다 (isCurrent 로 stale 폐기)', async () => {

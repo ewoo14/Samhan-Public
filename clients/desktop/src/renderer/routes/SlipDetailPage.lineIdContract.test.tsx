@@ -3,7 +3,13 @@ import {
   createDocCoeditProvider,
   type DocCoeditProvider,
 } from '../realtime/createCoeditProvider'
-import { bundleComponentLineIds, coeditHeaderValues, coeditLinesToEditLines } from './SlipDetailPage'
+import {
+  bundleComponentLineIds,
+  coeditHeaderValues,
+  coeditLinesToEditLines,
+  partnerRepriceBannerText,
+  partnerRepriceMarkerText,
+} from './SlipDetailPage'
 import { toServerLineIdSet } from '../realtime/coeditLineIds'
 import type { SlipDetail } from '../api/slip'
 
@@ -218,5 +224,25 @@ describe('bundleComponentLineIds — 거래처 변경 재조회의 세트 구성
       { id: null, parentSetModel: 'SET-X' },        // id 없는 라인은 집합화 불가
     ])
     expect(ids.size).toBe(0)
+  })
+})
+
+describe('SlipDetailPage — 거래처 재조회 출처 마커와 배너', () => {
+  it('hit/miss/미확보를 서로 다른 사용자 문구로 표현한다', () => {
+    expect(partnerRepriceMarkerText({ source: 'REMEMBERED', updatedAt: '2026-07-16T10:00:00' }))
+      .toEqual({ label: '거래처 최근단가', description: '이 거래처에 마지막으로 저장된 단가 · 2026-07-16 저장' })
+    expect(partnerRepriceMarkerText({ source: 'CATALOG', updatedAt: null }))
+      .toEqual({ label: '판매가', description: '이 거래처에 저장된 최근단가가 없어 판매가를 적용했습니다' })
+    expect(partnerRepriceMarkerText({ source: 'UNAVAILABLE', updatedAt: null }))
+      .toEqual({ label: '단가 확인 필요', description: '카탈로그 판매가를 확인할 수 없어 단가를 비웠습니다. 직접 입력해 주세요' })
+  })
+
+  it('배너가 miss를 최근단가 재적용으로 오인하지 않고 출처별 건수를 알린다', () => {
+    expect(partnerRepriceBannerText([
+      { source: 'REMEMBERED' },
+      { source: 'CATALOG' },
+      { source: 'CATALOG' },
+      { source: 'UNAVAILABLE' },
+    ], 3)).toBe('거래처 변경 단가 확인 완료 · 최근단가 1건 · 판매가 2건 · 단가 확인 필요 1건 · 변경 3행')
   })
 })

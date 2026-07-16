@@ -591,7 +591,8 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
         key: line.id,
         productId: line.productId!,
         currentUnitPrice: line.unitPrice,
-        catalogFallback: line.catalogUnitPrice ?? line.unitPrice,
+        // 카탈로그 미확보 시 옛 거래처 단가 fallback 금지 — 공용 훅이 UNAVAILABLE로 비운다.
+        catalogFallback: line.catalogUnitPrice ?? null,
       }))
     if (candidates.length === 0) return
     const candidateIds = new Set(candidates.map((candidate) => candidate.key))
@@ -616,10 +617,13 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
         }
         return {
           ...candidate,
-          unitPrice: outcome.unitPrice,
-          priceSource: outcome.source,
+          unitPrice: outcome.source === 'UNAVAILABLE' ? '' : outcome.unitPrice,
+          priceSource: outcome.source === 'UNAVAILABLE' ? null : outcome.source,
           priceMemoryUpdatedAt: outcome.updatedAt,
-          priceRefreshChanged: outcome.unitPrice !== candidate.unitPrice,
+          priceRefreshChanged: (outcome.source === 'UNAVAILABLE' ? '' : outcome.unitPrice) !== candidate.unitPrice,
+          lookupError: outcome.source === 'UNAVAILABLE'
+            ? '카탈로그 판매가를 확인할 수 없습니다. 단가를 직접 입력해 주세요.'
+            : null,
           lookupLoading: false,
         }
       }),
@@ -867,13 +871,14 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
   const requiredWh = isOutbound ? sourceWh : destWh
   // 거래처 변경 최근단가 재조회/가격기억 조회가 in-flight 인 동안 저장하면 이전 거래처
   // 단가가 새 거래처(partnerId)로 전송되어 가격기억이 교차 오염된다 — 저장 차단(R4-F4).
-  const priceResolutionBusy = lines.some((l) => l.lookupLoading)
+  const priceResolutionBusy = partnerReprice.isPending || lines.some((l) => l.lookupLoading)
+  const hasUnresolvedCatalogPrice = lines.some((line) => line.lookupError && !line.unitPrice.trim())
   // R4-D4: 마커 카피 분기/해제 기준 — 가격기억 조회가 실제 가능한 상태(UUID 보유 거래처 선택)와 일치.
   const partnerSelected = Boolean(selectedPartner?.id)
   // R4-D9: 배너 live region 은 상시 마운트 — 내용과 함께 조건부 마운트하면 일부 SR 이 미낭독.
   const priceRefreshNoticeActive = lines.some((line) => line.priceRefreshChanged)
   const canSubmit =
-    !!requiredWh && validLineCount > 0 && !mutation.isPending && !priceResolutionBusy
+    !!requiredWh && validLineCount > 0 && !mutation.isPending && !priceResolutionBusy && !hasUnresolvedCatalogPrice
 
   // ── Header 체크박스 상태 ────────────────────────────────
 
@@ -1300,6 +1305,7 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
                     priceSource: 'USER',
                     priceMemoryUpdatedAt: null,
                     priceRefreshChanged: false,
+                    lookupError: null,
                     lookupLoading: false,
                   })}
                   onDelete={() => removeLine(line.id)}
@@ -1380,6 +1386,7 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
                         priceSource: 'USER',
                         priceMemoryUpdatedAt: null,
                         priceRefreshChanged: false,
+                        lookupError: null,
                         lookupLoading: false,
                       })}
                       onDelete={() => removeLine(line.id)}

@@ -3149,6 +3149,9 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
   // POST /api/products/lookup — productId batch 조회 (BE ProductController.lookup, ids ≤ 100).
   // 전표 수정 거래처 변경 재조회의 카탈로그 판매가 소스(R8 잔여 1 — miss fallback).
   if (method === 'POST' && url.endsWith('/api/products/lookup')) {
+    // R9 #15: 운영 ProductController와 동일한 products.list 조회 권한 계약.
+    const denied = mockRequirePermission('products.list', 'view')
+    if (denied) return denied
     const body = parseMockBody(config)
     const ids = body['ids']
     if (!Array.isArray(ids) || ids.length < 1 || ids.length > 100) {

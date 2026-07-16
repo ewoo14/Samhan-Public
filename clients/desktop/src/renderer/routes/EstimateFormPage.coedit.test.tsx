@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   lookupProductByModelName: vi.fn(),
   getPriceMemory: vi.fn(),
   getPriceMemories: vi.fn(),
+  lookupProducts: vi.fn(),
   createDocCoeditProvider: vi.fn(),
   partnerA: {
     id: '11111111-1111-1111-1111-111111111111',
@@ -146,6 +147,10 @@ vi.mock('../api/slip', () => ({
   toApiBundleSetOptions: () => undefined,
 }))
 
+vi.mock('../api/productApi', () => ({
+  lookupProducts: mocks.lookupProducts,
+}))
+
 vi.mock('./components/LineLookupReferenceModal', () => ({
   LineLookupReferenceModal: () => <div data-testid="line-lookup-reference-modal" />,
 }))
@@ -203,6 +208,8 @@ function makeEstimate(overrides: Partial<EstimateDetail> = {}): EstimateDetail {
         vatAmount: '2000',
         lineTotal: '22000',
         note: '라인 메모',
+        setHead: false,
+        parentSetModel: null,
       },
     ],
   }
@@ -292,6 +299,7 @@ afterEach(() => {
 beforeEach(() => {
   mocks.getPriceMemory.mockResolvedValue(null)
   mocks.getPriceMemories.mockResolvedValue({ hits: [], failedProductIds: [] })
+  mocks.lookupProducts.mockResolvedValue([])
   mocks.createEstimate.mockResolvedValue({ id: 'estimate-created' })
   mocks.updateEstimate.mockResolvedValue({ id: 'estimate-1' })
 })
@@ -544,8 +552,40 @@ describe('EstimateFormPage 견적 편집 full-form coedit 배선', () => {
     expect(status.textContent).toBe('라인 1 거래처 최근단가 적용')
   })
 
-  it('CB-1 edit hydrate preserves the persisted price when partner changes', async () => {
+  it('edit hydrate 일반 라인은 거래처 변경 시 공용 bulk 재조회로 새 거래처 최근단가를 적용한다', async () => {
     mocks.getEstimate.mockResolvedValue(makeEstimate())
+    mocks.createDocCoeditProvider.mockRejectedValue(new Error('coedit unavailable'))
+    mocks.lookupProducts.mockResolvedValue([{ id: 'product-1', sellingPrice: 33000 }])
+    mocks.getPriceMemories.mockResolvedValue({
+      hits: [{
+        productId: 'product-1',
+        unitPrice: 99000,
+        source: 'LINE_SAVE',
+        updatedAt: '2026-07-16T10:00:00',
+      }],
+      failedProductIds: [],
+    })
+    renderPage()
+
+    await waitFor(() => expect((screen.getByTestId('estimate-select-partner-b') as HTMLButtonElement).disabled).toBe(false))
+    fireEvent.click(screen.getByTestId('estimate-select-partner-b'))
+
+    await waitFor(() => expect(mocks.lookupProducts).toHaveBeenCalledWith(['product-1']))
+    await waitFor(() => expect(mocks.getPriceMemories).toHaveBeenCalledWith(mocks.partnerB.id, ['product-1']))
+    await waitFor(() => expect(estimateUnitPrice().value).toBe('99000'))
+    expect(screen.getByTestId('estimate-form-line-0').getAttribute('data-price-source')).toBe('REMEMBERED')
+    expect(screen.getByRole('note', { name: /마지막으로 저장된 단가/ }).textContent).toBe('거래처 최근단가')
+    expect(screen.getByText('단가 변경')).not.toBeNull()
+  })
+
+  it('edit hydrate 세트 구성품은 거래처 변경 재조회 후보에서 제외한다', async () => {
+    mocks.getEstimate.mockResolvedValue(makeEstimate({
+      lines: [{
+        ...makeEstimate().lines[0],
+        setHead: true,
+        parentSetModel: 'SET-01',
+      }],
+    }))
     mocks.createDocCoeditProvider.mockRejectedValue(new Error('coedit unavailable'))
     renderPage()
 
@@ -553,11 +593,27 @@ describe('EstimateFormPage 견적 편집 full-form coedit 배선', () => {
     fireEvent.click(screen.getByTestId('estimate-select-partner-b'))
 
     expect(estimateUnitPrice().value).toBe('11000')
-    expect(screen.getByTestId('estimate-form-line-0').getAttribute('data-price-source')).toBe('USER')
+    expect(mocks.lookupProducts).not.toHaveBeenCalled()
     expect(mocks.getPriceMemories).not.toHaveBeenCalled()
   })
 
-  it('editEstimate_refreshesRememberedPriceForSelectedPartner_onlyForSessionAutoLines', async () => {
+  it('edit hydrate 카탈로그 미확보 miss는 옛 거래처 단가를 비우고 저장을 막는다', async () => {
+    mocks.getEstimate.mockResolvedValue(makeEstimate())
+    mocks.createDocCoeditProvider.mockRejectedValue(new Error('coedit unavailable'))
+    mocks.lookupProducts.mockResolvedValue([])
+    mocks.getPriceMemories.mockResolvedValue({ hits: [], failedProductIds: [] })
+    renderPage()
+
+    await waitFor(() => expect((screen.getByTestId('estimate-select-partner-b') as HTMLButtonElement).disabled).toBe(false))
+    fireEvent.click(screen.getByTestId('estimate-select-partner-b'))
+
+    await waitFor(() => expect(estimateUnitPrice().value).toBe(''))
+    expect(screen.getByTestId('estimate-form-line-0').getAttribute('data-price-source')).toBe('')
+    expect((screen.getByTestId('estimate-form-save-button') as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.getByTestId('estimate-price-refresh-banner').textContent).toContain('단가 확인 필요 1건')
+  })
+
+  it('editEstimate_refreshesRememberedPriceForSelectedPartner_forHydratedAndSessionAutoLines', async () => {
     mocks.getEstimate.mockResolvedValue(makeEstimate())
     mocks.createDocCoeditProvider.mockRejectedValue(new Error('coedit unavailable'))
     mocks.lookupProductByModelName.mockResolvedValue({
@@ -571,6 +627,7 @@ describe('EstimateFormPage 견적 편집 full-form coedit 배선', () => {
       source: 'LINE_SAVE',
       updatedAt: '2026-07-10T09:00:00',
     })
+    mocks.lookupProducts.mockResolvedValue([{ id: 'product-1', sellingPrice: 11000 }])
     mocks.getPriceMemories.mockResolvedValue({ hits: [{
       productId: 'product-session',
       unitPrice: 99000,
@@ -592,19 +649,92 @@ describe('EstimateFormPage 견적 편집 full-form coedit 배선', () => {
 
     fireEvent.click(screen.getByTestId('estimate-select-partner-b'))
 
-    await waitFor(() => expect(mocks.getPriceMemories).toHaveBeenCalledWith(mocks.partnerB.id, ['product-session']))
+    await waitFor(() => expect(mocks.getPriceMemories).toHaveBeenCalledWith(
+      mocks.partnerB.id,
+      ['product-1', 'product-session'],
+    ))
     await waitFor(() => expect(estimateUnitPrice(1).value).toBe('99000'))
     expect(estimateUnitPrice(0).value).toBe('11000')
-    expect(screen.getByTestId('estimate-form-line-0').getAttribute('data-price-source')).toBe('USER')
-    expect(screen.getByText(/거래처 변경으로 최근단가 재적용/)).not.toBeNull()
+    expect(screen.getByTestId('estimate-form-line-0').getAttribute('data-price-source')).toBe('CATALOG')
+    expect(screen.getByText(/거래처 변경 단가 확인 완료/)).not.toBeNull()
     // R4-D9: 동일 DOM 노드 유지(재마운트 아님) + 텍스트만 토글.
     expect(screen.getByTestId('estimate-price-refresh-banner')).toBe(banner)
-    expect(banner.textContent).toContain('거래처 변경으로 최근단가 재적용')
+    expect(banner.textContent).toBe('거래처 변경 단가 확인 완료 · 최근단가 1건 · 판매가 1건 · 변경 1행')
     const changedRow = screen.getByTestId('estimate-form-line-1')
     const changedStatus = screen.getByText('단가 변경')
     expect(changedStatus.querySelector('svg')).not.toBeNull()
     expect(changedStatus.hasAttribute('aria-live')).toBe(false)
     expect(changedRow.getAttribute('aria-describedby')).toBe(changedStatus.id)
+  })
+
+  it('사용자가 재조회 단가를 직접 확정하면 해당 행만 배너 집계에서 제거한다', async () => {
+    const baseEstimate = makeEstimate()
+    mocks.getEstimate.mockResolvedValue(makeEstimate({
+      lines: [
+        baseEstimate.lines[0],
+        {
+          ...baseEstimate.lines[0],
+          id: 'line-2',
+          lineNo: 1,
+          productId: 'product-2',
+          productName: '제품 2',
+          modelName: 'MODEL-2',
+          unitPrice: 20000 as unknown as string,
+          unitPriceWithVat: '22000',
+        },
+      ],
+    }))
+    mocks.createDocCoeditProvider.mockRejectedValue(new Error('coedit unavailable'))
+    mocks.lookupProducts.mockResolvedValue([
+      { id: 'product-1', sellingPrice: 11000 },
+      { id: 'product-2', sellingPrice: 22000 },
+    ])
+    mocks.getPriceMemories.mockResolvedValue({
+      hits: [
+        {
+          productId: 'product-1',
+          unitPrice: 99000,
+          source: 'LINE_SAVE',
+          updatedAt: '2026-07-11T09:00:00',
+        },
+        {
+          productId: 'product-2',
+          unitPrice: 88000,
+          source: 'LINE_SAVE',
+          updatedAt: '2026-07-11T09:00:00',
+        },
+      ],
+      failedProductIds: [],
+    })
+    renderPage()
+
+    await waitFor(() => expect((screen.getByTestId('estimate-select-partner-b') as HTMLButtonElement).disabled).toBe(false))
+    fireEvent.click(screen.getByTestId('estimate-select-partner-b'))
+
+    await waitFor(() => expect(estimateUnitPrice(0).value).toBe('99000'))
+    await waitFor(() => expect(estimateUnitPrice(1).value).toBe('88000'))
+    const banner = screen.getByTestId('estimate-price-refresh-banner')
+    expect(banner.textContent).toBe('거래처 변경 단가 확인 완료 · 최근단가 2건 · 변경 2행')
+
+    fireEvent.change(estimateUnitPrice(0), { target: { value: '77777' } })
+
+    const firstRow = screen.getByTestId('estimate-form-line-0')
+    const secondRow = screen.getByTestId('estimate-form-line-1')
+    expect(firstRow.getAttribute('data-price-source')).toBe('USER')
+    expect(firstRow.textContent).not.toContain('거래처 최근단가')
+    expect(firstRow.textContent).not.toContain('단가 변경')
+    expect(secondRow.getAttribute('data-price-source')).toBe('REMEMBERED')
+    expect(secondRow.textContent).toContain('거래처 최근단가')
+    expect(secondRow.textContent).toContain('단가 변경')
+    expect(banner.textContent).toBe('거래처 변경 단가 확인 완료 · 최근단가 1건 · 변경 1행')
+
+    fireEvent.change(estimateUnitPrice(1), { target: { value: '66666' } })
+
+    expect(secondRow.getAttribute('data-price-source')).toBe('USER')
+    expect(secondRow.textContent).not.toContain('거래처 최근단가')
+    expect(secondRow.textContent).not.toContain('단가 변경')
+    expect(banner.textContent).toBe('')
+    expect(banner.getAttribute('class')).toBeNull()
   })
 
   it('estimate_ignoresStaleMemoryResponse', async () => {

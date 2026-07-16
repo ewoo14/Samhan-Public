@@ -90,8 +90,9 @@ const PRODUCT_LOOKUP_CHUNK_SIZE = 100
  * (R8 잔여 1: miss fallback 이 현재단가=옛 거래처값이면 협상가가 새 거래처에 각인).
  *
  * <p>BE 상한(100개) 초과분은 chunk 순차 호출로 합산하고, chunk 실패는 해당 품목만 미확보로
- * 처리한다(graceful — 실패 품목은 카탈로그 없음과 동일 취급, 가격기억 조회는 별도라 hit 교정은
- * 영향 없음).
+  * 처리한다. 호출자는 결과에서 누락된 품목을 반드시 <b>카탈로그 미확보</b>로 판정해 옛 거래처
+  * 단가를 비우고 사용자 재입력을 요구한다(R9 #4 fail-open 차단). 가격기억 hit 교정은 별도라
+  * 카탈로그 누락과 무관하게 적용할 수 있다.
  *
  * @param ids productId UUID 배열 (중복/빈값 자동 제거)
  * @returns 조회 성공 품목의 `ProductOption[]` — 미존재/실패 품목은 결과에서 생략
@@ -110,7 +111,7 @@ export async function lookupProducts(ids: string[]): Promise<ProductOption[]> {
       const items = Array.isArray(res.data.data) ? res.data.data : []
       results.push(...items.map(toProductOption))
     } catch {
-      // 실패 chunk 는 미확보 처리 — 호출자가 카탈로그 없음으로 fallback
+      // 실패 chunk 는 결과에서 누락 — 호출자가 UNAVAILABLE로 처리하며 현재단가 fallback은 금지.
     }
   }
   return results

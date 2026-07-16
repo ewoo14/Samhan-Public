@@ -23,6 +23,14 @@ describe('vatPrice — 수정화면(VAT제외) ↔ 기억/카탈로그(VAT포함
     expect(vatInclusiveOf(0)).toBe('0')
   })
 
+  it('십진 경계도 이진 부동소수 오차 없이 BE BigDecimal HALF_UP 과 일치한다', () => {
+    // 1.15 × 1.1 = 1.265 → scale(2, HALF_UP) = 1.27.
+    // Math.round(value * 100)은 JS 이진 표현에서 126.4999…가 되어 1.26으로 틀릴 수 있다.
+    expect(vatInclusiveOf('1.15')).toBe('1.27')
+    expect(vatInclusiveOf('2.15')).toBe('2.37')
+    expect(vatInclusiveOf('-1.15')).toBe('-1.27')
+  })
+
   it('경계: 0 원·number 입력 처리', () => {
     expect(vatExclusiveOf(0)).toBe('0')
     expect(vatExclusiveOf(854700)).toBe('777000')

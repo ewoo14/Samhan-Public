@@ -14,7 +14,7 @@
  * provider write)은 각 화면이 outcome 을 받아 수행한다. 라인 후보 build 와 stale 재검증도
  * 소비자가 각자 규약으로 한다(폼=priceSource, 모달=lineId).
  */
-import { useRef } from 'react'
+import { useRef, useState } from 'react'
 import { getPriceMemories as defaultGetPriceMemories, type BulkPriceMemoryLookupResult } from '../api/slip'
 
 /** 재조회 후보 — 소비자가 현재 라인에서 뽑아 넘긴다. */
@@ -24,8 +24,8 @@ export interface PartnerRepriceCandidate {
   productId: string
   /** 변경 판정 기준 단가(후보 build 시점 현재값). */
   currentUnitPrice: string
-  /** 가격기억 miss/실패 시 fallback 단가. */
-  catalogFallback: string
+  /** 가격기억 miss/실패 시 fallback 단가. null이면 카탈로그 미확보로 명시 처리한다. */
+  catalogFallback: string | null
 }
 
 /** 거래처 변경 재조회의 라인별 해석 결과. */
@@ -44,8 +44,8 @@ export interface PartnerRepriceOutcome {
   unitPrice: string
   /** hit 이면 기억 저장시각(remembered_at), miss/실패면 null. */
   updatedAt: string | null
-  /** hit=REMEMBERED / miss·실패=CATALOG. */
-  source: 'REMEMBERED' | 'CATALOG'
+  /** hit=REMEMBERED / miss·실패+판매가 확보=CATALOG / 판매가 미확보=UNAVAILABLE. */
+  source: 'REMEMBERED' | 'CATALOG' | 'UNAVAILABLE'
   /**
    * unitPrice 가 후보 시점 currentUnitPrice 와 다른가(하이라이트 힌트 — 소비자가 재확인 가능).
    * 도메인 변환이 필요한 소비자는 변환 후 필드 도메인에서 실변경을 재판정할 것.
@@ -72,6 +72,8 @@ export interface UsePartnerPriceRefreshResult {
   run: (partnerId: string, candidates: PartnerRepriceCandidate[]) => Promise<PartnerRepriceRun>
   /** in-flight 재조회 무효화(거래처 해제 등) — 이후 도착 결과의 isCurrent 를 false 로 만든다. */
   invalidate: (partnerId?: string | null) => void
+  /** 최신 거래처 재조회가 진행 중인지 여부 — 저장/발송 race 차단용. */
+  isPending: boolean
 }
 
 export function usePartnerPriceRefresh(
@@ -80,10 +82,12 @@ export function usePartnerPriceRefresh(
   const fetchMemories = options?.fetchMemories ?? defaultGetPriceMemories
   const requestRef = useRef(0)
   const activePartnerRef = useRef<string | null>(null)
+  const [isPending, setIsPending] = useState(false)
 
   const invalidate = (partnerId: string | null = null) => {
     requestRef.current += 1
     activePartnerRef.current = partnerId
+    setIsPending(false)
   }
 
   const run = async (
@@ -95,18 +99,26 @@ export function usePartnerPriceRefresh(
     const requestId = ++requestRef.current
     const isCurrent = () => requestRef.current === requestId && activePartnerRef.current === partnerId
     if (candidates.length === 0) return { outcomes: [], isCurrent }
+    setIsPending(true)
 
     const toOutcome = (
       candidate: PartnerRepriceCandidate,
       memory: { unitPrice: number; updatedAt: string | null } | undefined,
     ): PartnerRepriceOutcome => {
-      const unitPrice = memory == null ? candidate.catalogFallback : String(memory.unitPrice)
+      const source: PartnerRepriceOutcome['source'] = memory != null
+        ? 'REMEMBERED'
+        : candidate.catalogFallback != null
+          ? 'CATALOG'
+          : 'UNAVAILABLE'
+      const unitPrice = memory != null
+        ? String(memory.unitPrice)
+        : candidate.catalogFallback ?? ''
       return {
         key: candidate.key,
         productId: candidate.productId,
         unitPrice,
         updatedAt: memory?.updatedAt ?? null,
-        source: memory == null ? 'CATALOG' : 'REMEMBERED',
+        source,
         changed: unitPrice !== candidate.currentUnitPrice,
       }
     }
@@ -116,10 +128,13 @@ export function usePartnerPriceRefresh(
       const byProductId = new Map(hits.map((hit) => [hit.productId, hit]))
       return { outcomes: candidates.map((candidate) => toOutcome(candidate, byProductId.get(candidate.productId))), isCurrent }
     } catch {
-      // bulk 자체 실패 — 전량 miss(판매가 CATALOG fallback)와 동일 취급한다.
+      // bulk 자체 실패 — 판매가가 있으면 CATALOG, 없으면 UNAVAILABLE 로 조용한 오염을 막는다.
       return { outcomes: candidates.map((candidate) => toOutcome(candidate, undefined)), isCurrent }
+    } finally {
+      // 이전 요청이 늦게 끝나도 최신 요청의 pending 상태를 내리지 않는다.
+      if (requestRef.current === requestId) setIsPending(false)
     }
   }
 
-  return { run, invalidate }
+  return { run, invalidate, isPending }
 }

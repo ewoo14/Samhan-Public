@@ -8,6 +8,16 @@
 @import '@samhan/design-system/tokens.css';
 @import '@samhan/design-system/style.css';
 
+/*
+ * R9 #12: DS의 --surface-selected는 light alias만 있어 dark 본문색(#F5F5F5)과
+ * #EFF6FF 조합이 1.27:1이었다. 다크 테마에서만 선택 표면을 깊은 청남색으로
+ * 재정의해 본문색 대비 13:1 이상을 확보한다.
+ */
+html[data-theme="dark"], body[data-theme="dark"] {
+  --surface-selected: #17233B;
+  --surface-selected-hover: #1E2F4D;
+}
+
 *,
 *::before,
 *::after {

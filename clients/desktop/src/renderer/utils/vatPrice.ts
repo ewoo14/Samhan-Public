@@ -31,8 +31,49 @@
  * ×1.1 복리 팽창과 달리 누적되지 않는다.
  */
 
-/** 한국 부가가치세율(10%) 계수 — BE {@code new BigDecimal("1.1")} 과 동일. */
-const VAT_FACTOR = 1.1
+interface DecimalParts {
+  coefficient: bigint
+  scale: number
+}
+
+/** 문자열/number를 이진 부동소수 연산 없이 십진 계수와 scale로 분해한다. */
+function decimalParts(raw: string | number): DecimalParts | null {
+  const text = String(raw).trim() || '0'
+  const matched = text.match(/^([+-]?)(\d*)(?:\.(\d*))?(?:[eE]([+-]?\d+))?$/)
+  if (!matched || (!matched[2] && !matched[3])) return null
+  const sign = matched[1] === '-' ? -1n : 1n
+  const integer = matched[2] || '0'
+  const fraction = matched[3] || ''
+  const exponent = Number(matched[4] || '0')
+  if (!Number.isSafeInteger(exponent)) return null
+  let coefficient = sign * BigInt(`${integer}${fraction}`)
+  let scale = fraction.length - exponent
+  if (scale < 0) {
+    coefficient *= 10n ** BigInt(-scale)
+    scale = 0
+  }
+  return { coefficient, scale }
+}
+
+/** BigDecimal HALF_UP과 동일하게 절댓값 0.5 경계에서 0에서 멀어지는 방향으로 반올림한다. */
+function divideHalfUp(numerator: bigint, denominator: bigint): bigint {
+  const sign = numerator < 0n ? -1n : 1n
+  const absolute = numerator < 0n ? -numerator : numerator
+  const quotient = absolute / denominator
+  const remainder = absolute % denominator
+  return sign * (remainder * 2n >= denominator ? quotient + 1n : quotient)
+}
+
+/** scale 고정 정수를 불필요한 후행 0 없이 화면/API 문자열로 변환한다. */
+function formatScaled(value: bigint, scale: number): string {
+  if (scale === 0) return String(value)
+  const sign = value < 0n ? '-' : ''
+  const absolute = value < 0n ? -value : value
+  const padded = absolute.toString().padStart(scale + 1, '0')
+  const integer = padded.slice(0, -scale)
+  const fraction = padded.slice(-scale).replace(/0+$/, '')
+  return fraction ? `${sign}${integer}.${fraction}` : `${sign}${integer}`
+}
 
 /**
  * VAT 제외(공급단가) → VAT 포함 — BE 수정경로 {@code collectPriceMemory}
@@ -41,9 +82,12 @@ const VAT_FACTOR = 1.1
  * @returns 소수 2자리 반올림 문자열. 비수치 입력은 빈 문자열.
  */
 export function vatInclusiveOf(exclusive: string | number): string {
-  const value = typeof exclusive === 'number' ? exclusive : Number(exclusive)
-  if (!Number.isFinite(value)) return ''
-  return String(Math.round(value * VAT_FACTOR * 100) / 100)
+  if (typeof exclusive === 'number' && !Number.isFinite(exclusive)) return ''
+  const decimal = decimalParts(exclusive)
+  if (!decimal) return ''
+  // value × 1.1을 소수 2자리로: coefficient / 10^scale × 11/10 × 100.
+  const cents = divideHalfUp(decimal.coefficient * 110n, 10n ** BigInt(decimal.scale))
+  return formatScaled(cents, 2)
 }
 
 /**
@@ -54,7 +98,12 @@ export function vatInclusiveOf(exclusive: string | number): string {
  * @returns 원 단위 정수 문자열. 비수치 입력은 빈 문자열.
  */
 export function vatExclusiveOf(inclusive: string | number): string {
-  const value = typeof inclusive === 'number' ? inclusive : Number(inclusive)
-  if (!Number.isFinite(value)) return ''
-  return String(Math.round(value / VAT_FACTOR))
+  if (typeof inclusive === 'number' && !Number.isFinite(inclusive)) return ''
+  const decimal = decimalParts(inclusive)
+  if (!decimal) return ''
+  // value ÷ 1.1을 원 단위로: coefficient / 10^scale × 10/11.
+  return String(divideHalfUp(
+    decimal.coefficient * 10n,
+    11n * (10n ** BigInt(decimal.scale)),
+  ))
 }

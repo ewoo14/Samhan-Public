@@ -78,6 +78,23 @@ afterEach(() => {
 })
 
 describe('mock price memory contract', () => {
+  it('POST /api/products/lookup 은 운영 BE 와 동일하게 products.list 조회 권한을 요구한다', () => {
+    const originalRole = MOCK_AUTH.role
+    try {
+      MOCK_AUTH.role = 'DISPATCH'
+      const denied = mockRequest({
+        method: 'POST',
+        url: '/api/products/lookup',
+        data: { ids: ['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaa040'] },
+      }) as { __mockStatus: number; body: { code: string } }
+
+      expect(denied.__mockStatus).toBe(403)
+      expect(denied.body.code).toBe('FORBIDDEN')
+    } finally {
+      MOCK_AUTH.role = originalRole
+    }
+  })
+
   it('lookupProductByModelName mock mirrors the BE id/name wire shape', () => {
     const response = mockRequest({
       method: 'GET',
