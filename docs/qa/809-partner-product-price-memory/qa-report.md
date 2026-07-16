@@ -2,6 +2,30 @@
 
 > Docker 실서버 + 실 GUI + 실 Postgres 실증. 합성/목업/fixture 없음.
 > 스샷은 전부 실 캡처(`clients/desktop` Playwright, mock OFF, 실 게이트웨이 :8080).
+>
+> 📌 본 문서는 **최초 라운드(R1)의 실행 기록**이다. 라운드별 기록은 `r2/`·`r4/`·`r5/`·`r6/`·`r8/` 등
+> 하위 디렉토리에 보존한다. **아래 §0 은 라운드 무관 상시 체크리스트**다.
+
+## 0. 라운드 사전점검 — **매 라이브 QA 라운드 필수** (상시)
+
+> 🔴 **이 절이 존재하는 이유** (#809 R8-DEVOPS-1): `SlipPriceMemoryUpsertFailure` 경보가 **13일간
+> 런타임에 존재하지 않았고 R1~R7 일곱 라운드가 전부 놓쳤다.** rule 파일은 git 에 멀쩡히 있고 promtool 도
+> 통과해서 **정적 리뷰로는 원리상 잡히지 않는다.** 라이브 QA 만이 잡을 수 있는 계열이며, 이는
+> R8-QA-1(정적 4차원이 놓치고 라이브만 포착)과 같은 교훈이다.
+
+| # | 단언 | 명령 | 기대 |
+|---|---|---|---|
+| 0-a | 🔴 **가격기억 경보가 런타임에 실재** | `.\infrastructure\scripts\verify-prometheus-rules.ps1` | **exit 0** · git 의 모든 rule 이 로드 + `health=ok` |
+| 0-b | 경보 selector 가 실 job 에 결합 | `curl -s 'http://localhost:9090/api/v1/query?query=slip_price_memory_upsert_failed_total'` | `job="slip-service"` label 포함 결과 반환(빈 결과 = target down/label 불일치) |
+| 0-c | slip-service scrape target 생존 | `curl -s 'http://localhost:9090/api/v1/targets?state=active'` | `slip-service` = `up` |
+
+🚫 **`curl :9090/api/v1/rules` 가 `{"groups":[]}` 인 채로 라운드를 진행하지 말 것** — 이 상태에서는
+"upsert 실패 0건" 이 **경보 부재를 뜻할 뿐 정상을 뜻하지 않는다.** 복구는 `docker restart` 가 아니라
+`up -d --force-recreate --no-deps prometheus` 다(디렉토리 바인드는 컨테이너 생성 시점에만 붙는다).
+배경: `infrastructure/README.md` §Alerting rules · `docs/runbooks/slip-price-memory-upsert-failure.md` §0차 확인.
+
+⚠️ **라이브 수치는 휘발성이다** — DB 재시드/QA 쓰기로 바뀐다(R7 의 `2,028`·`1,926` 은 R8 시점에 이미
+stale 이었다). **고정 수치를 단언하는 스펙을 만들지 말 것.**
 
 ## 1. 환경 (실측)
 

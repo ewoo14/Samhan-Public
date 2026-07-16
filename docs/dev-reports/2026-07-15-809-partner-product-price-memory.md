@@ -481,7 +481,8 @@ diff 는 test-task 1줄뿐 — 단 PM 의 "주석 3줄"은 물리적으로 4줄�
 R5 시점 정직 미커버: **정상 coedit 연결 상태에선 거래처 autocomplete 가 잠겨 legacy 견적 재선택
 불가** → R5-H6 검증은 coedit 실패 → 평문 폼 fallback 으로 진입(가격·PUT·DB 는 전부 실서버). 정상
 협업 모드의 거래처 재선택 UX 는 잔존 과제로 기록했고 **R6-H6 이 이를 데드락으로 확정**했다.
-legacy `QUOTE_SENT` 실표본 0(현 1,926행 전부 `QUOTE_DRAFT`) · BUNDLE 구성품 가격을 사용자가 직접
+legacy `QUOTE_SENT` 실표본 0(**R5 시점** 1,926행 전부 `QUOTE_DRAFT` — ⚠️ 이 수치는 재시드로 **stale**,
+현재 legacy 0건. §R7 실측치 정정 참조) · BUNDLE 구성품 가격을 사용자가 직접
 수정하는 경로와 전표 autocomplete 선택의 별도 중간 창은 범위 밖.
 
 ## R6 — FABLE5 재수렴 (캐논 6단계) · `e178c12cb` · [issuecomment-4984027656](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4984027656) — 🔴 **0수렴 실패**
@@ -567,13 +568,311 @@ PASS(실질 14/14, FAIL 원인 = R6-M9). BE 차원 실측이 남긴 라이브 �
 대상으로 명시됐다 — 오염 기억행은 QA 차원 12a 격리 재실행의 스펙 내장 reset 이 삭제했고, 전표
 `2026/07/16-23`(계보 오귀속 상태)은 잔존한다.
 
-### R6 fix — 🚧 **진행 중** (본 문서 개정 시점 미완)
+### R6 fix — ✅ 완료 · 게시 [issuecomment-4985345956](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4985345956)
 
-- 0수렴 실패에 따라 fix = FABLE5(캐논: fix = 그 라운드 진행 모델) 배치들(BE·DevOps·QA·문서)이
-  **동시 진행 중**이다. 본 dev-report/spec 개정이 그중 **문서 배치(R6-M7 대응)** 다.
-- **R6-H6·R6-M1·R6-M8 은 disposition 자체가 "개발책임자 확인"으로 결정 대기다.**
-- 나머지 배치의 fix 결과·검증 실측·라이브 QA 는 이 시점에 확정되지 않았다 — 여기서 결과를 단정하지
-  않는다. **PM 이 fix 완료 후 이 절을 갱신한다.** 완료 후 R7 = CODEX SOL 5.6 재수렴이 예정돼 있다.
+> 이 절은 원래 *"🚧 진행 중 · PM 이 fix 완료 후 이 절을 갱신한다"* 로 남아 있었다. **R8 문서 배치가 그
+> 약속을 이행해 갱신한다**(2026-07-16).
+
+- fix = FABLE5 배치(BE·DevOps·QA·문서) 완료 후 게시. 라이브 QA **19/19**(`90a2c6ed9` 기준 · 스샷 41장
+  `r6-postfix/`).
+- **R6-H6·R6-M1·R6-M8 은 "개발책임자 확인" 으로 이월**됐고 2026-07-16 에 각각 **D-R8-1·D-R8-2·D-R8-3**
+  으로 확정됐다. 그중 **D-R8-3 은 같은 날 D-R8-5 로 번복**됐다(아래 R8 절).
+- 후속 R7 이 **R6 fix 의 핵심인 2-패스 resolver 를 BLOCKING 으로 붕괴**시켰다 — 아래 R7 절.
+
+## R7 — CODEX SOL 5.6 재수렴 (캐논 5단계) · [issuecomment-4985570977](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4985570977) — 🛑 **2/5 차원에서 의도적 중단**
+
+**BE·FE 2차원 완료 시점에 BLOCKING 이 "이 접근으로는 수렴 불가" 를 증명**해, 개발책임자 판단을 받고
+**Design·DevOps·QA 3차원을 의도적으로 미실행**했다. 곧 폐기될 코드를 리뷰하는 비용을 피하기 위함이다.
+
+> ⚠️ **이 중단은 캐논의 "5-agent 단축금지" 예외가 아니다** — 리뷰 대상 코드 자체를 폐기하기로 개발책임자가
+> 결정했기 때문이며, 그래서 **R8 이 5차원 full 라운드로 재시작**했다([[feedback_expanded_scope_reinstate_review]]).
+
+### 🔴 R7 이 밝힌 것 — 휴리스틱 접근의 구조적 붕괴
+
+- **R7-BE-1 [BLOCKING]** — `BundleLineageResolver:198` 이 head 를 2패스에서 무조건 제외 → 세트 head
+  구성품의 **수량만 수정**해도 fingerprint exact 불일치 → 계보 없는 일반 라인으로 저장 →
+  `collectPriceMemory` 가 **배분가를 `LINE_SAVE` 로 각인**. 🔴 **R6 의 "계보 보수적 소실 = 오귀속보다
+  안전" 판단이 틀렸다 — 소실 = 각인이라 안전하지 않다.** 게다가 `BundleLineageResolverTest:102-114` 가
+  **그 동작을 정상으로 고정**하고 있었다(테스트가 결함을 잠금).
+- **R7-BE-2 [HIGH]** — 전역 그리디 tie-break 가 **단품과 구성품을 서로 뒤집는다**. 읽기 전용 probe 로
+  재현: 세 후보의 수량거리가 모두 1 → "빈 계보 우선" 탓에 첫 요청 라인이 단품 엔트리를 선점 → 실제
+  단품이 거리 3인 세트 엔트리를 승계. **요청 순서를 바꾸면 결과가 달라져 R6 의 "요청 순서 비의존" 주장도
+  붕괴.** `Slip.lines` 에 `@OrderBy`/`@OrderColumn` 부재로 `entryOrder` 가 DB 반환 순서 의존.
+  → **R7 판정: "거리 정렬 그리디로는 해결할 수 없다."**
+- **R7-BE-3 [HIGH·CONFIRMED]** — `SlipSnapshot` 이 `driver`·`unloadDate` 누락 → **R8-BE-5 로 이월·미fix**.
+  ⚠️ **게시 수치는 stale — 아래 R8 §실측치 정정 참조.**
+- **R7-FE-1 [HIGH]** — FE 가 계보 소실·오염을 **경고 없이 확정**: 편집 state/request 가 `id`·`setHead`·
+  `parentSetModel` 을 전부 버리고 전량 PUT. 견적은 **응답 DTO 부터** 두 필드가 없어 회피 불가.
+- **R7-FE MEDIUM 3 · LOW 2** — duplicate mock 권한 미검사 · duplicate mock/test 계보 미검증 · 거래처
+  해제 시 stale 안내 재낭독 · **R6-M4 "양방향 실증" 이 fixture 계층 차이였음**(PM 자기 정정) · mock UUID
+  regex 가 GET 실 wire 보다 엄격(`1-1-1-1-1` → 실 API **204** / mock **400**). → **전부 R8 로 이월**.
+
+### ✅ R7 이 반증한 것 (clean)
+
+comparator 가 `lineIndex+entryOrder` 까지 포함해 **Java sort 의 stable/unstable 은 결과 불변** · 라인 상한
+100 이라 후보 10,000 = 성능 결함 근거 없음 · 전표 값 덮어쓰기/견적 팩토리 복원 모두 캡처값 결정적 재현 ·
+구 JSONB nullable + `FAIL_ON_UNKNOWN_PROPERTIES=false` 하위호환 · **복사 endpoint 의 권한·404 우선·cutoff·
+`sourceOrderLineId` 미승계·계보 복사·비구성품만 기억 전부 정합** · 채번 `PESSIMISTIC_WRITE` 직렬화 ·
+afterCommit/executor · V58 BaseEntity 7 audit · FE 403/404/409 문구가 BE 계약과 일치 · `aria-describedby`
+가 실 `<input>` 도달 · `판매가` 정렬 · UUID 화면 노출 0.
+
+### 📌 R7 의 귀결 — lineId 왕복 계약 도입 (개발책임자 결정)
+
+PM 이 4개 선택지(세트 범위 제외 / 임시 안전장치 / **lineId 계약** / 현행 머지)를 제시했고 **lineId 왕복
+계약**으로 확정. 근본원인 = *"update 계약이 라인 안정 ID 없이 전 라인을 통째 교체 → 서버가 신규/수정
+라인을 구분 불가"*. 구현 = CODEX LUNA 5.6 · 커밋 `34f978ec9`. **범위 점증 → 리뷰 재가동.**
+
+R7 반례가 테스트 이름에 잠겼다: `modifiedSetHead_quantityOnly_stillPreservesLineageByLineId` ·
+`sameProductComponentAndPlainLine_keepTheirOwnLineageRegardlessOfRequestOrder` ·
+`swappingRequestOrder_doesNotChangeLineageAssignment` · IT
+`lineIdFromAnotherSlip_isRejectedAsBadRequestBeforeReplacement`.
+
+## R8 — OPUS 4.8 1차 적대검증 (캐논 4단계) · `6ae5ccde9` · [issuecomment-4987613082](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4987613082) — 🔴 **0수렴 실패**
+
+> ⚙️ **2026-07-16 개발책임자 워크플로우 변경**: 1차 적대검증 모델이 **FABLE5 → OPUS 4.8** 로 교체됐다
+> (FABLE5 토큰 소모량 극심 → 폐지 · 커밋 `178e3a113`). 2차 적대검증 = CODEX SOL 5.6 은 유지. 구 기록의
+> "FABLE5 라운드" 는 현 1차 적대검증 라운드로 읽는다.
+
+**고유 28건 (BLOCKING 2 · HIGH 9 · MEDIUM 8 · LOW 9 — 중복 병합 후).** 5차원 전부 실행(Design N/A 없음)
++ 라이브 QA. **머지 불가 판정.**
+
+### 🔑 R8 의 핵심 결론 — **"lineId 계약이 근본원인을 제거했다"는 주장은 반증됐다**
+
+직전 세션은 근본원인이 끊겼다고 판단하고 **"예상 2라운드"** 를 전망했다. R8 은 그 주장을 1순위 적대
+대상으로 삼았고 **BE·FE·QA 3개 차원이 독립적으로 반증**했다.
+
+**공정하게 성립하는 부분**: `BundleLineageResolver` 의 **"휴리스틱 잔존 0" 주장은 참이다.** BE 차원이
+`Comparator`/`distance`/`fingerprint`/`tie`/`Fallback` 계열을 전수 grep 해 반증에 **실패**했다. 계보
+결정은 `Map<lineId, lineage>` 직접 조회뿐이다.
+
+🔴 **그러나 정확성 부담이 사라진 게 아니라 서버 → FE 로 이전됐을 뿐이다.**
+
+```
+구 설계: 계보를 버림 → 휴리스틱으로 되찾으려다 반례에 붕괴 (R5·R6·R7)
+신 설계: 계보를 lineId 로 왕복 → 서버는 lineId 를 무조건 신뢰
+         → FE 가 lineId 를 흘리거나(R8-QA-2) 미전송하거나(R8-QA-1)
+           엉뚱한 품목에 붙이면(R8-QA-6) 서버가 그대로 각인
+         → 방어 0 = 더 조용히 깨짐
+```
+
+`BundleLineageResolver` 는 입력을 전면 신뢰하는 **순수 함수**이고, **그 전제를 강제하는 주체가 아무도
+없다.** 폴백을 의도적으로 없앤 탓에 클라이언트 결함이 휴리스틱 오작동이 아니라 **조용한 데이터 파괴**로
+귀결된다.
+
+### 🔴 BLOCKING 2
+
+| ID | 요약 | 실패 시나리오(라이브 실측) |
+|---|---|---|
+| **R8-QA-1** 🆕 | **lineId 미전송 PUT 이 세트 계보를 전량 파괴** + 구성품 배분가 각인. **QA 가 독자 포착 — 정적 4차원 전부 놓침** | 세트 전표 생성 → **아무것도 수정하지 않고** 왕복 PUT(lineId 없음) → **200** → `GZN:t:GZS｜DCX:f:GZS` → **`GZN:f:-｜DCX:f:-`**. 기억행에 구성품 `501600`·`752400` 이 `LINE_SAVE` 로 각인 |
+| **R8-FE-1** = **R8-QA-2** | coedit 원격 라인삭제 → lineId **위치 밀림** → 계보 오귀속 + 사용자 단가 증발. **전표엔 견적의 `lineStructureLocked` seed-lock 이 없음** | 2창 coedit → A 가 1행(head) 삭제 → B 저장 **200** → 단품 `AC032CN1DBC1` 이 `parent=AF17B6474GZS` 로 각인, `DCX` 가 `set_head=true` 탈취, 사용자 입력 **299000 증발**. PUT body 실증: `lineId f427db74`(head) ↔ `productId c9c200ad`(DCX). **2/2 결정적 재현** |
+
+**서버 방어 2종이 모두 미발화함을 QA 가 확인**: `validateLineIds` 는 밀린 lineId 도 "소유+중복없음" 이라
+통과 · `verifyVersion` 낙관적잠금은 원격삭제가 **Y.Doc 전용(서버 미호출)** 이라 `modifiedAt` 불변 →
+409 없음.
+
+### 🟠 HIGH 9
+
+| ID | 요약 | 확신도 |
+|---|---|---|
+| **R8-BE-1**=**R8-QA-6** | **lineId 승계에 productId 동일성 검증 없음** → 품목 교체 행이 남의 계보를 상속. 라이브: head 라인을 무관 단품 `ACD-2558G` 로 교체 + 단가 150000 → **200** → `ACD-2558G:t:AF17B6474GZS`, 기억행 **NONE** | CONFIRMED |
+| **R8-BE-2** | 🔴 **D-R8-3 의 전제가 거짓** — `parentSetModel`=modelCode 인데 `price_memory.product_id`=NOT NULL UUID · `ProductClient` 에 modelCode→productId 역조회 없음 · `expand` 6:4 재배분으로 **일관된 "세트 단가" 부재** → **D-R8-5 번복의 근거** | CONFIRMED |
+| **R8-BE-3**=**R8-QA-3** | **전표 수정 시 거래처 변경이 partnerId 에 미반영** → 기억이 **원 거래처**에 귀속·오염. **견적은 정상 = 또 slip/estimate 비대칭** | CONFIRMED |
+| **R8-BE-4** | **D-R8-2 설계 함정 3종** — DataSource 만 분리하면 ①`set_config(is_local)` 무력화 ②autoconfig back-off 로 기동 실패 ③stale 주석 3곳. 현 테스트는 `verify(applyTransactionTimeouts)` mock 확인이라 **false-green 유지** | CONFIRMED |
+| **R8-DEVOPS-2** | **D-R8-2 진단 확인** — `connection-timeout: 4000` 이 slip-service **단일 전역** DataSource 에 적용 → pool 포화 시 21번째 요청이 `SQLTransientConnectionException` → `handleUnknown` → **HTTP 500**. **"fleet 26모듈 중 유일" 실측 확인**. 격리 사이징 안전: PG `max_connections=300`, 현재 141, 전용 4 추가 시 ≈154 | CONFIRMED |
+| **R8-BE-5** | **R7-BE-3 재확인** — `SlipSnapshot` 이 `driver`·`unloadDate` 누락. `SlipService:403` 이 *"toSnapshot 필드"* 라 **명시**하는데 record 에 없음 | CONFIRMED (⚠️ 수치 정정 — 아래) |
+| **R8-FE-2** | **lineId 왕복 계약의 FE 테스트 0건** — PR 간판 계약이 FE 에서 완전 무검증. `34f978ec9` 의 FE diff = **18줄, 테스트 0** → R8-FE-1 이 749 vitest 를 그대로 통과 | CONFIRMED |
+| **R8-DESIGN-1** | 견적 폼에 **거래처 입력 경로가 2개**인데 권위 있는 쪽만 비활성 — `PartnerAutocomplete disabled={coeditActive}`(`:1133`) vs `거래처명` 자유입력 **미잠금**(`:1153`) → 마커가 거짓말. `SlipFormPage:956-957` 이 동일 결함을 **"P0 D-AC3-01"** 로 이미 제거한 선례 존재 | CONFIRMED(정적) |
+| **R8-QA-7** | 🔴 **라이브 QA 스위트 전면 붕괴** — 직전 "19/19" 재현 불가. **0 passed / 10 failed / 9 미실행**. 원인 = 시드 품목 소멸(`products.product_code` **1116행 전부 NULL**). **코드 회귀 아님** | CONFIRMED |
+
+### 🟡 MEDIUM 8 · 🔵 LOW 9 (요약)
+
+**MEDIUM** — `R8-BE-6` recency guard 로 전량 skip 돼도 `success_total` 증가(다중 인스턴스 clock skew 시
+조용한 유실이 100% 성공으로 보임) · `R8-BE-7`(=`R8-DEVOPS-3`) executor drain ↔ HikariDataSource close
+순서 무제약 · `R8-FE-3` 안내가 guard 밖 발화 → aria-live 거짓 고지(**견적엔 guard 있음 = 또 비대칭**) ·
+`R8-FE-4`(R7-FE-1) duplicate mock 권한 미검사 — 근거 주석이 **범주 오류**(403 은 시간 비의존인데 409 와
+묶어 "시간 의존" 이라 기재) · `R8-FE-5`(R7-FE-2) duplicate mock 계보 미검증 + `__mockStatus:201` 미반영 ·
+`R8-FE-6`(=`R8-DESIGN-2`·R7-FE-3) 거래처 해제 시 stale 안내 재낭독 · **`R8-DEVOPS-1` prometheus rule
+미마운트** → `GET :9090/api/v1/rules` = `{"groups":[]}` = 경보 **런타임 부재**(R1~R7 전 라운드 미검증) ·
+`R8-QA-8` **BE 테스트가 데이터 손실을 '정상'으로 못박음**
+
+**LOW** — `R8-FE-7`(R7-FE-4) mock UUID regex GET/POST 분리 필요 · `R8-FE-8` `setHead`/`parentSetModel`
+노출했으나 **소비자 0**(비대칭 해소가 DTO 표면에만) · `R8-FE-9` `seedEstimateCoeditProvider` 가 lineId
+누락 = **fix 지뢰** · `R8-FE-10` D-R8-1 "1,926건" 재현 불가 · `R8-DESIGN-3` LineRow JSDoc 이 폐기된
+`'최근가'` 문서화(레포 **유일 잔존 1건**) · `R8-DESIGN-4` 대비 가드가 **렌더되지 않는 쌍** 단언 ·
+`R8-DESIGN-5` 저장일이 `title`/`aria-label` 에만(터치·키보드 미도달) · `R8-DESIGN-6` R6-L2 fix 주석의
+a11y 거짓 주장 · `R8-DESIGN-7` `role=row` orphan(**main 선재 = 범위 외**)
+
+### 📌 개발책임자 결정 D-R8-5~8 — [issuecomment-4987642891](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4987642891)
+
+R8 리뷰가 낸 **확인요청 4건 전부 확정 · 4건 모두 PM 권고안 수렴.**
+
+| ID | 쟁점 | 확정 |
+|---|---|---|
+| **D-R8-5** | D-R8-3 **재결정** | ✅ **설계 귀결로 재분류 — 결함 아님.** spec 명시 후 close |
+| **D-R8-6** | R8-QA-1 [BLOCKING] lineId 미전송 PUT | ✅ **400 거부** (판정 기준은 **D-R8-9** 가 이전) |
+| **D-R8-7** | R8-QA-3 [HIGH] 전표 거래처 자유입력 | ✅ **자유입력 봉쇄 + `PartnerAutocomplete` 통일** (+ 계약에 `partnerId` 추가) |
+| **D-R8-8** | 차원 간 권고 충돌 | ✅ **"세트 구성품의 품목을 교체하면 그 세트의 구성품이 아니다"** → **BE productId 검증 + FE Y.Doc 직독 둘 다** |
+| **D-R8-9** | D-R8-6 구현 중 BE 배치가 고지한 **오탐 1종** | ✅ **요청 레벨 계약 마커(`lineIdContract`) 도입** — 판정 = "lineId 개수" → **"마커 유무"**. 마커 부재 → 400 / 마커 존재 → **lineId 0개(전 라인 교체)도 허용**. 근거: **구버전 desktop 사실상 없음(전원 최신본)** → 즉시 필수화 |
+
+🔵 **D-R8-9 는 D-R8-6 을 대체하지 않는다** — 거부(400) 자체는 유지되고 **판정 기준만** 옮겨 오탐을
+제거한다. 파괴 경로(R8-QA-1)는 여전히 차단된다: 구 클라이언트는 마커를 보내지 않으므로 라인을 한 줄도
+건드리기 전에 거부된다.
+
+> 📌 **이 결정도 리뷰가 제 역할을 한 사례다.** D-R8-6 을 구현하던 BE 배치가 *"계보 보유 전표에서 전
+> 라인을 새 라인으로 교체하는 정상 저장이 400 이 된다"* 는 오탐을 **스스로 정직 고지**하고 PM 판단을
+> 요청했다. 그리고 *"구버전 desktop 이 실제로 서버를 치는가"* 라는 확인 한 번이 **"구 클라이언트
+> 호환" 이라는 요구사항 자체가 가상이었음**을 드러내 설계를 바꿨다.
+
+🔴 **D-R8-5 는 같은 날 오전 확정(D-R8-3)의 번복이다** — 이력 보존을 위해 명시한다.
+
+| | 오전 (D-R8-3) | 현재 (**D-R8-5**) |
+|---|---|---|
+| 판정 | **결함으로 처리 · 이 PR 에서 fix** | **설계 귀결로 재분류 · 결함 아님** |
+| 근거 | *"lineId 계약 도입으로 수정 경로 갱신이 기술적으로 가능해짐"* | 위 전제가 **R8-BE-2 로 코드 반증됨** |
+
+> 📌 **이 번복은 리뷰가 제 역할을 한 사례로 기록한다.** 오전 확정은 직전 세션이 보고한 전제를 신뢰한
+> 판단이었고, R8 BE 차원이 그 전제를 코드로 반증했다. 캐논의 *"물음은 '결과가 맞나'가 아니라 '모든
+> 단계를 밟았나'"* 가 작동했다.
+
+계약 상세는 spec `docs/specs/809-slip-estimate-recent-manual-price-spec.md` **§R8 확정 계약**(D-R8-6/7/8/9)
+및 **§BUNDLE 정책 → `BUNDLE_SET` 기억의 정의**(D-R8-5) 에 명시했다.
+
+### 🔴 lineId 계약의 실제 상태 — **근본원인이 제거된 게 아니라 FE 로 이전됐다**
+
+정직하게 기록한다. 직전 세션의 보고와 실제 상태의 차이는 다음과 같다.
+
+| 직전 세션의 보고 | R8 이 확인한 실제 |
+|---|---|
+| "휴리스틱 잔존 0" | ✅ **참** — BE 차원이 전수 grep 으로 반증 실패 |
+| "근본원인 제거" | 🔴 **거짓** — 부담이 **서버 → FE 로 이전**. FE 는 그 부담을 지지 못함(R8-FE-1/2) |
+| "폴백 없음 = 같은 결함 재발 방지" | 🔴 **역효과** — 서버 방어 0 → 클라 결함이 **조용한 파괴**로 귀결(R8-QA-1) |
+| "예상 2라운드" | 🔴 **철회** — R8 이 BLOCKING 2건을 새로 냄(1건은 정적 4차원이 전부 놓치고 라이브만 포착) |
+
+**D-R8-6(400 거부) + D-R8-8(BE productId 검증)이 서버 방어를 복원**하고, **D-R8-8 FE(Y.Doc 직독)가
+근본 fix** 를 담당한다. 즉 계약 자체는 유지하되 **"입력을 전면 신뢰" 전제를 서버가 강제**하도록 바꾼다.
+**D-R8-9(계약 마커)가 그 강제의 판정 기준**이다 — 서버는 라인을 세는 대신 클라이언트의 <b>자기
+선언</b>을 요구하며, 선언 없는 쓰기는 계보 유무와 무관하게 전부 거부한다.
+
+### 🔴 R7 실측치 정정 (stale 수치 — 은폐 금지)
+
+**DB 가 재시드돼 R7 이 게시한 실측치가 stale 하다.** R7 수치를 그대로 인용하면 **허위 실측**이 되므로
+정정한다. **구조적 결함 판정은 CONFIRMED 유지** — 바뀐 것은 라이브 영향 규모뿐이다.
+
+| 항목 | R7 게시(stale) | **현재 실측** | 판정 |
+|---|---|---|---|
+| 활성 revision 중 `driver`·`unloadDate` 키 보유 | **2,028건** 전부 0건 | **56건** 전부 **0건** (R8 리뷰 시점 21건 → QA 쓰기 23건 반영) | 🔴 **구조 결함 CONFIRMED 유지** — 키 부재는 불변 |
+| `unload_date` 보유 활성 전표 | **7건** | **0건** (전체 44건 중 0) | ⚠️ **라이브 영향 = 잠재**(현 데이터로 도달 불가) |
+| legacy 견적(`partner_id NULL`) | **1,926건** | **0건** (`estimates` 총 **3건** 전부 partner_id 보유) | ⚠️ D-R8-1 을 "legacy 전용" 으로 좁히면 **QA 검증 불가** |
+| `estimate_lines` | **1,927건** | **3건** | — |
+
+- 🔬 **본 정정의 실측 근거**(R8 문서 배치가 독립 재확인 · 2026-07-16 · 읽기 전용 SELECT):
+  `SELECT count(*), count(*) FILTER (WHERE snapshot ? 'driver'), count(*) FILTER (WHERE snapshot ?
+  'unloadDate') FROM slip_revisions WHERE deleted_at IS NULL;` → **`56|0|0`**.
+  snapshot 최상위 키 전수 = `customerRepresentative, customerAddress, partnerCode, lines, partnerName,
+  slipNo, customerTel, businessNumber, slipDate, partnerId` — **`driver`·`unloadDate` 부재 확인.**
+- 🔴 **과장이 있었다는 사실 자체를 이력으로 보존한다** — 위 R4-F2("1927/1927 = 100% legacy") 과장 정정과
+  **같은 계열의 반복**이다. 라이브 수치는 재시드로 휘발되므로, **수치를 결함 근거의 본체로 삼지 말고
+  구조(코드/스키마)를 근거로 삼아야 한다**는 것이 이 반복이 주는 교훈이다.
+- ⚠️ **revision 건수는 휘발성**이다 — QA 라운드가 전표를 쓰면 증가한다(R8 리뷰 21건 → 본 정정 시점
+  56건). **고정 수치를 단언하는 테스트/문서를 만들지 말 것**(R6 LOW 의 `1926` 고정 단언과 동일 함정).
+
+### 🔴 R8 정직 고지 (리뷰가 스스로 밝힌 한계)
+
+1. **직전 "라이브 QA 19/19" 는 R8 에 재현되지 않았다** — 0 passed / 10 failed / 9 미실행. 코드 회귀가
+   아니라 **시드 품목 소멸**(R8-QA-7)이다. 다만 그 결과 **기존 9건의 계약은 R8 에 라이브 검증되지 않았다.**
+2. **D-R8-1 의 "legacy 1,926건" 재현 불가** → **R8-DESIGN-1 경로(정상 견적 + coedit)로 fix·QA 를 잡아야
+   한다**(현 픽스처 3건으로 재현 가능). FE·Design 차원이 독립적으로 같은 결론에 도달.
+3. **견적 GUI 라이브 재현 미시도** — R8-BE-1·R8-DESIGN-1 은 전표 경로 실증 + 코드 확인으로 갈음
+   (`EstimateService:502` → 동일 `restoreEstimateLines`→`assign` 호출 확인).
+4. **D-R4-4(거래처 해제) 라이브 미커버** — 해제 어포던스 부재(기존과 동일 사유).
+5. ✅ **CI allowlist false-green 의혹은 완전 반증됐다** — 레포 concrete 테스트 **185 전부 실행 확인**
+   (exact SHA `178e3a113` 실 CI 로그). **이 PR 에 false-green 없음.** 과거 라운드의 우려는 **해소로 종결**.
+6. **Micrometer `_total_total` 중복 미발생**(라이브 export 명 실측) · **terraform 3파일도 범위 외 혼입
+   아님**(prod 엔 Prometheus 컨테이너가 없어 CloudWatch 등가물).
+7. **다크모드 대비 = 도달 불가로 종결** — 미확인 대비 1건은 다크모드 전용 파탄(`1.002:1`)이었으나
+   desktop 에 `data-theme`·`prefers-color-scheme` **0매치** = 활성화 경로 없음 → **#809 결함 아님**
+   (main 선재 토큰 갭). Codex 의 AA 2건(**7.149 / 15.083**)은 실토큰 파싱 재계산으로 정확함 재확인.
+8. **QA 가 라이브에 쓴 것**: 전표 23건 생성(OUTBOUND DRAFT), 기억행 4건. 원 픽스처 보존(COMPLETED 2 + 원
+   DRAFT 19 + 견적 3 무변경) · `docker compose down`·DB 재생성 **안 함** · 고아 vite 0 · 브랜치/SHA 무변경.
+
+### R8 라이브 증거
+
+실캡처 **19장** `docs/qa/809-partner-product-price-memory/r8/` — 신규 스펙
+`price-memory-r8-adversarial-real-qa.spec.ts` **2 passed / 4 failed**(4 failed = **결함 4건 재현 = 의도된
+RED 가드**). 🚫 **기존 스펙은 한 줄도 수정하지 않았다**(단언 약화 0 · R3 가 잡은 false-green 부활 금지).
+
+✅ **R3 fix UI 실물 건재 재확인**(매 라운드 항목 · 반증 실패 = clean): hit 마커 `거래처 최근단가` 913000 ·
+miss 마커 `판매가` · 거래처 변경 배너 + `단가 변경` 강조 **정확히 1행** · `POST /slips/price-memory/bulk`
+**정확히 1건**(단건 GET 0건 = D-R3-4 준수) · 구 `정가` **0건**(D-R4-1 준수).
+
+### R8-DEVOPS-1 fix — prometheus rule 미마운트 복구 ✅ (문서/DevOps 배치 완료분)
+
+🔴 **경보가 런타임에 존재하지 않았다** — `SlipPriceMemoryUpsertFailure` 는 가격기억 fail-soft 유실의
+**유일한 dev 측 탐지기**인데 이 스택에서 **실제로 부재**했다. runbook 의 전제가 거짓이었던 셈이다.
+
+**원인 = "마운트가 조용히 없는" 상태**:
+
+| 사실 | 실측 |
+|---|---|
+| prometheus 컨테이너 생성 시각 | `2026-07-02T03:28:20Z` |
+| `./prometheus/rules` 마운트 추가 커밋 | `77ea69c77` @ **2026-07-15** (**13일 후행**) |
+| `docker inspect` Mounts | `prometheus.yml` + `prometheus_data` **뿐** — rules 바인드 **부재** |
+| `docker exec ls /etc/prometheus/rules/` | `No such file or directory` |
+| `curl :9090/api/v1/rules` | **`{"groups":[]}`** |
+
+`prometheus.yml` 의 `rule_files` 는 **bind-mount 된 파일**이라 restart 만으로 반영되지만,
+`docker-compose.yml:166` 의 `./prometheus/rules:/etc/prometheus/rules:ro` 는 **컨테이너 생성 시점**
+마운트다. 🔴 **결정적으로 — Prometheus 는 `rule_files` glob 이 0개 매치해도 오류를 내지 않는다.**
+그래서 로그·헬스체크·기동 어디에도 신호가 없고, **rule 파일은 git 에 멀쩡히 존재하며 promtool 도 통과**해
+정적 리뷰로는 절대 잡히지 않는다. **R1~R7 전 라운드가 이걸 검증하지 않은 이유**다.
+
+**복구** (restart 로는 안 고쳐진다 — `--force-recreate` 필수):
+
+```
+docker compose -p infrastructure --project-directory <repo>/infrastructure \
+  -f docker-compose.yml -f docker-compose.local-all.yml \
+  up -d --force-recreate --no-deps prometheus
+```
+
+**복구 실증** — `curl -s http://localhost:9090/api/v1/rules`:
+
+| | 출력 |
+|---|---|
+| **before** | `{"status":"success","data":{"groups":[]}}` |
+| **after** | `groups[0].name=slip-price-memory` · `rules[0].name=`**`SlipPriceMemoryUpsertFailure`** · `state=inactive` · **`health=ok`** · `file=/etc/prometheus/rules/slip-price-memory.yml` |
+
+end-to-end 배선까지 확인했다(rule 로드만으로는 불충분 — selector 가 실 job 에 붙어야 한다):
+
+- `promtool check rules` → **`SUCCESS: 1 rules found`**
+- scrape target `slip-service` = **`up`**
+- `slip_price_memory_upsert_failed_total{job="slip-service"}` **TSDB 실재**(현재값 `0` = 실패 0건 = 정상)
+- 즉 rule 의 `job="slip-service"` selector 가 **실 job label 과 일치** → 경보가 실제로 발화 가능
+
+**🔴 재발 방지 가드 3종** (다음 라운드가 같은 걸 또 놓치지 않도록):
+
+1. **`infrastructure/scripts/verify-prometheus-rules.ps1`** 신설 — **git 의 rule 파일 목록 ↔ 런타임
+   `/api/v1/rules` 로드 목록을 대조**해 drift 를 exit code 로 실패시킨다. #809 rule 만이 아니라 **앞으로
+   추가되는 모든 rule 파일**에 자동 적용된다(이 결함의 일반형을 막는다). rule health 와 promtool 문법도 함께 검사.
+2. **`docs/runbooks/slip-price-memory-upsert-failure.md` §0차 확인** 신설 — 이 runbook 의 **전제(경보가
+   존재한다) 자체를 먼저 검증**하도록 했다. *"경보가 안 울렸다 = 정상"* 이 아니라 *"경보가 아예 없었다"* 를
+   1차 확인 전에 배제한다.
+3. **`infrastructure/README.md` §Alerting rules** 신설 — 트랩(생성 시점 마운트 · 빈 glob 무오류)과
+   `--force-recreate` 요구를 문서화. `rules/` 를 File layout 에도 반영.
+
+> 📌 **교훈**: 이 결함은 **코드·설정·git 어디에도 결함이 없는데 런타임에만 존재**했다. 정적 리뷰
+> 4차원이 전부 통과시킨 이유이며, R8-QA-1(정적 4차원이 놓치고 라이브만 포착)과 **같은 계열**이다.
+> [[feedback_qa_docker_real_test]] 의 *"실서버 테스트, code read PASS 금지"* 가 인프라 자산(경보·대시보드·
+> 마운트)에도 적용된다는 뜻이다.
+
+### R8 fix — 🚧 **진행 중** (본 문서 개정 시점 미완)
+
+- fix = **OPUS 4.8**(캐논: fix = 그 라운드 진행 모델). 배치: **BE**(계약 변경 선행) → **DevOps/문서**
+  (병렬) → **FE**(BE 계약 수신 후) → **QA**. 본 dev-report/spec 개정이 그중 **문서 배치**다.
+- **본 배치가 완료한 것**: D-R8-5 spec 명시·close · D-R8-6/7/8 계약 spec 명시 · lineId 왕복 계약 spec
+  신설(미기재였음) · R7·R8 절 신설 · R7 stale 수치 정정 · **R8-DEVOPS-1 복구 + 재발 방지 가드 3종**.
+- 나머지 배치(BE·FE·QA)의 fix 결과·검증 실측·라이브 QA 는 **이 시점에 확정되지 않았다 — 여기서 결과를
+  단정하지 않는다.** **PM 이 fix 완료 후 이 절을 갱신한다.** 이후 **R9 = CODEX SOL 5.6 5차원**
+  (`gpt-5.6-sol`) → 양측 0수렴 → PM 종합 10-게이트 → CI green → 머지.
 
 ## 정직 한계 (R4 확정 — 알려진 경계와 수용 근거)
 
@@ -626,31 +925,42 @@ PASS(실질 14/14, FAIL 원인 = R6-M9). BE 차원 실측이 남긴 라이브 �
    틀렸다(R5-B1: hydration 미대기 flaky 가 느린 CI 에서만 발현). 검증 권위는 exact SHA 의 CI 다.
    PM 정정 기록.
 2. **R4-F2 도달성 과장 정정** — "estimate_lines 1927/1927 = 100% legacy 라 전부 오염 대상"은
-   과장이었다. **실 legacy 1,926건 전부 `partner_id NULL`** → 가격기억 upsert 가 null-skip →
+   과장이었다. **당시 실 legacy 1,926건 전부 `partner_id NULL`** → 가격기억 upsert 가 null-skip →
    **현 실데이터로는 legacy 오염 경로에 도달 불가**. fix 는 유효하다(거래처 재선택 시 경로가 열림).
+   ⚠️ **2026-07-16 재정정**: 위 1,926/1,927 은 **재시드로 stale** 하다 — 현재 `estimates` **3건**
+   (legacy **0건**) · `estimate_lines` **3건**. **과장이 있었다는 사실은 이력으로 보존**하되 수치는
+   R8 절 §R7 실측치 정정 을 권위로 삼는다.
 3. **"#809 회귀" 가설 반증** — legacy 견적 저장 차단은 **main 도 동일**하다(main hydrate 가
    `setPartner` 미호출 → `!partnerIdSnapshot && !partner` 로 동일 차단 — 소스 대조). #809 은 오류
    메시지만 더 정확하게 바꿨을 뿐 차단을 도입하지 않았다.
-4. **정상 coedit 모드에서 legacy 견적 1,926건 저장 데드락**(R6-H6·라이브 CONFIRMED) —
+4. **정상 coedit 모드에서 legacy 견적 저장 데드락**(R6-H6·라이브 CONFIRMED) —
    `PartnerAutocomplete disabled={coeditActive}` 라 오류 문구의 지시("거래처를 다시 선택해
    주세요")를 이행할 수 없다. main 동등(회귀 아님)이나 #809 이 non-legacy 는 고쳐놓고 legacy 만
-   남겼고, R5-H6 의 provenance 보호는 coedit 실패 fallback 에서만 도달 가능하다. **개발책임자
-   확인 대기.**
+   남겼고, R5-H6 의 provenance 보호는 coedit 실패 fallback 에서만 도달 가능하다.
+   ✅ **해소 — D-R8-1 로 "이 PR 에서 fix" 확정**(문구 정정에 그치지 말고 실제 저장 경로를 열 것).
+   ⚠️ 원 기술의 "**1,926건**" 은 **stale**(현 legacy **0건**) → **R8-DESIGN-1 경로(정상 견적 + coedit)로
+   fix·QA 를 잡아야 한다**(R8 정직 고지 2 · 현 픽스처 3건으로 재현 가능).
 5. **BUNDLE_SET parent 기억은 생성 시점 1회뿐**(R6-M8·라이브 CONFIRMED) — 수정 경로에서 세트
-   가격을 바꿔도 기억이 갱신되지 않아 재선택 시 구값이 자동채움된다. spec 미기재였고 본 개정으로
-   spec 에 각주를 명시했다. 의도/결함 판정은 **개발책임자 확인 대기.**
+   가격을 바꿔도 기억이 갱신되지 않아 재선택 시 구값이 자동채움된다.
+   ✅ **종결 — D-R8-5 로 "설계 귀결·결함 아님" 확정**(오전 D-R8-3 "결함 처리" 의 **번복** — 전제가
+   R8-BE-2 로 코드 반증됨). spec §BUNDLE 정책 에 **정의로 명시하고 close** 했다. **더 이상 확인 대기
+   아님이며, 다음 라운드가 결함으로 재제기해서는 안 된다.**
 6. **Hikari 4s 전역화의 blast radius**(R6-M1) — `connection-timeout` 명시는 fleet 26모듈 중
-   slip-service 유일이며, 진짜 용량 구멍(무 timeout in-tx RestClient)은 미해결이다. **개발책임자
-   확인 대기.**
+   slip-service 유일이며, 진짜 용량 구멍(무 timeout in-tx RestClient)은 미해결이다.
+   ✅ **해소 — D-R8-2 로 "가격기억 전용 DataSource 격리 후 전역 30s 복원" 확정**. R8-DEVOPS-2 가 진단을
+   실측 확인(pool 포화 시 21번째 요청 → `SQLTransientConnectionException` → **HTTP 500**)했고,
+   R8-BE-4 가 **격리 설계 함정 3종**을 냈다(①`set_config(is_local)` 무력화 ②autoconfig back-off 기동
+   실패 ③stale 주석). ⚠️ **범위 점증 → 정식 리뷰 대상.**
 7. **라이브 QA 스펙이 공유 스택 동시 사용에 false-RED**(R6-M9) — 시나리오 12a 가 타 차원
    에이전트의 동시 PUT 으로 FAIL → 격리 재실행 PASS 로 교차 오염 확정. **PM 오케스트레이션
    결함**(라이브 프로브를 쓰는 차원의 병렬 실행) — 스펙 격리 강화 + PM 규율 개정 대상.
 8. **기존 승계** — 위 R4 절의 ① bounded async trade-off · ② D-R4-2 캡처~커밋 창 · ③ D-R4-3
    서브-원 드리프트 · ④ 시계 역행 skip 침묵 · ⑤ 저장일 hover title 전용 · ⑦ D-R4-4 GUI 도달
    불가 · ⑨ 실 브라우저/스크린리더 수동 QA 미수행은 그대로 유효하다(⑥ R4-D8 은 R5-M5 로 수용이
-   철회되고 fix 됐다 — 해당 항목의 주석 참조). 추가로 **legacy `QUOTE_SENT` 실표본 0**(현 1,926행
+   철회되고 fix 됐다 — 해당 항목의 주석 참조). 추가로 **legacy `QUOTE_SENT` 실표본 0**(당시 1,926행
    전부 `QUOTE_DRAFT` — R5 정직 보고·R6 재확인)이라 SENT 상태 legacy 경로는 실데이터 검증이
-   불가능했다.
+   불가능했다. ⚠️ **2026-07-16**: 재시드로 **legacy 자체가 0행**이 되어 이 경로는 여전히 실데이터
+   검증 불가다(사유만 "전부 DRAFT" → "표본 부재" 로 바뀜).
 
 ## 범위 외로 남긴 것 (후속 후보 — 정직 명시)
 
