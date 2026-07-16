@@ -221,15 +221,13 @@ public class EstimateService {
             List<EstimateLine> existing = List.copyOf(estimate.getLines());
             validateLineIds(existing, req.lines());
             BundleLineageResolver bundleLineage = BundleLineageResolver.fromEstimateLines(existing);
-            // [D-R8-13] 마커는 자기신고 — 기존 라인 제거 이전에 계보 보유 견적에서 실제로 lineId 를
-            // 실었는지 내용과 대조한다. 계보 보유 + 요청 non-null lineId 전무 = R8-QA-1 파괴 경로와
-            // 구분 불가 → 400 거부(전표 미러와 동일 계약). 평면 견적·부분 편집은 통과시킨다.
+            // [R9] 기존 계보 구성품 ID를 요청과 per-line 대조한다. 빈 목록은 명시 전체삭제로 허용하고,
+            // 누락 구성품과 익명 라인이 함께 있는 모호한 부분 재생성만 전표 미러와 같이 거부한다.
             LineIdContractGate.requireLineIdsForLineage(
-                    bundleLineage.hasBundleLineage(),
-                    (int) req.lines().stream()
+                    bundleLineage.bundleComponentLineIds(),
+                    req.lines().stream()
                             .map(UpdateEstimateRequest.EstimateLineUpdate::lineId)
-                            .filter(Objects::nonNull)
-                            .count());
+                            .toList());
             for (EstimateLine line : existing) {
                 estimate.removeLine(line);
             }
@@ -239,7 +237,10 @@ public class EstimateService {
                     .map(UpdateEstimateRequest.EstimateLineUpdate::productId)
                     .distinct()
                     .toList();
-            List<ProductSummary> summaries = productClient.lookup(productIds);
+            // 빈 목록은 명시 전체삭제다. 조회할 품목이 없으므로 외부 호출 없이 정상 경로를 완결한다.
+            List<ProductSummary> summaries = productIds.isEmpty()
+                    ? List.of()
+                    : productClient.lookup(productIds);
             Map<UUID, ProductSummary> byId = new HashMap<>();
             for (ProductSummary s : summaries) {
                 byId.put(s.id(), s);
@@ -540,10 +541,10 @@ public class EstimateService {
      * 요청 lineId 가 현재 견적의 활성 라인인지 검증한다.
      *
      * <p>타 견적 UUID 주입은 400 INVALID_INPUT 으로 통일해 다른 문서 존재 여부를 노출하지
-     * 않는다. 개별 라인의 {@code lineId == null} 은 편집 중 추가된 신규 라인을 뜻하는 정상
-     * 값이고, 전 라인이 lineId 를 싣지 않은 "전 라인 교체" 저장도 정상이다 — 구 클라이언트와의
-     * 구분은 {@link #requireLineIdContract} 의 요청 레벨 마커가 담당한다 (D-R8-9).
-     * fingerprint 휴리스틱 폴백은 사용하지 않는다.
+     * 않는다. 개별 라인의 {@code lineId == null} 은 편집 중 추가된 신규 라인을 뜻하는 정상 값이다.
+     * 다만 기존 계보 구성품 ID가 누락된 요청에 신규 익명 라인이 함께 있으면 부분 재생성으로 계보가
+     * 파괴될 수 있어 {@link LineIdContractGate}가 별도로 거부한다. 빈 목록은 명시 전체삭제로
+     * 허용하며 fingerprint 휴리스틱 폴백은 사용하지 않는다.
      */
     private void validateLineIds(List<EstimateLine> existingLines,
                                  List<UpdateEstimateRequest.EstimateLineUpdate> requestedLines) {

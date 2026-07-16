@@ -2,6 +2,7 @@ package com.samhanair.logis.slip.estimate.web.dto;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import jakarta.validation.constraints.Size;
@@ -52,7 +53,13 @@ public record UpdateEstimateRequest(
      */
     public record EstimateLineUpdate(
             @NotNull UUID productId,
-            @Size(max = 200) String productName,
+            /**
+             * 수정 시점의 품목명 snapshot.
+             *
+             * <p>수정 PUT은 클라이언트 snapshot을 권위값으로 받는다. 누락/공백을 카탈로그 이름으로
+             * 암묵 보강하지 않고 매입·매출과 동일하게 400으로 거부해 경로 비대칭과 DB 409 오인을 막는다.
+             */
+            @NotBlank(message = "품목명은 필수입니다.") @Size(max = 200) String productName,
             @Size(max = 100) String modelName,
             @Size(max = 50) String specification,
             @NotNull @Positive Integer quantity,

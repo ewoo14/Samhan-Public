@@ -2,6 +2,11 @@ package com.samhanair.logis.slip.service;
 
 import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+import java.util.UUID;
 
 /**
  * [D-R8-9] 요청 레벨 <b>lineId 계약 마커</b> 게이트 — 매입 전표 / 매출 전표 / 견적 <b>공용 단일 구현</b>.
@@ -17,8 +22,10 @@ import com.samhanair.logis.common.exception.ErrorCode;
  * <i>자기 자신에 대해</i> 하는 선언이므로 라인 내용과 독립이다:
  * <ul>
  *   <li>마커 <b>부재</b> = 구 클라이언트 → <b>400</b></li>
- *   <li>마커 <b>존재</b> = lineId 계약 활성 → lineId 0개(전 라인 교체)도 <b>정상 허용</b></li>
+ *   <li>마커 <b>존재</b> = lineId 계약 활성 → 아래 per-line 계보 대조로 진행</li>
  * </ul>
+ * 평면 문서의 lineId 없는 전교체와 견적 빈 목록 전체삭제는 허용하지만, 계보 구성품을 익명 라인으로
+ * 재생성하는 요청은 마커가 있어도 {@link #requireLineIdsForLineage}가 거부한다.
  *
  * <p><b>D-R8-9 근거 — 구버전 desktop 은 사실상 없다(개발책임자 확인, 전원 최신본).</b> 점진
  * 마이그레이션 창이 불필요하므로 마커를 <b>즉시 필수화</b>한다. 호환 창을 두면 그 창이 곧
@@ -83,16 +90,16 @@ public final class LineIdContractGate {
      *
      * <p>{@link #REJECTION_MESSAGE} 와 <b>다른</b> 사유다. 여기서 거부되는 클라이언트는 마커를
      * 보낸 <b>최신 앱</b>이지만, 화면에 떠 있는 라인이 서버 최신 상태와 어긋나(스테일) 세트 구성품
-     * 계보를 보유한 문서에 lineId 를 하나도 싣지 못했다. 따라서 조치는 "앱 업데이트" 가 아니라
-     * <b>화면 새로고침</b>이다 — 새로고침이 서버 최신 라인(과 그 lineId)을 다시 불러온다.
+     * lineId 일부 또는 전부가 누락된 채 익명 라인을 함께 보냈다. 따라서 조치는 "앱 업데이트" 가
+     * 아니라 <b>화면 새로고침</b>이다 — 새로고침이 서버 최신 라인(과 그 lineId)을 다시 불러온다.
      */
     static final String LINEAGE_REJECTION_MESSAGE =
-            "세트 구성품이 포함된 전표는 기존 라인 정보(lineId) 없이 전체 교체할 수 없습니다. "
-                    + "이대로 저장하면 세트 구성품 계보가 사라질 수 있어 요청을 거부했습니다. "
+            "세트 구성품의 기존 라인 정보(lineId)가 누락된 채 신규 라인이 함께 전송됐습니다. "
+                    + "이대로 저장하면 누락된 세트 구성품 계보가 사라질 수 있어 요청을 거부했습니다. "
                     + "화면을 새로고침해 최신 라인을 불러온 뒤 다시 저장해 주세요.";
 
     /**
-     * [D-R8-13] 마커가 계보 파괴를 <b>우회하지 못하게</b> 한다 — 마커를 라인 내용과 대조한다.
+     * [R9] 기존 계보 구성품의 lineId를 요청과 <b>구성품별로</b> 대조한다.
      *
      * <p><b>왜 마커만으로는 부족한가</b>: {@link #require} 의 마커는 "이 클라이언트는 lineId 계약을
      * 안다" 는 <b>자기신고</b>일 뿐이다. 스테일/악성 클라이언트가 {@code lineIdContract=true} 를 실은
@@ -101,20 +108,52 @@ public final class LineIdContractGate {
      * {@code parent→NULL}·{@code set_head→false}). 이는 R8-QA-1(무수정 왕복 PUT 이 계보 파괴)을
      * <b>마커라는 다른 문</b>으로 재개방한 것이다. 그래서 서버가 마커를 <b>문서 내용과 대조</b>한다.
      *
-     * <p><b>오탐 방지가 판정의 핵심</b>: 다음 두 경우는 정상 저장이므로 반드시 통과시킨다.
-     * <ul>
-     *   <li>계보 <b>없는</b> 평면 문서 + lineId 0개 = 전 라인 교체(정상) → {@code documentHasLineage == false}</li>
-     *   <li>계보 보유 문서 + lineId <b>1개 이상</b> = 부분 편집(정상) → {@code requestedLineIdCount > 0}</li>
-     * </ul>
-     * 오직 <b>"계보 보유" 와 "lineId 전무" 가 동시에 성립</b>할 때만 거부한다.
+     * <p><b>정확한 판정 계약</b>: 기존 계보 구성품 ID 집합을 {@code E}, 요청의 non-null ID 집합을
+     * {@code R} 이라 한다. {@code E ⊆ R} 이면 모든 구성품이 ID를 유지했으므로 통과한다. 누락
+     * 구성품({@code E - R})이 있어도 요청에 익명 라인({@code lineId == null})이 하나도 없으면,
+     * 빠진 구성품은 요청에서 <b>아예 생략된 명시 삭제</b>이므로 통과한다. 반대로 누락 구성품과
+     * 익명 라인이 함께 존재하면 그 익명 라인이 누락 구성품을 lineId 없이 재생성한 것인지 서버가
+     * 증명할 수 없다. 이때는 품목이 같든 다르든 계보 파괴 가능성이 있으므로 400으로 거부한다.
      *
-     * @param documentHasLineage 기존 문서가 세트 계보(BUNDLE_SET) 를 보유하는지
-     *        ({@link BundleLineageResolver#hasBundleLineage()})
-     * @param requestedLineIdCount 요청이 실은 non-null lineId 개수
-     * @throws BusinessException 400 INVALID_INPUT — 계보 보유 문서인데 요청 non-null lineId 가 0개
+     * <p><b>삭제와 재생성의 구분</b>: lineId가 행의 유일한 영속 정체성이므로 productId 비교는
+     * 근거가 될 수 없다. 같은 품목 재생성은 물론 다른 품목으로 바꾼 재생성도 계보를 잃기 때문이다.
+     * 따라서 "누락 + 익명 라인 없음"만 명시 삭제로 인정한다. 삭제와 신규 추가를 한 요청에 함께
+     * 보내는 모호한 표현은 거부하며, 기존 구성품의 품목 교체는 그 lineId를 유지해 표현한다.
+     * {@link BundleLineageResolver}가 품목 불일치 시 계보를 승계하지 않으므로 정상 평면화된다.
+     *
+     * <p><b>오탐 방지</b>: 다음 경우는 정상 저장이므로 통과시킨다.
+     * <ul>
+     *   <li>계보 없는 평면 문서 전 라인 교체: {@code E}가 비어 있음</li>
+     *   <li>계보 구성품 전부 lineId 유지 + 부분 편집/신규 추가: {@code E ⊆ R}</li>
+     *   <li>구성품 명시 부분삭제: {@code E - R}은 있으나 익명 라인 없음</li>
+     *   <li>견적 {@code lines: []} 전체삭제: 요청 목록 자체가 비어 있음</li>
+     * </ul>
+     *
+     * @param existingBundleComponentLineIds 기존 문서의 계보 구성품 lineId 집합
+     *        ({@link BundleLineageResolver#bundleComponentLineIds()})
+     * @param requestedLineIds 요청 라인 순서의 lineId 목록; 신규 라인은 null
+     * @throws BusinessException 400 INVALID_INPUT — 구성품 ID가 누락됐고 익명 요청 라인이 함께 있을 때
      */
-    public static void requireLineIdsForLineage(boolean documentHasLineage, int requestedLineIdCount) {
-        if (documentHasLineage && requestedLineIdCount == 0) {
+    public static void requireLineIdsForLineage(Set<UUID> existingBundleComponentLineIds,
+                                                List<UUID> requestedLineIds) {
+        Objects.requireNonNull(existingBundleComponentLineIds,
+                "기존 계보 구성품 lineId 집합은 null일 수 없습니다");
+        Objects.requireNonNull(requestedLineIds, "요청 lineId 목록은 null일 수 없습니다");
+        if (existingBundleComponentLineIds.isEmpty() || requestedLineIds.isEmpty()) {
+            return;
+        }
+
+        Set<UUID> retainedLineIds = new HashSet<>();
+        boolean hasAnonymousLine = false;
+        for (UUID requestedLineId : requestedLineIds) {
+            if (requestedLineId == null) {
+                hasAnonymousLine = true;
+            } else {
+                retainedLineIds.add(requestedLineId);
+            }
+        }
+
+        if (hasAnonymousLine && !retainedLineIds.containsAll(existingBundleComponentLineIds)) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, LINEAGE_REJECTION_MESSAGE);
         }
     }

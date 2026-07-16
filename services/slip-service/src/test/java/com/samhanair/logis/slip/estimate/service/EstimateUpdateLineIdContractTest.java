@@ -179,12 +179,39 @@ class EstimateUpdateLineIdContractTest {
         verifyNoInteractions(estimateRevisionService, productClient);
     }
 
+    /** 🔴 부분 파괴 — 구성품 2개 중 1개를 익명 라인으로 재생성하면 400 이다. */
+    @Test
+    void update_onBundleEstimate_withOneComponentRecreatedWithoutLineId_isRejected() {
+        Estimate estimate = bundleEstimate();
+        when(estimateRepository.findById(estimate.getId())).thenReturn(Optional.of(estimate));
+
+        UUID keptLineId = estimate.getLines().get(0).getId();
+        UpdateEstimateRequest partialDestruction = new UpdateEstimateRequest(
+                PARTNER_ID, "세트 견적 거래처", null, null, null, "부분 파괴",
+                List.of(
+                        new UpdateEstimateRequest.EstimateLineUpdate(
+                                COMPONENT_PRODUCT, "실내기", "COMP-1", null, 1,
+                                new BigDecimal("330000"), null, null, false, keptLineId),
+                        new UpdateEstimateRequest.EstimateLineUpdate(
+                                PRODUCT_ID, "익명 재생성", "NEW-1", null, 1,
+                                new BigDecimal("120000"), null, null, false, null)),
+                true);
+
+        assertThatThrownBy(() -> service.update(
+                estimate.getId(), partialDestruction, "user-set", "부분 파괴자"))
+                .isInstanceOfSatisfying(BusinessException.class, ex ->
+                        assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
+
+        assertThat(estimate.getLines()).hasSize(2);
+        assertThat(estimate.getLines()).allMatch(line -> SET_MODEL.equals(line.getParentSetModel()));
+        verifyNoInteractions(productClient);
+    }
+
     /**
-     * 🔴 오탐 방지 (D-R8-13) — 계보 보유 견적이라도 lineId 를 <b>일부라도</b> 실은 부분 편집은 정상.
-     * "계보 보유" 와 "lineId 전무" 가 동시에 성립할 때만 거부한다.
+     * 🔴 오탐 방지 — 구성품을 요청에서 아예 빼고 익명 라인을 싣지 않으면 명시 삭제다.
      */
     @Test
-    void update_onBundleEstimate_withMarker_andSomeLineIds_isAccepted() {
+    void update_onBundleEstimate_withOneComponentOmitted_isAcceptedAsExplicitDeletion() {
         Estimate estimate = bundleEstimate();
         when(estimateRepository.findById(estimate.getId())).thenReturn(Optional.of(estimate));
         when(productClient.lookup(any())).thenAnswer(inv -> java.util.List.of());
@@ -197,13 +224,34 @@ class EstimateUpdateLineIdContractTest {
                         new BigDecimal("330000"), null, null, false, keptLineId)),
                 true);
 
-        // 계보 보유 + lineId 1개 = requestedLineIdCount 1 > 0 → 게이트 통과(예외 없음).
         assertThatCode(() -> service.update(estimate.getId(), partial, "user-set", "부분 편집자"))
                 .doesNotThrowAnyException();
 
-        // 게이트가 통과했으므로 라인 교체가 실제로 진행돼 후속 기억 배치까지 도달한다
-        // (거부됐다면 이 지점에 도달하지 못한다) — 게이트가 계보 보유 문서를 과잉 거부하지 않음을 고정.
+        assertThat(estimate.getLines()).singleElement().satisfies(line -> {
+            assertThat(line.getProductId()).isEqualTo(COMPONENT_PRODUCT);
+            assertThat(line.getParentSetModel()).isEqualTo(SET_MODEL);
+        });
         verify(priceMemoryService).rememberBatchAfterCommit(any(), any());
+    }
+
+    /** 🔴 R9 오탐 오라클 — {@code lines: []} 는 계보 견적의 명시 전체삭제이므로 허용한다. */
+    @Test
+    void update_onBundleEstimate_withEmptyLines_isAcceptedAsExplicitFullDeletion() {
+        Estimate estimate = bundleEstimate();
+        when(estimateRepository.findById(estimate.getId())).thenReturn(Optional.of(estimate));
+        when(productClient.lookup(List.of())).thenReturn(List.of());
+
+        UpdateEstimateRequest deleteAll = new UpdateEstimateRequest(
+                PARTNER_ID, "세트 견적 거래처", null, null, null, "전체 삭제",
+                List.of(), true);
+
+        assertThatCode(() -> service.update(
+                estimate.getId(), deleteAll, "user-set", "전체 삭제자"))
+                .doesNotThrowAnyException();
+
+        assertThat(estimate.getLines()).isEmpty();
+        verify(priceMemoryService).rememberBatchAfterCommit(any(), any());
+        verifyNoInteractions(productClient);
     }
 
     // ---------------------------------------------------------------- 픽스처

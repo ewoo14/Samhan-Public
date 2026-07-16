@@ -78,15 +78,13 @@ public class SlipUpdateService {
 
         String before = summarize(slip);
         BundleLineageResolver bundleLineage = BundleLineageResolver.fromSlipLines(slip.getLines());
-        // [D-R8-13] 마커는 자기신고 — 라인 교체 이전에 계보 보유 문서에서 실제로 lineId 를 실었는지
-        // 내용과 대조한다. 계보 보유 + 요청 non-null lineId 전무 = R8-QA-1 파괴 경로와 구분 불가 →
-        // 400 거부(매출 미러와 동일 계약). 평면 문서·부분 편집은 requireLineIdsForLineage 가 통과시킨다.
+        // [R9] 기존 계보 구성품 ID를 요청과 per-line 대조한다. 누락 구성품 + 익명 라인은
+        // 부분 재생성으로 계보를 잃을 수 있어 거부하고, 익명 라인 없는 누락은 명시 삭제로 허용한다.
         LineIdContractGate.requireLineIdsForLineage(
-                bundleLineage.hasBundleLineage(),
-                (int) request.lines().stream()
+                bundleLineage.bundleComponentLineIds(),
+                request.lines().stream()
                         .map(SlipUpdateRequest.LineRequest::lineId)
-                        .filter(Objects::nonNull)
-                        .count());
+                        .toList());
         List<SlipLine> replacementLines = request.lines().stream()
                 .map(line -> toLine(slip, line))
                 .toList();
@@ -183,9 +181,9 @@ public class SlipUpdateService {
      * 구분해 노출하지 않는다.
      *
      * <p>개별 라인의 {@code lineId == null} 은 <b>정상</b>이다 — 편집 중 추가된 신규 라인을 뜻하며
-     * 계보를 승계하지 않는 평면 라인으로 남는다. 전 라인이 lineId 를 싣지 않은 "전 라인 교체"
-     * 저장도 정상이다 — 구 클라이언트와의 구분은 라인이 아니라 {@link #requireLineIdContract}
-     * 의 요청 레벨 마커가 담당한다 (D-R8-9).
+     * 계보를 승계하지 않는 평면 라인으로 남는다. 다만 기존 계보 구성품 ID가 누락된 요청에 신규
+     * 익명 라인이 함께 있으면 부분 재생성으로 계보가 파괴될 수 있어 {@link LineIdContractGate}가
+     * 별도로 거부한다. 평면 문서의 전 라인 교체는 정상이다.
      */
     private void validateLineIds(List<SlipLine> existingLines,
                                  List<SlipUpdateRequest.LineRequest> requestedLines) {

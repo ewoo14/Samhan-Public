@@ -1,6 +1,7 @@
 package com.samhanair.logis.slip.web.dto;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -67,7 +68,14 @@ public record SlipUpdateRequest(
      */
     public record LineRequest(
             UUID productId,
-            @Size(max = 200) String productName,
+            /**
+             * 수정 시점의 품목명 snapshot.
+             *
+             * <p>생성 경로는 카탈로그 조회 결과로 이름을 보강할 수 있지만, 매입·매출 direct PUT은
+             * 카탈로그를 다시 조회하지 않고 요청 snapshot을 그대로 저장한다. 누락값을 DB NOT NULL
+             * 예외까지 내려 409로 오인시키지 않도록 wire 경계에서 명확한 400으로 거부한다.
+             */
+            @NotBlank(message = "품목명은 필수입니다.") @Size(max = 200) String productName,
             @Size(max = 100) String modelName,
             @Size(max = 50) String specification,
             Integer quantity,

@@ -29,8 +29,8 @@ import org.springframework.test.util.ReflectionTestUtils;
  *   <li><b>resolver 층(이 클래스)</b>: {@code lineId == null} = 신규 라인 → 계보 미승계.
  *       이것 자체는 정상이며 <b>유지</b>한다(편집 중 행 추가). fingerprint 폴백으로 되돌아가면
  *       R1~R7 이 반증한 결함이 재발한다.</li>
- *   <li><b>문서 층(서비스)</b>: 계보 보유 문서인데 <b>전 라인</b>이 lineId 미전송이면 400 거부
- *       (D-R8-6). 데이터 손실 방어는 이 층의 책임이며
+ *   <li><b>문서 층(서비스)</b>: 기존 계보 구성품 ID가 빠진 동시에 익명 라인이 요청되면 400 거부.
+ *       데이터 손실 방어는 이 층의 책임이며
  *       {@code SlipUpdateLineIdContractTest} / {@code PartnerProductPriceMemoryIT} 가 가드한다.</li>
  * </ul>
  */
@@ -39,6 +39,26 @@ class BundleLineageResolverTest {
     private static final UUID PRODUCT_A = UUID.randomUUID();
     private static final UUID PRODUCT_B = UUID.randomUUID();
     private static final String SET_MODEL = "QA809-SET-01";
+
+    /** R9 게이트에는 평면 라인을 제외한 기존 계보 구성품 ID만 노출한다. */
+    @Test
+    void bundleComponentLineIds_exposesOnlyPersistedLineageComponents() {
+        UUID headId = UUID.randomUUID();
+        UUID componentId = UUID.randomUUID();
+        UUID plainId = UUID.randomUUID();
+        SlipLine head = slipLine(headId, PRODUCT_A, "head", 1, "10000");
+        head.assignBundleComponent(SET_MODEL, true);
+        SlipLine component = slipLine(componentId, PRODUCT_B, "component", 1, "20000");
+        component.assignBundleComponent(SET_MODEL, false);
+        SlipLine plain = slipLine(plainId, PRODUCT_A, "plain", 1, "30000");
+
+        BundleLineageResolver resolver =
+                BundleLineageResolver.fromSlipLines(List.of(head, component, plain));
+
+        assertThat(resolver.bundleComponentLineIds())
+                .containsExactlyInAnyOrder(headId, componentId)
+                .doesNotContain(plainId);
+    }
 
     @Test
     void modifiedSetHead_quantityOnly_stillPreservesLineageByLineId() {

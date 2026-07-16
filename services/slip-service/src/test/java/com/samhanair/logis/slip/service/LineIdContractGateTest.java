@@ -10,6 +10,10 @@ import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
 import com.samhanair.logis.slip.estimate.web.dto.UpdateEstimateRequest;
 import com.samhanair.logis.slip.web.dto.SlipUpdateRequest;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -71,31 +75,66 @@ class LineIdContractGateTest {
 
     // -------------------------------------------------- [D-R8-13] 마커 vs 라인 내용 대조
 
-    /**
-     * 🔴 <b>계보 보유 문서 + lineId 전무 = 거부</b> — 마커(자기신고)를 라인 내용과 대조한다.
-     *
-     * <p>마커만 보고 통과시키면 스테일/악성 클라이언트가 {@code lineIdContract=true} 를 실은 채
-     * 계보 보유 문서에서 lineId 를 하나도 안 실어 세트 계보를 전량 파괴한다(R8-QA-13). 계보 보유와
-     * lineId 전무가 동시에 성립하면 그 파괴 경로와 구분되지 않으므로 400 으로 거부한다.
-     */
+    /** 🔴 부분 파괴 — 구성품 2개 중 하나를 익명 라인으로 재생성하면 400 이다. */
     @Test
-    void requireLineIdsForLineage_lineageDocWithZeroLineIds_rejects() {
-        assertThatThrownBy(() -> LineIdContractGate.requireLineIdsForLineage(true, 0))
-                .isInstanceOfSatisfying(BusinessException.class, ex ->
-                        assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
+    void requireLineIdsForLineage_oneComponentMissingAndAnonymousLinePresent_rejects() {
+        UUID first = UUID.randomUUID();
+        UUID second = UUID.randomUUID();
+
+        assertThatThrownBy(() -> LineIdContractGate.requireLineIdsForLineage(
+                Set.of(first, second), Arrays.asList(first, null)))
+                .isInstanceOfSatisfying(BusinessException.class, ex -> {
+                    assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT);
+                    assertThat(ex.getMessage())
+                            .contains("세트 구성품의 기존 라인 정보")
+                            .doesNotContain("일부 세트 구성품");
+                });
     }
 
-    /** 🔴 오탐 방지 — 계보 <b>없는</b> 평면 문서의 전 라인 교체(lineId 0개)는 정상 허용. */
+    /** 🔴 전량 파괴 — 모든 구성품을 익명 라인으로 재생성하면 400 이다. */
     @Test
-    void requireLineIdsForLineage_plainDocWithZeroLineIds_isAccepted() {
-        assertThatCode(() -> LineIdContractGate.requireLineIdsForLineage(false, 0))
+    void requireLineIdsForLineage_allComponentsMissingAndAnonymousLinesPresent_rejects() {
+        assertThatThrownBy(() -> LineIdContractGate.requireLineIdsForLineage(
+                Set.of(UUID.randomUUID(), UUID.randomUUID()),
+                Arrays.asList(null, null)))
+                .isInstanceOf(BusinessException.class);
+    }
+
+    /** 🔴 오탐 방지 — 계보 없는 평면 문서의 익명 라인 전교체는 정상 허용. */
+    @Test
+    void requireLineIdsForLineage_plainDocFullReplacement_isAccepted() {
+        assertThatCode(() -> LineIdContractGate.requireLineIdsForLineage(
+                Set.of(), Arrays.asList(null, null)))
                 .doesNotThrowAnyException();
     }
 
-    /** 🔴 오탐 방지 — 계보 보유 문서라도 lineId 를 <b>일부라도</b> 실은 부분 편집은 정상 허용. */
+    /** 🔴 오탐 방지 — 모든 구성품 ID를 유지하면 신규 익명 라인을 함께 추가해도 허용. */
     @Test
-    void requireLineIdsForLineage_lineageDocWithSomeLineIds_isAccepted() {
-        assertThatCode(() -> LineIdContractGate.requireLineIdsForLineage(true, 1))
+    void requireLineIdsForLineage_allComponentsRetainedWithNewLine_isAccepted() {
+        UUID first = UUID.randomUUID();
+        UUID second = UUID.randomUUID();
+
+        assertThatCode(() -> LineIdContractGate.requireLineIdsForLineage(
+                Set.of(first, second), Arrays.asList(first, second, null)))
+                .doesNotThrowAnyException();
+    }
+
+    /** 🔴 오탐 방지 — 빠진 구성품이 있고 익명 라인이 없으면 그 빠짐은 명시 삭제다. */
+    @Test
+    void requireLineIdsForLineage_missingComponentWithoutAnonymousLine_isExplicitDeletion() {
+        UUID kept = UUID.randomUUID();
+        UUID deleted = UUID.randomUUID();
+
+        assertThatCode(() -> LineIdContractGate.requireLineIdsForLineage(
+                Set.of(kept, deleted), List.of(kept)))
+                .doesNotThrowAnyException();
+    }
+
+    /** 🔴 오탐 방지 — 빈 요청은 모호한 재생성이 아니라 모든 라인의 명시 전체삭제다. */
+    @Test
+    void requireLineIdsForLineage_emptyRequest_isExplicitFullDeletion() {
+        assertThatCode(() -> LineIdContractGate.requireLineIdsForLineage(
+                Set.of(UUID.randomUUID(), UUID.randomUUID()), List.of()))
                 .doesNotThrowAnyException();
     }
 
@@ -105,7 +144,8 @@ class LineIdContractGateTest {
      */
     @Test
     void requireLineIdsForLineage_rejectionMessageStatesRefreshAction() {
-        assertThatThrownBy(() -> LineIdContractGate.requireLineIdsForLineage(true, 0))
+        assertThatThrownBy(() -> LineIdContractGate.requireLineIdsForLineage(
+                Set.of(UUID.randomUUID()), Arrays.asList((UUID) null)))
                 .isInstanceOfSatisfying(BusinessException.class, ex -> {
                     assertThat(ex.getMessage())
                             .as("결과 — 무엇을 잃을 뻔했는가")
@@ -113,6 +153,10 @@ class LineIdContractGateTest {
                     assertThat(ex.getMessage())
                             .as("조치 — 앱 업데이트가 아니라 화면 새로고침")
                             .contains("새로고침");
+                    assertThat(ex.getMessage())
+                            .as("전무·일부 누락 모두에 정확한 공통 문구")
+                            .contains("세트 구성품의 기존 라인 정보")
+                            .doesNotContain("일부 세트 구성품");
                 });
     }
 

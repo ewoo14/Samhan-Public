@@ -763,8 +763,12 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
             var componentLine = created.lines().stream()
                     .filter(line -> secondComponentId.equals(line.productId()))
                     .findFirst().orElseThrow();
+            var standaloneLine = created.lines().stream()
+                    .filter(line -> firstComponentId.equals(line.productId()) && !line.setHead())
+                    .findFirst().orElseThrow();
 
-            // 세트 head 미재전송(삭제) + 구성품 재전송 + 단품 77,000→88,000
+            // 세트 head 미재전송(명시 삭제) + tail/기존 단품은 각자의 lineId를 유지해 재전송.
+            // 단품을 lineId=null로 보내면 신규 라인이라는 새 계약과 모순되어 R9 Gate가 정상 거부한다.
             estimateService.update(
                     created.id(),
                     new UpdateEstimateRequest(
@@ -782,7 +786,8 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
                                             componentLine.unitPriceWithVat() != null, componentLine.id()),
                                     new UpdateEstimateRequest.EstimateLineUpdate(
                                             firstComponentId, "COMP-1", "COMP-1", null, 1,
-                                            new BigDecimal("88000.00"), "단품 라인", null, true, null)), true),
+                                            new BigDecimal("88000.00"), "단품 라인", null, true,
+                                            standaloneLine.id())), true),
                     "actor-qa-variant", "QA 변형 수정자");
             awaitPriceMemoryExecutorIdle();
 
@@ -1250,8 +1255,8 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
      *
      * <p><b>D-R8-9 갱신</b>: 구 클라이언트를 가르는 기준이 "lineId 개수" 에서 <b>"계약 마커 유무"</b>
      * 로 바뀌었다. 따라서 이 재현은 lineId 를 싣지 않는 것에 더해 <b>마커도 싣지 않는다</b> —
-     * 그게 R8-QA-1 을 일으킨 실제 클라이언트의 모습이다. (마커를 실은 채 lineId 만 없는 요청은
-     * "전 라인 교체" 라는 <b>정상</b> 저장이며, 아래 별도 테스트가 그 허용을 잠근다.)
+     * 그게 R8-QA-1 을 일으킨 실제 클라이언트의 모습이다. 마커를 실어도 기존 계보 구성품 ID가
+     * 익명 라인으로 대체되면 아래 per-line 계약 테스트들이 별도로 차단한다.
      */
     @Test
     void bundleSlipRoundTripPutWithoutContractMarker_isRejectedAndLeavesLineageIntact() {
@@ -1335,6 +1340,52 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
             awaitPriceMemoryExecutorIdle();
 
             // 계보 그대로 + 구성품 기억 0건 — 마커 우회 경로가 실 DB 에서 차단됐음을 실증.
+            assertBundleSlipLineage(created.id(), firstComponentId, secondComponentId);
+            assertOnlyParentBundleMemory(partnerId, bundleProductId,
+                    firstComponentId, secondComponentId);
+        } finally {
+            cleanupSlip(created.id());
+        }
+    }
+
+    /**
+     * [R9 per-line 실 PostgreSQL 회귀] 구성품 2개 중 하나의 lineId만 남아도 누락 구성품을 익명
+     * 라인으로 재생성하면 400이어야 한다. 종전 개수 게이트는 non-null ID 1개만 보고 통과시켜
+     * 누락 구성품의 parentSetModel/setHead를 소실시켰다.
+     */
+    @Test
+    void bundleSlipPartialRecreationWithoutOneComponentLineId_isRejectedAndLeavesLineageIntact() {
+        UUID partnerId = UUID.randomUUID();
+        UUID bundleProductId = UUID.randomUUID();
+        UUID firstComponentId = UUID.randomUUID();
+        UUID secondComponentId = UUID.randomUUID();
+        UUID anonymousReplacementProductId = UUID.randomUUID();
+        stubBundleExpansion(bundleProductId, firstComponentId, secondComponentId);
+
+        var created = slipService.create(
+                slipRequest(SlipType.OUTBOUND, partnerId, bundleProductId,
+                        new BigDecimal("550000.00")),
+                "actor-r9-partial", "R9 부분 계보 파괴 거부");
+        try {
+            awaitPriceMemory(partnerId, bundleProductId);
+            SlipLineResponse kept = created.lines().get(0);
+
+            assertThatThrownBy(() -> salesSlipUpdateService.update(
+                    created.id(),
+                    updateRequest(created.id(), created, List.of(
+                            new SlipUpdateRequest.LineRequest(
+                                    kept.productId(), kept.productName(), kept.modelName(),
+                                    kept.specification(), kept.quantity(), kept.unitPrice(),
+                                    kept.note(), kept.id()),
+                            new SlipUpdateRequest.LineRequest(
+                                    anonymousReplacementProductId, "익명 재생성", "NEW-R9", null,
+                                    1, new BigDecimal("150000.00"), "lineId 누락", null)),
+                            true),
+                    UUID.randomUUID(), "부분 파괴자"))
+                    .isInstanceOfSatisfying(BusinessException.class, ex ->
+                            assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
+            awaitPriceMemoryExecutorIdle();
+
             assertBundleSlipLineage(created.id(), firstComponentId, secondComponentId);
             assertOnlyParentBundleMemory(partnerId, bundleProductId,
                     firstComponentId, secondComponentId);

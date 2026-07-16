@@ -313,35 +313,82 @@ class SlipUpdateLineIdContractTest {
     }
 
     /**
-     * 🔴 <b>오탐 방지 (D-R8-13)</b> — 계보 보유 전표라도 lineId 를 <b>일부라도</b> 실은 부분 편집은
-     * 정상이다. "계보 보유" 와 "lineId 전무" 가 <b>동시에</b> 성립할 때만 거부한다.
-     *
-     * <p>이 케이스가 없으면 게이트가 "계보 보유 문서면 무조건 거부" 로 과잉 조여도 green 이 되어,
-     * 세트 전표에 행 하나를 추가·수정하는 정상 편집까지 400 으로 막는 회귀를 잡지 못한다.
+     * 🔴 <b>부분 파괴</b> — 구성품 2개 중 1개의 lineId 를 누락하고 익명 라인으로 재생성하면
+     * 다른 구성품 ID가 남아 있어도 400 이다. 종전 개수 게이트는 lineId 1개만 보고 통과시켰다.
      */
     @Test
-    void salesPut_onBundleSlip_withMarker_andSomeLineIds_isAccepted() {
+    void salesPut_onBundleSlip_withOneComponentRecreatedWithoutLineId_isRejected() {
         Slip slip = bundleSalesSlip();
         stubLoad(slip);
-        when(slipRepository.saveAndFlush(any(Slip.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        // 첫 라인만 lineId 유지(계보 승계), 둘째는 신규 라인(lineId null) — requestedLineIdCount = 1 > 0.
+        // 첫 구성품은 ID 유지, 둘째 구성품은 같은 품목이지만 ID 없는 익명 라인으로 재생성한다.
         UUID keptLineId = slip.getLines().get(0).getId();
         List<SlipUpdateRequest.LineRequest> partial = List.of(
                 new SlipUpdateRequest.LineRequest(COMPONENT_PRODUCT, "실내기", "COMP-1", null,
                         1, new BigDecimal("330000"), "유지", keptLineId),
-                new SlipUpdateRequest.LineRequest(FRESH_PRODUCT, "신규 단품", "NEW-9", null,
-                        1, new BigDecimal("120000"), "편집 중 추가", null));
+                new SlipUpdateRequest.LineRequest(PLAIN_PRODUCT, "실외기", "COMP-2", null,
+                        1, new BigDecimal("120000"), "구성품 익명 재생성", null));
+
+        assertThatThrownBy(() -> salesUpdateService.update(
+                slip.getId(), request(slip, partial, true), UUID.randomUUID(), "부분 편집자"))
+                .isInstanceOfSatisfying(BusinessException.class, ex ->
+                        assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
+
+        verify(slipRepository, never()).saveAndFlush(any(Slip.class));
+        assertThat(slip.getLines()).hasSize(2);
+        assertThat(slip.getLines()).allMatch(line -> SET_MODEL.equals(line.getParentSetModel()));
+    }
+
+    /**
+     * 🔴 오탐 방지 — 구성품을 요청에서 아예 빼고 익명 라인을 함께 싣지 않으면 명시 삭제다.
+     */
+    @Test
+    void salesPut_onBundleSlip_withOneComponentOmitted_isAcceptedAsExplicitDeletion() {
+        Slip slip = bundleSalesSlip();
+        stubLoad(slip);
+        when(slipRepository.saveAndFlush(any(Slip.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        SlipLine kept = slip.getLines().get(0);
+        List<SlipUpdateRequest.LineRequest> deletion = List.of(
+                new SlipUpdateRequest.LineRequest(
+                        kept.getProductId(), kept.getProductName(), kept.getModelName(),
+                        kept.getSpecification(), kept.getQuantity(), kept.getUnitPrice(),
+                        kept.getNote(), kept.getId()));
 
         assertThatCode(() -> salesUpdateService.update(
-                slip.getId(), request(slip, partial, true), UUID.randomUUID(), "부분 편집자"))
+                slip.getId(), request(slip, deletion, true), UUID.randomUUID(), "구성품 삭제자"))
                 .doesNotThrowAnyException();
 
-        verify(slipRepository).saveAndFlush(any(Slip.class));
-        // 유지된 첫 라인은 세트 계보 승계, 추가된 둘째 라인은 평면.
-        assertThat(slip.getLines()).hasSize(2);
-        assertThat(slip.getLines().get(0).getParentSetModel()).isEqualTo(SET_MODEL);
-        assertThat(slip.getLines().get(1).getParentSetModel()).isNull();
+        assertThat(slip.getLines()).singleElement().satisfies(line -> {
+            assertThat(line.getProductId()).isEqualTo(COMPONENT_PRODUCT);
+            assertThat(line.getParentSetModel()).isEqualTo(SET_MODEL);
+        });
+    }
+
+    /** 매입 미러도 구성품 1개 누락 + 익명 재생성을 매출과 동일하게 400으로 거부한다. */
+    @Test
+    void purchasePut_onBundleSlip_withOneComponentRecreatedWithoutLineId_isRejected() {
+        Slip slip = bundlePurchaseSlip();
+        stubLoad(slip);
+
+        SlipLine kept = slip.getLines().get(0);
+        List<SlipUpdateRequest.LineRequest> partialDestruction = List.of(
+                new SlipUpdateRequest.LineRequest(
+                        kept.getProductId(), kept.getProductName(), kept.getModelName(),
+                        kept.getSpecification(), kept.getQuantity(), kept.getUnitPrice(),
+                        kept.getNote(), kept.getId()),
+                new SlipUpdateRequest.LineRequest(
+                        FRESH_PRODUCT, "익명 재생성", "NEW-PURCHASE", null,
+                        1, new BigDecimal("120000"), "lineId 누락", null));
+
+        assertThatThrownBy(() -> purchaseUpdateService.update(
+                slip.getId(), request(slip, partialDestruction, true),
+                UUID.randomUUID(), "매입 부분 파괴자"))
+                .isInstanceOfSatisfying(BusinessException.class, ex ->
+                        assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
+
+        verify(slipRepository, never()).saveAndFlush(any(Slip.class));
+        assertThat(slip.getLines()).allMatch(line -> SET_MODEL.equals(line.getParentSetModel()));
     }
 
     // ---------------------------------------------------------------- 픽스처
