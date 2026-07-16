@@ -4,6 +4,59 @@
 
 ---
 
+## 🔵 2026-07-16 (회사PC) — #809 **R8 리뷰+fix 1차 완주 · R8 fix 2차 중단 지점** (집PC 재개)
+
+> **다음 세션(집PC) 첫 읽기(최우선).** 개발책임자 지시: **"집PC에서 재개"**.
+> 🚨 **먼저 `git pull` 하고 sync 카운트를 읽어라.** (지난 회사PC 세션이 로컬 16커밋 뒤처진 걸 못 읽고 stale 핸드오프에 물렸음 — 반복 금지.)
+
+### 상태 (전부 원격 push 완료)
+- **브랜치** `feat/809-partner-product-price-memory` · **HEAD `e8f558cd4`** · **원격 완전 동기화(0 0)** · PR **#820 OPEN**·base=main
+- **워크플로우 개편 반영**: 2026-07-16 개발책임자 지시로 **1차 적대검증 = FABLE5 → OPUS 4.8**(FABLE5 토큰 극심·폐지). 커밋 `178e3a113`. [[feedback_canonical_workflow]] 갱신됨. 5단계 = CODEX SOL 5.6 은 그대로.
+- **PM genuine 검증(R8 fix 1차 기준·HEAD `a964607f0`)**: slip-service **1343** / desktop **763** / DS **49** / typecheck 0 — 전부 0 fail/**skip**
+
+### 🔴 재개 지점 = **R8 fix 2차 재디스패치** (신규 4건 · fresh)
+R8 fix 1차의 라이브 QA 가 **신규 4건**(HIGH 2·MEDIUM 2)을 포착 → fix 2차 착수했으나 **세션 정리로 중단.**
+- **미완 WIP = `wip/809-r8-fix2-incomplete` 브랜치(`14e1b3c02`) 로 격리·push됨.** 🚫 **완료로 착각 금지** — "R8-QA-12 유닛 테스트 추가" 직전 중단·**gradle/vitest 미검증**. `e8f558cd4` 에서 **fresh 재디스패치**하되 WIP diff 는 참조만([[feedback_codex_detached_write_settle]] 정신).
+- 신규 4건 + 확정 처리 방침(전부 [PR 게시](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4989664888)):
+  | ID | 등급 | 확정 |
+  |---|---|---|
+  | **R8-QA-9** | HIGH | 전표 수정 진입 시 거래처 빈칸 → **바로 fix**(disabled 요소가 combobox `open` 을 못 닫음 — `SlipDetailPage:511-522`·`AsyncAutocomplete:129,267`) |
+  | **R8-QA-11** | HIGH | 거래처만 바꿔 저장 → 옛 거래처 협상단가가 새 거래처 각인 → **D-R8-10**: `SlipFormPage` 재조회·배너·강조(31건)를 수정모달에 **공용 추출 이식**(복붙 금지). `SlipDetailPage:1386-1406` |
+  | **R8-QA-12** | MEDIUM | 동시 서버측 행삭제 → 피어 저장 400+입력 증발 → **D-R8-11**: 행삭제 잠금(`slipCoeditActive`) **제거** + Y.Doc 직독으로만 방어. 잠금 제거로 **R8-QA-2 근본 fix 를 2창 GUI 로 실증 가능**해짐(이번엔 꼭 라이브 재현) |
+  | **R8-QA-13** | MEDIUM | 계약 마커 자기신고 → **바로 fix**: 계보 보유 문서 + 마커 true + lineId 0개 = 거부. `LineIdContractGate:75-79`. ⚠️ 계보 **없는** 평면 문서 전 라인 교체는 정상(오탐 금지) |
+
+### 🧪 라이브 QA 하네스 (검증됨)
+- 렌더러: `cd clients/desktop; $env:VITE_API_BASE_URL="http://localhost:8080"; node_modules\.bin\vite --config playwright/809-price-memory-real-qa/vite.809-realqa.config.ts --port 5219 --strictPort` (design-system **소스 alias**·dist 비의존)
+- 실행: `$env:QA_BASE_URL="http://localhost:5219"; node_modules\.bin\playwright test --config=playwright.real-qa.config.ts --reporter=line --timeout=60000`
+- 계정 **`dev_manager` / `dev_p05_pass!`**(⚠️`dev_master` 는 `sales.slip.create` 없어 403)
+- 스샷 → `docs/qa/809-partner-product-price-memory/r8-postfix2/` (신규). **r2·r4·r4-postfix·r5·r5-postfix·r6·r6-postfix·r8·r8-postfix 전부 불가침**
+- 🔴 **환경 재빌드 필수**(집PC 는 이미지·dist stale): `.\gradlew :services:slip-service:bootJar -x test` → docker build+`up -d --no-deps --force-recreate slip-service` · `cd clients/web/design-system; npm run build`. **재배포 후 `unzip -l /app/app.jar | grep LineIdContractGate` 로 배포본 실증.** 집PC 는 influxd 8086 점유 → `docker-compose.slip-port-override.yml`(18086) 필요할 수 있음
+
+### 🔵 남은 경로
+R8 fix 2차(OPUS·신규 4건) → PM 검증(변경모듈 전체 genuine) → 라이브 QA 재실행(**R8-QA-2 를 잠금 제거 후 GUI 실증**) → **R8 fix 2차 게시** → **R9 = CODEX SOL 5.6 5차원**(`gpt-5.6-sol`·개편 후 Codex 첫 검증·`mcp__codex__codex` 직접) → 양측 0수렴 → PM 종합 10-게이트 → CI green → 머지. **이 슬라이스 완주로 세션 정리(다음 슬라이스 미착수).**
+
+### 📌 개발책임자 결정 (R8 누적 · 전부 PR 게시)
+- **D-R8-1** legacy 견적 데드락 = 이 PR fix(CRDT 편입으로 근본 해소) · **D-R8-2** Hikari 전용 DataSource 격리+전역 30s · **D-R8-3→D-R8-5 번복** BUNDLE_SET 기억 = 설계 귀결·결함 아님(spec close) · **D-R8-6** lineId 미전송 PUT=400 · **D-R8-7** 전표 거래처 자유입력 봉쇄+Autocomplete 통일 · **D-R8-8** 세트 구성품 품목 교체=계보 승계 금지(BE 검증+FE 직독) · **D-R8-9** 요청 레벨 계약 마커 · **D-R8-10** 수정 거래처 변경 유지+파생 fix · **D-R8-11** 행삭제 잠금 제거+직독
+- 게시 앵커: [R8 리뷰](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4987613082) · [D-R8-5~8](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4987642891) · [D-R8-9](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4988099852) · [R8 fix 1차](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4989142660) · [D-R8-10/11](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4989664888)
+
+### 🔴 R8 정직 고지 (승계)
+- **R8 fix 1차가 신규 4건을 낳음** — 7라운드 연속 패턴이나, 이번은 28→4로 **국소화**(전부 R8 fix 가 건드린 지점의 마감 미스 = 수렴 신호). R9 Codex 첫 검증에서 새 지적 가능.
+- **R8-QA-2 근본 fix(Y.Doc 직독) 라이브 미실증** — fix 1차의 행삭제 잠금이 트리거 봉쇄. **D-R8-11 로 잠금 제거 후 fix 2차 라이브 QA 에서 꼭 2창 GUI 실증할 것.**
+- **라이브 수치 휘발성** — revision 21(R8 리뷰)→56(정정 시점). QA 쓰기로 증가. **고정 수치 단언 테스트 금지**·구조를 근거로.
+- **R8-QA-7 진단 정정** — r2 스위트 붕괴 원인은 "product_code NULL"(무관) 아니라 **픽스처 품목 3종 부재**. fix 2차는 스펙 자급 픽스처 유지 확인.
+
+### ⚙️ 이번 세션(회사PC) 환경 교훈
+- 🚨 **git pull + sync 카운트 먼저** — stale 핸드오프에 물리는 것 방지(이번 세션 초반 실제 발생)
+- **XML 집계 `-Raw` 필수** — `Get-Content` 배열 반환이 `[xml]` 캐스트 실패→일부 파일 누락(1333 오집계→1343 정정). `[xml]$d = Get-Content $x -Raw -Encoding UTF8`
+- **DataSource 2개 기동 성공 실증** — 전용 pool 격리해도 `@Primary` 로 autoconfig back-off 회피됨(health UP)
+- **미완 에이전트 산출물 = WIP 브랜치 격리**(feature 청결 유지·집PC 참조 가능). stash 는 원격 안 넘어가 타 PC 재개 시 무의미
+
+### 🔴 잔여 슬라이스 큐 (이번 세션에 이슈 등록 완료 — #809 완주 후 순차)
+**#810**(입금매핑·결정 6건 확정) → **#826**(주문서 통합·슬6 이식) → **#827**(레거시 GAS·🔴Google 자격 블로커) → **#825**(전역 입력 UX·결정 5건 확정) → **#824**(품목행 공급가액·부가세·결정 확정) → **#823**(매출배분 거래처 검증) → **전표 거래처 필수화**(별도 슬라이스) → **#828**(role=row orphan) → #773 잔여 · #816 후속(DELAYED 실배선)
+- 신규 등록 이슈: #823 #824 #825 #826 #827 #828 (전부 개발책임자 결정 반영·본문 박제됨)
+
+---
+
 ## 🟢 2026-07-16 (집PC 야간 완주) — #809 **R4~R7 완주 · lineId 계약으로 근본원인 해소 · R8 착수 지점**
 
 > **다음 세션(회사PC) 첫 읽기(최우선).** 개발책임자 지시: **"R8 은 회사PC에서부터 진행"**.

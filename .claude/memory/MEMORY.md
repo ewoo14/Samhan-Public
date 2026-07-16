@@ -91,6 +91,7 @@
 - [codex exec 백그라운드 stdin hang](feedback_codex_exec_stdin_hang.md) — </dev/null 필수
 - [detached codex 안정화 후 판단](feedback_codex_detached_write_settle.md) — git status 빈것≠미수행, 폴링+diff
 - [agent origin/main 동기화](feedback_agent_origin_main_sync.md) — background agent 시작직후 git fetch+log 검증
+- [타 PC 재개=미완 WIP 브랜치 격리](feedback_incomplete_work_wip_branch_cross_pc.md) — 집↔회사 재개 시 미완·미검증 산출물은 stash 금지(원격 안 넘어감)·원격 WIP 브랜치로 격리·feature 청결 유지·핸드오프에 "완료착각 금지·fresh 재디스패치·WIP diff 참조만" 박제·다음 세션 git pull+sync 먼저(stale 핸드오프 물림 방지) (2026-07-16 #809 R8)
 
 # 프로젝트 컨텍스트
 - [User Role](user_role.md) · [사용자 호칭](feedback_user_title.md) — 개발책임자, "대표"=김미선만
