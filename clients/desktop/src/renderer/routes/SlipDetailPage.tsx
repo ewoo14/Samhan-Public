@@ -106,6 +106,7 @@ import { useIsMobile } from '../hooks/useIsMobile'
 import { usePresence } from '../hooks/usePresence'
 import { OUTBOUND_DELIVERY_TAG_LABELS } from '../api/slipCutoff'
 import {
+  partnerRepriceSessionIsCurrent,
   usePartnerPriceRefresh,
   type PartnerRepriceCandidate,
   type PartnerRepriceOutcome,
@@ -646,6 +647,10 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
   salesEditLinesRef.current = salesEditLines
   const purchaseEditLinesRef = useRef(purchaseEditLines)
   purchaseEditLinesRef.current = purchaseEditLines
+  const salesPartnerIdRef = useRef(salesPartnerId)
+  salesPartnerIdRef.current = salesPartnerId
+  const purchasePartnerIdRef = useRef(purchasePartnerId)
+  purchasePartnerIdRef.current = purchasePartnerId
   // 편집 세션 종료(두 폼 모두 닫힘) 시 재조회 강조 초기화 — 다음 세션에 이전 강조가 잔존하지 않도록.
   useEffect(() => {
     if (!salesEditOpen && !purchaseEditOpen) {
@@ -1156,7 +1161,10 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
     const applyProviderState = (nextProvider: DocCoeditProvider) => {
       if (mode === 'OUTBOUND') {
         // D-R8-7: 상대 피어의 거래처 재선택을 수신 — 이게 없으면 구 partnerId 로 저장한다.
-        setSalesPartnerId(nextProvider.getHeaderValue('partnerId'))
+        const nextPartnerId = nextProvider.getHeaderValue('partnerId')
+        const partnerChanged = nextPartnerId !== salesPartnerIdRef.current
+        salesPartnerIdRef.current = nextPartnerId
+        setSalesPartnerId(nextPartnerId)
         setSalesPartnerName(nextProvider.getHeaderValue('partnerName'))
         setSalesPartnerCode(nextProvider.getHeaderValue('partnerCode'))
         setSalesBusinessNumber(nextProvider.getHeaderValue('businessNumber'))
@@ -1167,9 +1175,16 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
         setSalesRecipientPhone(nextProvider.getHeaderValue('recipientPhone'))
         setSalesPaymentDueDate(nextProvider.getHeaderValue('paymentDueDate'))
         setSalesEditLines((prev) => coeditLinesToEditLines(nextProvider, prev, knownServerLineIds))
+        if (partnerChanged && nextPartnerId) {
+          // 원격 거래처 변경도 로컬 선택과 동일하게 최신 거래처 단가를 재조회한다.
+          void repriceEditLinesForPartner(nextPartnerId, nextProvider)
+        }
         return
       }
-      setPurchasePartnerId(nextProvider.getHeaderValue('partnerId'))
+      const nextPartnerId = nextProvider.getHeaderValue('partnerId')
+      const partnerChanged = nextPartnerId !== purchasePartnerIdRef.current
+      purchasePartnerIdRef.current = nextPartnerId
+      setPurchasePartnerId(nextPartnerId)
       setPurchasePartnerName(nextProvider.getHeaderValue('partnerName'))
       setPurchasePartnerCode(nextProvider.getHeaderValue('partnerCode'))
       setPurchaseBusinessNumber(nextProvider.getHeaderValue('businessNumber'))
@@ -1179,6 +1194,9 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
       setPurchaseRecipientPhone(nextProvider.getHeaderValue('recipientPhone'))
       setPurchasePaymentDueDate(nextProvider.getHeaderValue('paymentDueDate'))
       setPurchaseEditLines((prev) => coeditLinesToEditLines(nextProvider, prev, knownServerLineIds))
+      if (partnerChanged && nextPartnerId) {
+        void repriceEditLinesForPartner(nextPartnerId, nextProvider)
+      }
     }
 
     void createDocCoeditProvider({
@@ -1526,8 +1544,10 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
       setBizNo(nextBizNo)
     }
     if (mode === 'OUTBOUND') {
+      salesPartnerIdRef.current = nextPartnerId
       apply(setSalesPartnerId, setSalesPartnerName, setSalesPartnerCode, setSalesBusinessNumber)
     } else {
+      purchasePartnerIdRef.current = nextPartnerId
       apply(setPurchasePartnerId, setPurchasePartnerName, setPurchasePartnerCode, setPurchaseBusinessNumber)
     }
     const provider = slipFormCoeditProvider
@@ -1574,7 +1594,10 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
    * <p><b>in-flight 편집 가드</b>: 조회 대기 중 사용자가(또는 원격 피어가) 그 라인 단가를 직접
    * 편집했으면 적용 시점 재검증으로 건너뛴다 — 폼의 priceSource=USER 재분류 보호와 동일 의도.
    */
-  const repriceEditLinesForPartner = async (partnerId: string) => {
+  const repriceEditLinesForPartner = async (
+    partnerId: string,
+    providerOverride?: DocCoeditProvider | null,
+  ) => {
     const seq = ++modalRepriceSeqRef.current
     if (!partnerId) {
       partnerReprice.invalidate()
@@ -1584,8 +1607,9 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
       return
     }
     setModalRepricePending(true)
+    const activePartnerIdRef = mode === 'OUTBOUND' ? salesPartnerIdRef : purchasePartnerIdRef
     const editLines = mode === 'OUTBOUND' ? salesEditLinesRef.current : purchaseEditLinesRef.current
-    const provider = slipFormCoeditProvider
+    const provider = providerOverride ?? slipFormCoeditProvider
     const setEditLines = mode === 'OUTBOUND' ? setSalesEditLines : setPurchaseEditLines
     const editLinesRef = mode === 'OUTBOUND' ? salesEditLinesRef : purchaseEditLinesRef
     // 세트 구성품(lineage 는 서버 상세가 권위) — 재가격 금지 대상.
@@ -1611,7 +1635,13 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
     // 1단계: 카탈로그 판매가(VAT포함) 조회 — miss fallback 원천.
     try {
       const catalogProducts = await lookupProducts(targets.map((line) => line.productId!))
-      if (modalRepriceSeqRef.current !== seq) return // 더 새 거래처 선택이 시작됨 — 이 세션 폐기
+      if (!partnerRepriceSessionIsCurrent(
+        seq,
+        modalRepriceSeqRef.current,
+        partnerId,
+        activePartnerIdRef.current,
+        true,
+      )) return // 더 새 거래처 선택/원격 변경이 시작됨 — 이 세션 폐기
       const catalogInclusiveByProductId = new Map<string, string>()
       for (const product of catalogProducts) {
         if (product.id && product.sellingPrice != null && Number.isFinite(product.sellingPrice)) {
@@ -1630,7 +1660,14 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
         }
       })
       const { outcomes, isCurrent } = await partnerReprice.run(partnerId, candidates)
-      if (!isCurrent() || modalRepriceSeqRef.current !== seq) return
+      const requestIsCurrent = () => partnerRepriceSessionIsCurrent(
+        seq,
+        modalRepriceSeqRef.current,
+        partnerId,
+        activePartnerIdRef.current,
+        isCurrent(),
+      )
+      if (!requestIsCurrent()) return
       // in-flight 편집 재검증 원천 — provider 있으면 Y.Doc(원격 포함 최신), 없으면 로컬 state 최신 ref.
       const liveExclusiveOf = (lineId: string): string => {
         if (provider) return provider.getItemValueById(lineId, 'unitPrice').trim()
@@ -1655,9 +1692,11 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
         priceByLineId.set(outcome.key, nextExclusive)
       }
       if (priceByLineId.size > 0) {
+        if (!requestIsCurrent()) return
         if (provider) {
           provider.doc.transact(() => {
             for (const [lineId, unitPrice] of priceByLineId) {
+              if (!requestIsCurrent()) break
               provider.setItemValueById(lineId, 'unitPrice', unitPrice)
             }
           })
@@ -1671,6 +1710,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
           )
         }
       }
+      if (!requestIsCurrent()) return
       setRepriceChangedLineIds(changed)
       setRepriceOutcomeByLineId(appliedOutcomes)
     } finally {
@@ -2373,6 +2413,8 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
               data-testid="sales-slip-edit-button"
               onClick={() => {
                 syncSalesFormFromData(slip)
+                // 모달 첫 커밋부터 거래처 선택을 잠가 provider 초기화 전 재조회/후속 덮어쓰기 창을 닫는다.
+                setSlipFormCoeditPending(true)
                 setSalesConflictMessage(null)
                 setSalesIsConflict(false)
                 setSalesReloadSuccessMessage(null)
@@ -2389,6 +2431,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
               data-testid="purchase-slip-edit-open"
               onClick={() => {
                 syncPurchaseFormFromData(slip)
+                setSlipFormCoeditPending(true)
                 setPurchaseConflictMessage(null)
                 setPurchaseIsConflict(false)
                 setPurchaseReloadSuccessMessage(null)
@@ -2526,6 +2569,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
                       onClick={() => {
                         setMobileMoreOpen(false)
                         syncSalesFormFromData(slip)
+                        setSlipFormCoeditPending(true)
                         setSalesConflictMessage(null)
                         setSalesIsConflict(false)
                         setSalesReloadSuccessMessage(null)
@@ -2542,6 +2586,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
                       onClick={() => {
                         setMobileMoreOpen(false)
                         syncPurchaseFormFromData(slip)
+                        setSlipFormCoeditPending(true)
                         setPurchaseConflictMessage(null)
                         setPurchaseIsConflict(false)
                         setPurchaseReloadSuccessMessage(null)

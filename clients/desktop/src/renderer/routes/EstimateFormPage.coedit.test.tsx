@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   getPriceMemories: vi.fn(),
   lookupProducts: vi.fn(),
   createDocCoeditProvider: vi.fn(),
+  selectPartnerOnMount: false,
   partnerA: {
     id: '11111111-1111-1111-1111-111111111111',
     partnerCode: 'P-A',
@@ -59,28 +60,36 @@ vi.mock('@samhan/design-system', () => ({
   ),
   // 실 PartnerAutocomplete 은 controlled value 를 getInputLabel(partner)=partner.name 으로 입력창에
   // 표시한다. mock 도 value 를 렌더해야 "원격 거래처 변경이 자동완성에 반영되는가" 를 검증할 수 있다.
-  PartnerAutocomplete: ({ label, disabled, onChange, error, value }: { label?: string; disabled?: boolean; onChange: (value: unknown) => void; error?: string; value?: { name?: string } | null }) => (
-    <label>
-      {label ? <span>{label}</span> : null}
-      <input
-        data-testid="estimate-partner-autocomplete"
-        disabled={disabled}
-        aria-invalid={error ? true : undefined}
-        value={value?.name ?? ''}
-        readOnly
-      />
-      {error ? <span role="alert">{error}</span> : null}
-      <button type="button" data-testid="estimate-select-partner-a" disabled={disabled} onClick={() => onChange(mocks.partnerA)}>
-        partner-a
-      </button>
-      <button type="button" data-testid="estimate-select-partner-b" disabled={disabled} onClick={() => onChange(mocks.partnerB)}>
-        partner-b
-      </button>
-      <button type="button" data-testid="estimate-clear-partner" disabled={disabled} onClick={() => onChange(null)}>
-        clear-partner
-      </button>
-    </label>
-  ),
+  PartnerAutocomplete: ({ label, disabled, onChange, error, value }: { label?: string; disabled?: boolean; onChange: (value: unknown) => void; error?: string; value?: { name?: string } | null }) => {
+    const selectedOnMountRef = React.useRef(false)
+    React.useLayoutEffect(() => {
+      if (!mocks.selectPartnerOnMount || selectedOnMountRef.current || disabled) return
+      selectedOnMountRef.current = true
+      onChange(mocks.partnerB)
+    }, [disabled, onChange])
+    return (
+      <label>
+        {label ? <span>{label}</span> : null}
+        <input
+          data-testid="estimate-partner-autocomplete"
+          disabled={disabled}
+          aria-invalid={error ? true : undefined}
+          value={value?.name ?? ''}
+          readOnly
+        />
+        {error ? <span role="alert">{error}</span> : null}
+        <button type="button" data-testid="estimate-select-partner-a" disabled={disabled} onClick={() => onChange(mocks.partnerA)}>
+          partner-a
+        </button>
+        <button type="button" data-testid="estimate-select-partner-b" disabled={disabled} onClick={() => onChange(mocks.partnerB)}>
+          partner-b
+        </button>
+        <button type="button" data-testid="estimate-clear-partner" disabled={disabled} onClick={() => onChange(null)}>
+          clear-partner
+        </button>
+      </label>
+    )
+  },
   Spinner: ({ label }: { label?: string }) => <div role="status">{label}</div>,
 }))
 
@@ -216,16 +225,24 @@ function makeEstimate(overrides: Partial<EstimateDetail> = {}): EstimateDetail {
   return { ...estimate, ...overrides }
 }
 
-function makeProvider() {
+function makeProvider(options: { requireUnitPriceTransaction?: boolean } = {}) {
   const header = new Map<string, string>()
   let rows: Record<string, string>[] = []
   const subscribers = new Set<() => void>()
+  let transactionDepth = 0
   const provider = {
     items: {
       toArray: () => rows,
     },
     // D-R8-7: 거래처 4필드는 CRDT 트랜잭션 1회로 원자 전파한다(중간 상태 관측 창 차단).
-    doc: { transact: vi.fn((fn: () => void) => fn()) },
+    doc: { transact: vi.fn((fn: () => void) => {
+      transactionDepth += 1
+      try {
+        fn()
+      } finally {
+        transactionDepth -= 1
+      }
+    }) },
     setHeaderValue: vi.fn((fieldName: string, value: string) => {
       header.set(fieldName, value)
     }),
@@ -235,6 +252,9 @@ function makeProvider() {
     }),
     getItemValue: vi.fn((index: number, cellName: string) => rows[index]?.[cellName] ?? ''),
     setItemValue: vi.fn((index: number, cellName: string, value: string) => {
+      if (options.requireUnitPriceTransaction && cellName === 'unitPrice' && transactionDepth === 0) {
+        throw new Error('unitPrice write must be transactional')
+      }
       rows[index] = { ...(rows[index] ?? {}), [cellName]: value }
     }),
     isEmpty: vi.fn(() => true),
@@ -297,6 +317,7 @@ afterEach(() => {
 })
 
 beforeEach(() => {
+  mocks.selectPartnerOnMount = false
   mocks.getPriceMemory.mockResolvedValue(null)
   mocks.getPriceMemories.mockResolvedValue({ hits: [], failedProductIds: [] })
   mocks.lookupProducts.mockResolvedValue([])
@@ -576,6 +597,54 @@ describe('EstimateFormPage 견적 편집 full-form coedit 배선', () => {
     expect(screen.getByTestId('estimate-form-line-0').getAttribute('data-price-source')).toBe('REMEMBERED')
     expect(screen.getByRole('note', { name: /마지막으로 저장된 단가/ }).textContent).toBe('거래처 최근단가')
     expect(screen.getByText('단가 변경')).not.toBeNull()
+  })
+
+  it('상세 hydrate 전 거래처 선택이 들어와도 최신 거래처 기준 재조회를 유실하지 않는다', async () => {
+    mocks.selectPartnerOnMount = true
+    mocks.getEstimate.mockResolvedValue(makeEstimate())
+    mocks.createDocCoeditProvider.mockRejectedValue(new Error('coedit unavailable'))
+    mocks.lookupProducts.mockResolvedValue([{ id: 'product-1', sellingPrice: 11000 }])
+    mocks.getPriceMemories.mockResolvedValue({
+      hits: [{
+        productId: 'product-1',
+        unitPrice: 99000,
+        source: 'LINE_SAVE',
+        updatedAt: '2026-07-16T10:00:00',
+      }],
+      failedProductIds: [],
+    })
+
+    renderPage()
+
+    await waitFor(() => expect(mocks.getPriceMemories).toHaveBeenCalledWith(
+      mocks.partnerB.id,
+      ['product-1'],
+    ))
+    await waitFor(() => expect(estimateUnitPrice().value).toBe('99000'))
+    expect(screen.getByTestId('estimate-form-line-0').getAttribute('data-price-source')).toBe('REMEMBERED')
+  })
+
+  it('거래처 재조회 provider write를 한 CRDT transaction으로 적용한다', async () => {
+    const provider = makeProvider({ requireUnitPriceTransaction: true })
+    mocks.getEstimate.mockResolvedValue(makeEstimate())
+    mocks.createDocCoeditProvider.mockResolvedValue(provider)
+    mocks.lookupProducts.mockResolvedValue([{ id: 'product-1', sellingPrice: 11000 }])
+    mocks.getPriceMemories.mockResolvedValue({
+      hits: [{
+        productId: 'product-1',
+        unitPrice: 99000,
+        source: 'LINE_SAVE',
+        updatedAt: '2026-07-16T10:00:00',
+      }],
+      failedProductIds: [],
+    })
+    renderPage()
+
+    await waitFor(() => expect(screen.getByTestId('estimate-coedit-items-0-unitPrice').getAttribute('data-provider-present')).toBe('true'))
+    fireEvent.click(screen.getByTestId('estimate-select-partner-b'))
+
+    await waitFor(() => expect(estimateUnitPrice().value).toBe('99000'))
+    expect(provider.getItemValue(0, 'unitPrice')).toBe('99000')
   })
 
   it('edit hydrate 세트 구성품은 거래처 변경 재조회 후보에서 제외한다', async () => {

@@ -41,6 +41,7 @@ import { usePageTitle } from '../hooks/usePageTitle'
 import { usePermissions } from '../hooks/usePermissions'
 import { isAutoPriceSource, shouldAutoFillPrice } from '../utils/priceSourceRules'
 import {
+  partnerRepriceSessionIsCurrent,
   usePartnerPriceRefresh,
   type PartnerRepriceCandidate,
   type PartnerRepriceOutcome,
@@ -571,6 +572,9 @@ export function EstimateFormPage() {
   const [validUntil, setValidUntil] = useState<string>(datePlusDays(today(), 30))
   const [memo, setMemo] = useState<string>('')
   const [lines, setLines] = useState<DraftLine[]>([emptyLine()])
+  // query data 커밋과 hydrate effect 사이에는 초기 빈 라인이 잠깐 렌더될 수 있다. 이때 거래처를
+  // 선택하면 재조회 후보 0건으로 소실된 뒤 원 상세가 덮으므로, 어느 견적을 hydrate했는지 별도 추적한다.
+  const [hydratedEstimateId, setHydratedEstimateId] = useState<string | null>(null)
   // R9 #5: 전표 생성/수정과 동일한 거래처 단가 재조회 수명주기·출처 해석을 공유한다.
   const partnerReprice = usePartnerPriceRefresh()
   const [topError, setTopError] = useState<string>('')
@@ -673,7 +677,8 @@ export function EstimateFormPage() {
     const draftLines = toDraftLinesFromEstimate(e)
     linesRef.current = draftLines
     setLines(draftLines)
-  }, [isEdit, detailQuery.data, estimateFormCoeditProvider])
+    setHydratedEstimateId(editId ?? null)
+  }, [editId, isEdit, detailQuery.data, estimateFormCoeditProvider])
 
   useEffect(() => {
     const estimate = estimateDataRef.current
@@ -953,11 +958,14 @@ export function EstimateFormPage() {
         catalogFallback: line.catalogUnitPrice ?? catalogByProductId.get(line.productId!) ?? null,
       }))
       const { outcomes, isCurrent } = await partnerReprice.run(effectivePartnerId, repriceCandidates)
-      if (
-        !isCurrent()
-        || priceRefreshRequestRef.current !== requestId
-        || selectedPartnerIdRef.current !== effectivePartnerId
-      ) return
+      const requestIsCurrent = () => partnerRepriceSessionIsCurrent(
+        requestId,
+        priceRefreshRequestRef.current,
+        effectivePartnerId,
+        selectedPartnerIdRef.current,
+        isCurrent(),
+      )
+      if (!requestIsCurrent()) return
       const outcomeByUid = new Map(outcomes.map((outcome) => [outcome.key, outcome]))
       const appliedOutcomeByUid = new Map<string, PartnerRepriceOutcome>()
       const providerWrites: Array<{ index: number; line: DraftLine }> = []
@@ -985,23 +993,37 @@ export function EstimateFormPage() {
         providerWrites.push({ index, line: nextLine })
         return nextLine
       })
+      // state 및 CRDT 적용 직전에 한 번 더 같은 세션인지 확인한다. 카탈로그→기억조회 사이에
+      // 시작된 더 최신 거래처 요청은 여기부터 어떤 쓰기도 수행할 수 없다.
+      if (!requestIsCurrent()) return
       linesRef.current = nextLines
       setLines(nextLines)
       setPartnerRefreshOutcomeByLineUid(appliedOutcomeByUid)
-      for (const write of providerWrites) {
-        if (!estimateFormCoeditProvider) continue
-        localAutoPriceWritesRef.current.set(write.line.uid, {
-          unitPrice: write.line.unitPrice,
-          priceSource: write.line.priceSource,
-          priceMemoryUpdatedAt: write.line.priceMemoryUpdatedAt,
-          priceRefreshChanged: write.line.priceRefreshChanged,
-          partnerRefreshEligible: write.line.partnerRefreshEligible,
-          lookupError: write.line.lookupError,
-        })
+      if (estimateFormCoeditProvider && providerWrites.length > 0 && requestIsCurrent()) {
+        // 전표 수정과 동일하게 모든 기대값을 먼저 등록하고 한 transaction으로 쓴다. 행별 write는
+        // 중간 Y.Doc 알림이 아직 쓰지 않은 다음 행을 원격 USER 값으로 오인하는 창을 만든다.
+        for (const write of providerWrites) {
+          localAutoPriceWritesRef.current.set(write.line.uid, {
+            unitPrice: write.line.unitPrice,
+            priceSource: write.line.priceSource,
+            priceMemoryUpdatedAt: write.line.priceMemoryUpdatedAt,
+            priceRefreshChanged: write.line.priceRefreshChanged,
+            partnerRefreshEligible: write.line.partnerRefreshEligible,
+            lookupError: write.line.lookupError,
+          })
+        }
         try {
-          estimateFormCoeditProvider.setItemValue(write.index, 'unitPrice', write.line.unitPrice)
+          estimateFormCoeditProvider.doc.transact(() => {
+            for (const write of providerWrites) {
+              // 동기 provider callback이 현재 거래처를 바꿨다면 남은 옛 요청 write를 중단한다.
+              if (!requestIsCurrent()) break
+              estimateFormCoeditProvider.setItemValue(write.index, 'unitPrice', write.line.unitPrice)
+            }
+          })
         } catch {
-          localAutoPriceWritesRef.current.delete(write.line.uid)
+          for (const write of providerWrites) {
+            localAutoPriceWritesRef.current.delete(write.line.uid)
+          }
         }
       }
     } finally {
@@ -1364,7 +1386,7 @@ export function EstimateFormPage() {
     }
   }
 
-  if (isEdit && detailQuery.isLoading) {
+  if (isEdit && (detailQuery.isLoading || hydratedEstimateId !== editId)) {
     return (
       <div style={{ display: 'grid', placeItems: 'center', minHeight: 200 }}>
         <Spinner size="lg" label="견적서 불러오는 중" />

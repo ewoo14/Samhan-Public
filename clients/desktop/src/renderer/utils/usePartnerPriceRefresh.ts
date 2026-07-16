@@ -76,6 +76,22 @@ export interface UsePartnerPriceRefreshResult {
   isPending: boolean
 }
 
+/**
+ * 카탈로그 조회까지 포함한 소비자 세션의 최종 적용 가드.
+ * seq·현재 거래처·공용 훅 세 조건 중 하나라도 바뀌면 이전 결과는 state/CRDT에 쓸 수 없다.
+ */
+export function partnerRepriceSessionIsCurrent(
+  requestSeq: number,
+  currentSeq: number,
+  requestedPartnerId: string,
+  currentPartnerId: string,
+  hookIsCurrent: boolean,
+): boolean {
+  return hookIsCurrent
+    && requestSeq === currentSeq
+    && requestedPartnerId === currentPartnerId
+}
+
 export function usePartnerPriceRefresh(
   options?: UsePartnerPriceRefreshOptions,
 ): UsePartnerPriceRefreshResult {

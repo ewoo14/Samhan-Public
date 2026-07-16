@@ -2,6 +2,7 @@
 import { act, renderHook } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { usePartnerPriceRefresh, type PartnerRepriceCandidate } from './usePartnerPriceRefresh'
+import * as partnerPriceRefreshModule from './usePartnerPriceRefresh'
 
 /** 재조회 후보 팩토리 — 필드만 덮어써서 테스트 의도를 좁게 표현한다. */
 const candidate = (over: Partial<PartnerRepriceCandidate> = {}): PartnerRepriceCandidate => ({
@@ -19,6 +20,25 @@ function deferred<T>() {
 }
 
 describe('usePartnerPriceRefresh (D-R8-10 공용 재조회 훅)', () => {
+  it('소비자 적용 가드는 최신 seq·현재 거래처·훅 current가 모두 일치할 때만 통과한다', () => {
+    const isCurrent = (
+      partnerPriceRefreshModule as unknown as {
+        partnerRepriceSessionIsCurrent?: (
+          requestSeq: number,
+          currentSeq: number,
+          requestedPartnerId: string,
+          currentPartnerId: string,
+          hookIsCurrent: boolean,
+        ) => boolean
+      }
+    ).partnerRepriceSessionIsCurrent
+
+    expect(isCurrent?.(2, 2, 'B', 'B', true)).toBe(true)
+    expect(isCurrent?.(1, 2, 'A', 'B', true)).toBe(false)
+    expect(isCurrent?.(2, 2, 'A', 'B', true)).toBe(false)
+    expect(isCurrent?.(2, 2, 'B', 'B', false)).toBe(false)
+  })
+
   it('hit=REMEMBERED·miss=CATALOG fallback 로 해석하고 changed 를 판정한다', async () => {
     const fetchMemories = vi.fn().mockResolvedValue({
       hits: [{ productId: 'p1', unitPrice: 2000, source: 'LINE_SAVE', updatedAt: '2026-07-16' }],
