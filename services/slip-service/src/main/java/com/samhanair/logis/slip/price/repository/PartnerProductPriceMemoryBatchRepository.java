@@ -7,18 +7,32 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
-import lombok.RequiredArgsConstructor;
+import com.samhanair.logis.slip.config.SlipDataSourceConfig.PriceMemoryJdbcAccess;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
-/** 거래처+품목 최근단가의 PostgreSQL set-based upsert 저장소. */
+/**
+ * 거래처+품목 최근단가의 PostgreSQL set-based upsert 저장소.
+ *
+ * <p><b>전용 pool 결속 (R8-BE-4 / D-R8-2)</b>: JdbcTemplate 을 무자격으로 주입받지 않고
+ * {@link PriceMemoryJdbcAccess} 에서 꺼낸다. 종전 {@code @RequiredArgsConstructor} 무자격 주입으로
+ * 되돌리면 자동구성 {@code JdbcTemplate}(메인 {@code @Primary} DataSource)이 주입되어,
+ * 가격기억 TM 이 연 트랜잭션에 <b>참여하지 못하고</b> tx 밖 autocommit 커넥션을 잡는다. 그러면
+ * {@link #applyTransactionTimeouts} 의 {@code set_config(..., is_local=true)} 는 그 statement 의
+ * 암묵 트랜잭션과 함께 즉시 사라져 {@link #upsertAll} 에 적용되지 않는다 (조용한 무력화 — mock
+ * 기반 테스트로는 검출 불가. {@code PartnerProductPriceMemoryTimeoutIT} 가 실 PostgreSQL 에서
+ * 같은 커넥션의 {@code pg_settings} 를 읽어 가드한다).
+ */
 @Repository
-@RequiredArgsConstructor
 public class PartnerProductPriceMemoryBatchRepository {
 
     private static final String VALUE_PLACEHOLDERS = "(?, ?, ?, ?, ?, ?, ?, ?, FALSE)";
 
     private final JdbcTemplate jdbcTemplate;
+
+    public PartnerProductPriceMemoryBatchRepository(PriceMemoryJdbcAccess priceMemoryJdbcAccess) {
+        this.jdbcTemplate = priceMemoryJdbcAccess.jdbcTemplate();
+    }
 
     /** 현재 가격기억 트랜잭션에만 PostgreSQL lock/statement timeout 을 적용한다. */
     public void applyTransactionTimeouts(int lockTimeoutMs, int statementTimeoutMs) {

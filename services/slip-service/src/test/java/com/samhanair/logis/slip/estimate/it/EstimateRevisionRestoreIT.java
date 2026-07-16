@@ -387,6 +387,7 @@ class EstimateRevisionRestoreIT extends AbstractPostgresIT {
         Map<String, Object> body = new HashMap<>();
         body.put("memo", memo);
         body.put("lines", buildLines(lineCount));
+        body.put("lineIdContract", true); // [D-R8-9] 정상 최신 클라이언트 재현
 
         mockMvc.perform(put("/slips/estimates/{id}", estimateId)
                         .header(USER_ID_HEADER, UUID.randomUUID().toString())

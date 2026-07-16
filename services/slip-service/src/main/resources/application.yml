@@ -21,9 +21,11 @@ spring:
       # 보상 실패 다발(inventory 일시 다운 등) 시 스레드당 2 커넥션 소모 → 기본값(10) 고갈 방지로 상향. (D-SER-22 후속, DevOps P1)
       maximum-pool-size: ${DB_POOL_MAX:20}
       minimum-idle: ${DB_POOL_MIN_IDLE:5}
-      # 가격기억 worker 의 TransactionTemplate timeout 은 커넥션 획득 뒤에만 적용된다.
-      # pool 고갈 시 Hikari 기본 30초 대기 대신 4초 안에 fail-soft 경계로 반환한다.
-      connection-timeout: ${DB_CONNECTION_TIMEOUT_MS:4000}
+      # [D-R8-2] fleet 표준 30초(Hikari 기본) 복원. 종전에는 가격기억 worker 를 빨리 fail-soft
+      # 시키려고 4초를 전역에 걸었으나, 그 4초는 slip-service 의 모든 사용자 요청에도 적용되어
+      # pool 포화 시 SQLTransientConnectionException → HTTP 500 을 유발했다 (fleet 26모듈 중 유일).
+      # 가격기억의 4초 정책은 아래 app.slip.price-memory.datasource.hikari 전용 pool 로 격리했다.
+      connection-timeout: ${DB_CONNECTION_TIMEOUT_MS:30000}
   jpa:
     hibernate:
       ddl-auto: validate
@@ -93,7 +95,18 @@ app:
       token: ${SAMHAN_INTERNAL_TOKEN:${INTERNAL_AUTH_TOKEN:dev-internal-token-change-me}}
   slip:
     price-memory:
-      # Hikari 커넥션 획득은 spring.datasource.hikari.connection-timeout(기본 4초), 아래 timeout 은
+      # [D-R8-2 / R8-BE-4] 가격기억 전용 DataSource — 메인 pool 과 격리된 별도 Hikari pool.
+      # SlipDataSourceConfig 의 priceMemoryDataSource 빈이 아래 키를 바인딩하며, url/username/
+      # password/driver 는 spring.datasource.* 를 공유한다(같은 DB, 다른 pool).
+      # 4초 connection-timeout 을 여기에 가둬 사용자 요청 경로(전역 30초)를 오염시키지 않는다.
+      # max 4 = async-max-pool-size 4 와 1:1. minimum-idle 0 = 유휴 시 커넥션 미점유.
+      datasource:
+        hikari:
+          pool-name: price-memory-pool
+          maximum-pool-size: ${SAMHAN_PRICE_MEMORY_DB_POOL_MAX:4}
+          minimum-idle: ${SAMHAN_PRICE_MEMORY_DB_POOL_MIN_IDLE:0}
+          connection-timeout: ${SAMHAN_PRICE_MEMORY_DB_CONNECTION_TIMEOUT_MS:4000}
+      # 커넥션 획득 대기는 위 전용 pool 의 connection-timeout(기본 4초), 아래 timeout 은
       # 획득 후 REQUIRES_NEW 트랜잭션에 각각 적용된다. 둘을 합친 단일 wall-clock 상한은 아니다.
       lock-timeout-ms: ${SAMHAN_PRICE_MEMORY_LOCK_TIMEOUT_MS:1000}
       statement-timeout-ms: ${SAMHAN_PRICE_MEMORY_STATEMENT_TIMEOUT_MS:3000}

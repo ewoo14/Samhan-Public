@@ -129,7 +129,7 @@ class RevisionRestoreVatAuthorityIT extends AbstractPostgresIT {
                             LocalDate.of(2026, 8, 15), "수정 후",
                             List.of(new UpdateEstimateRequest.EstimateLineUpdate(
                                     UUID.randomUUID(), "교체품목", "RP-1", null,
-                                    1, new BigDecimal("50000.00"), null, null, false))),
+                                    1, new BigDecimal("50000.00"), null, null, false, null)), true),
                     "actor-822-estimate", "수정자");
             assertThat(activeEstimateLineAmounts(created.id()).unitPriceWithVat()).isNull();
 

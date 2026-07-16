@@ -9,6 +9,7 @@ import org.springframework.boot.task.SimpleAsyncTaskExecutorBuilder;
 import org.springframework.boot.task.ThreadPoolTaskExecutorBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.DependsOn;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.core.task.SimpleAsyncTaskExecutor;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
@@ -18,7 +19,17 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 @EnableConfigurationProperties(PartnerProductPriceMemoryProperties.class)
 public class PartnerProductPriceMemoryAsyncConfig {
 
-    /** 가격기억 전용 bounded executor. 포화 시 caller thread 에서 실행하지 않고 fail-soft 로 거부한다. */
+    /**
+     * 가격기억 전용 bounded executor. 포화 시 caller thread 에서 실행하지 않고 fail-soft 로 거부한다.
+     *
+     * <p><b>{@code @DependsOn} 이 파괴 순서를 고정한다 (R8-BE-7)</b>: Spring 은 의존 빈을 <b>먼저</b>
+     * 파괴하므로, 이 선언이 executor 의 {@code waitForTasksToCompleteOnShutdown} drain(최대 5초)을
+     * {@code priceMemoryDataSource} 의 Hikari {@code close()} <b>이전</b>에 끝나도록 보장한다.
+     * 의존 선언이 없으면 파괴 순서가 무제약이라 Hikari 가 먼저 닫힐 수 있고, 그러면 drain 중인
+     * 가격기억 작업이 커넥션 획득에 전량 실패한다 — fail-soft 가 그 예외를 삼키므로
+     * <b>배포마다 큐에 남은 기억이 조용히 유실</b>된다.
+     */
+    @DependsOn("priceMemoryDataSource")
     @Bean(name = "priceMemoryExecutor")
     public Executor priceMemoryExecutor(PartnerProductPriceMemoryProperties properties) {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();

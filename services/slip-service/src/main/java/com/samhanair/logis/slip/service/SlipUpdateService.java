@@ -66,6 +66,10 @@ public class SlipUpdateService {
     @Transactional
     public SlipDetailResponse update(UUID id, SlipUpdateRequest request,
                                      UUID actorId, String actorName) {
+        // [D-R8-9] 계약 마커 검증은 조회보다 먼저다 — 구 클라이언트에게는 전표의 존재 여부(404)나
+        // 낙관적 잠금(409)보다 "앱을 업데이트하라"가 유일하게 조치 가능한 정보이며, 어떤 상태도
+        // 읽기 전에 거부하는 편이 게이트의 의도(쓰기 차단)를 가장 좁게 표현한다.
+        requireLineIdContract(request);
         Slip slip = load(id);
         verifyVersion(slip, request.updatedAt());
         // validateLines 는 BusinessException(SLIP_UPDATE_INVALID_LINE) 을 던지므로 try 외부에서 처리
@@ -80,10 +84,9 @@ public class SlipUpdateService {
         bundleLineage.restoreSlipLines(replacementLines, request.lines().stream()
                 .map(SlipUpdateRequest.LineRequest::lineId)
                 .toList());
-        List<PartnerProductPriceMemoryCommand> priceMemoryCommands = collectPriceMemory(
-                slip, replacementLines, actorId == null ? null : actorId.toString());
         try {
             slip.updateHeader(
+                    request.partnerId(),
                     request.partnerName(),
                     request.partnerCode(),
                     request.memo(),
@@ -93,6 +96,11 @@ public class SlipUpdateService {
                     request.projectName(),
                     request.recipientPhone(),
                     request.paymentDueDate());
+            // [D-R8-7] 가격기억 수집은 반드시 헤더 갱신 <b>이후</b>다 — 이전에 수집하면 거래처를
+            // 바꾼 저장의 단가가 갱신 전 partnerId(원 거래처)에 각인된다. 견적(EstimateService)이
+            // 이미 editHeader 이후 estimate.getPartnerId() 를 읽으므로 그 순서와 정렬한다.
+            List<PartnerProductPriceMemoryCommand> priceMemoryCommands = collectPriceMemory(
+                    slip, replacementLines, actorId == null ? null : actorId.toString());
             slip.replaceLines(replacementLines, actorId == null ? null : actorId.toString());
             Slip saved = slipRepository.saveAndFlush(slip);
             // after 는 saveAndFlush 결과 기준으로 캡처하여 ordering 명확화
@@ -163,8 +171,12 @@ public class SlipUpdateService {
      *
      * <p>다른 전표의 라인 UUID 주입은 lineId 기반 계보 승계의 IDOR 경로가 될 수 있으므로
      * 400 INVALID_INPUT 으로 거부한다. 403 대신 400을 사용해 타 문서의 존재 여부를
-     * 구분해 노출하지 않는다. lineId 미전송(null)은 구 클라이언트 호환을 위해 신규 평면
-     * 라인으로 허용하되 fingerprint 휴리스틱 폴백은 사용하지 않는다.
+     * 구분해 노출하지 않는다.
+     *
+     * <p>개별 라인의 {@code lineId == null} 은 <b>정상</b>이다 — 편집 중 추가된 신규 라인을 뜻하며
+     * 계보를 승계하지 않는 평면 라인으로 남는다. 전 라인이 lineId 를 싣지 않은 "전 라인 교체"
+     * 저장도 정상이다 — 구 클라이언트와의 구분은 라인이 아니라 {@link #requireLineIdContract}
+     * 의 요청 레벨 마커가 담당한다 (D-R8-9).
      */
     private void validateLineIds(List<SlipLine> existingLines,
                                  List<SlipUpdateRequest.LineRequest> requestedLines) {
@@ -183,6 +195,19 @@ public class SlipUpdateService {
                         "lineId 는 현재 전표의 활성 라인에서 중복 없이 지정해야 합니다");
             }
         }
+    }
+
+    /**
+     * [D-R8-6 · D-R8-9] 매입 전표 PUT 은 lineId 계약 선언을 의무화한다 — 판정은 공용
+     * {@link LineIdContractGate} 단일 구현에 위임한다 (매입/매출/견적 비대칭 재발 차단).
+     *
+     * <p>D-R8-6 이 세운 계약(lineId 미전송 PUT = 400)은 그대로 유지되며, D-R8-9 는 그 400 의
+     * <b>판정 기준만</b> "lineId 개수" 에서 "요청 레벨 마커 유무" 로 옮겼다. 파괴 경로(R8-QA-1 —
+     * 무수정 왕복 PUT 이 계보 전량 파괴)는 여전히 차단된다: 구 클라이언트는 마커를 보내지
+     * 않으므로 라인을 한 줄도 건드리기 전에 여기서 거부된다.
+     */
+    private void requireLineIdContract(SlipUpdateRequest request) {
+        LineIdContractGate.require(request.lineIdContract());
     }
 
     private SlipLine toLine(Slip slip, SlipUpdateRequest.LineRequest line) {

@@ -271,6 +271,7 @@ class EstimateControllerIT extends AbstractPostgresIT {
         newLine.put("quantity", 3);
         newLine.put("unitPrice", "300000.00");
         updateBody.put("lines", List.of(newLine));
+        updateBody.put("lineIdContract", true); // [D-R8-9] 정상 최신 클라이언트 재현
 
         mockMvc.perform(put("/slips/estimates/" + id)
                         .header("X-User-Id", SALES_ACCOUNT_ID)

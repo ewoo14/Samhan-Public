@@ -708,8 +708,12 @@ public class Slip extends BaseEntity {
      *
      * <p>기존 승인 요청 흐름과 별개로 INBOUND 전표의 구매관리 필드를 즉시 갱신한다. null 값은
      * 기존 값을 보존한다.
+     *
+     * @param partnerId 거래처 UUID (null 이면 보존) — D-R8-7 신규. 종전에는 {@code partnerName} 만
+     *        갱신돼 거래처를 바꿔 저장해도 {@code partner_id} 가 불변이었고, (거래처+품목) 가격기억이
+     *        <b>원 거래처</b>에 각인됐다 (R8-BE-3 라이브 실증)
      */
-    public void updateHeader(String partnerName, String partnerCode, String memo,
+    public void updateHeader(UUID partnerId, String partnerName, String partnerCode, String memo,
                              String businessNumber, String deliveryAddress,
                              String supervisionAddress, String projectName,
                              String recipientPhone, LocalDate paymentDueDate) {
@@ -718,6 +722,9 @@ public class Slip extends BaseEntity {
                     "매입 전표만 직접 수정할 수 있습니다.");
         }
         requireEditable();
+        if (partnerId != null) {
+            this.partnerId = partnerId;
+        }
         if (partnerName != null) {
             this.partnerName = partnerName;
         }
@@ -762,6 +769,7 @@ public class Slip extends BaseEntity {
      * <p>기존 승인 요청 흐름과 별개로 OUTBOUND 전표의 판매관리 필드를 즉시 갱신한다.
      * null 값은 기존 값을 보존한다. DRAFT/SAVED 단계에서만 허용.
      *
+     * @param partnerId 거래처 UUID (null 이면 보존) — D-R8-7 신규. {@link #updateHeader} 미러
      * @param partnerName 거래처명 (null 이면 보존)
      * @param partnerCode 거래처코드 (null 이면 보존)
      * @param memo 메모 (null 이면 보존)
@@ -774,7 +782,7 @@ public class Slip extends BaseEntity {
      * @throws BusinessException(SLIP_UPDATE_NON_SALES) slipType 이 OUTBOUND 가 아닐 때
      * @throws BusinessException(CONFLICT) DRAFT/SAVED 가 아닌 단계일 때
      */
-    public void updateSalesHeader(String partnerName, String partnerCode, String memo,
+    public void updateSalesHeader(UUID partnerId, String partnerName, String partnerCode, String memo,
                                   String businessNumber, String deliveryAddress,
                                   String supervisionAddress, String projectName,
                                   String recipientPhone, LocalDate paymentDueDate) {
@@ -783,6 +791,9 @@ public class Slip extends BaseEntity {
                     ErrorCode.SLIP_UPDATE_NON_SALES.getDefaultMessage());
         }
         requireEditable();
+        if (partnerId != null) {
+            this.partnerId = partnerId;
+        }
         if (partnerName != null) {
             this.partnerName = partnerName;
         }
@@ -1984,6 +1995,11 @@ public class Slip extends BaseEntity {
                 this.paymentDueDate,
                 this.destinationWarehouseId,
                 this.destinationWarehouseName,
+                // 기사/하차 3필드 (R8-BE-5) — editDriver 의 EDIT 스냅샷이 기사 변경을 담고
+                // 복원이 당시 값으로 되돌리도록 캡처한다. restoreFromSnapshot 과 대칭.
+                this.driverName,
+                this.driverPhone,
+                this.unloadDate,
                 // audit overlay 필드 10개 (PR #318 cycle1 P1-1) — restoreFromSnapshot 과 대칭
                 this.shippingAddress,
                 this.inspectionAddress,
@@ -2045,6 +2061,12 @@ public class Slip extends BaseEntity {
         this.paymentDueDate = snapshot.paymentDueDate();
         this.destinationWarehouseId = snapshot.destinationWarehouseId();
         this.destinationWarehouseName = snapshot.destinationWarehouseName();
+        // 기사/하차 3필드 역적용 (R8-BE-5) — toSnapshot 과 대칭. 구 스냅샷(키 없음)은 null 이
+        // 역적용되어 캡처 시점의 "기사 미지정" 상태를 그대로 재현한다 (헤더 필드 전반의 복원
+        // 규약 = "스냅샷 값 그대로 덮어씀" 과 일관 — null-보존 규약은 편집 경로에만 적용된다).
+        this.driverName = snapshot.driverName();
+        this.driverPhone = snapshot.driverPhone();
+        this.unloadDate = snapshot.unloadDate();
         // audit overlay 필드 10개 역적용 (PR #318 cycle1 P1-1) — toSnapshot 과 대칭.
         // applyOverlayPatch 가 수정하는 필드가 복원 시 정확히 당시 값으로 롤백되도록 직접 set.
         this.shippingAddress = snapshot.shippingAddress();

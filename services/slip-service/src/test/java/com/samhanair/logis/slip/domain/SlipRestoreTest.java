@@ -258,4 +258,79 @@ class SlipRestoreTest {
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("errorCode", ErrorCode.CONFLICT);
     }
+
+    /**
+     * [R8-BE-5] {@code toSnapshot()} 이 기사/하차 3필드를 캡처한다.
+     *
+     * <p>{@code SlipService.editDriver} 는 기사 변경을 EDIT 스냅샷으로 남기며 그 주석이
+     * <i>"driverName/driverPhone 은 toSnapshot 필드"</i> 라고 명시했지만 record 에 없어 실제로는
+     * 담기지 않았다. 이 단언이 {@code SlipSnapshot} 의 구 시그니처 호환 생성자로 회귀하는 것도 막는다.
+     */
+    @Test
+    @DisplayName("toSnapshot 은 기사명/기사연락처/하차일을 캡처한다 (R8-BE-5)")
+    void toSnapshot_capturesDriverAndUnloadDate() {
+        Slip slip = Slip.createOutbound("2026/07/16-1", LocalDate.of(2026, 7, 16), 1,
+                SOURCE_WH, UUID.randomUUID(), PARTNER, "삼한물산",
+                DeliveryTag.REGION, "기사 캡처", "user-1");
+        slip.setDriverContact("김기사", "010-5555-6666");
+        slip.applyDeliverySchedule(DeliveryTag.REGION, LocalDate.of(2026, 7, 18));
+
+        SlipSnapshot snapshot = slip.toSnapshot();
+
+        assertThat(snapshot.driverName()).isEqualTo("김기사");
+        assertThat(snapshot.driverPhone()).isEqualTo("010-5555-6666");
+        assertThat(snapshot.unloadDate()).isEqualTo(LocalDate.of(2026, 7, 18));
+    }
+
+    /**
+     * [R8-BE-5] 기사 변경 후 복원하면 <b>캡처 시점 기사</b>로 되돌아간다.
+     *
+     * <p>결함 상태에서는 스냅샷에 기사 필드가 없어 복원이 <b>현재 값(새 기사)을 그대로 남겼다</b>
+     * — spec §4 "통째 복원" 위반. point-in-time 복원의 의미가 헤더 일부에만 적용됐다.
+     */
+    @Test
+    @DisplayName("복원은 기사/하차일을 캡처 시점 값으로 되돌린다 (R8-BE-5)")
+    void restore_revertsDriverAndUnloadDateToCapturedPointInTime() {
+        Slip slip = Slip.createOutbound("2026/07/16-2", LocalDate.of(2026, 7, 16), 2,
+                SOURCE_WH, UUID.randomUUID(), PARTNER, "삼한물산",
+                DeliveryTag.REGION, "기사 복원", "user-1");
+        slip.setDriverContact("김기사", "010-5555-6666");
+        slip.applyDeliverySchedule(DeliveryTag.REGION, LocalDate.of(2026, 7, 18));
+        SlipSnapshot before = slip.toSnapshot();
+
+        // editDriver 경로 모사 — 기사 교체 + 하차일 변경
+        slip.editHeader(null, null, null, null, "박기사", "010-7777-8888");
+        slip.applyDeliverySchedule(DeliveryTag.REGION, LocalDate.of(2026, 7, 25));
+
+        slip.restoreFromSnapshot(before);
+
+        assertThat(slip.getDriverName()).isEqualTo("김기사");
+        assertThat(slip.getDriverPhone()).isEqualTo("010-5555-6666");
+        assertThat(slip.getUnloadDate()).isEqualTo(LocalDate.of(2026, 7, 18));
+    }
+
+    /**
+     * [R8-BE-5 하위호환] 기사 필드가 없는 <b>구 스냅샷</b>(기존 revision 행) 으로 복원하면 캡처
+     * 시점의 "기사 미지정" 상태가 재현된다 — 헤더 필드 전반의 복원 규약("스냅샷 값 그대로 덮어씀")과
+     * 일관되며, 역직렬화가 깨지지 않는다.
+     */
+    @Test
+    @DisplayName("기사 필드 없는 구 스냅샷 복원도 깨지지 않는다 (R8-BE-5 하위호환)")
+    void restore_fromLegacySnapshotWithoutDriverFields_doesNotBreak() {
+        Slip slip = Slip.createOutbound("2026/07/16-3", LocalDate.of(2026, 7, 16), 3,
+                SOURCE_WH, UUID.randomUUID(), PARTNER, "삼한물산",
+                DeliveryTag.REGION, "구 스냅샷", "user-1");
+        slip.setDriverContact("김기사", "010-5555-6666");
+        // 구 시그니처 호환 생성자 = 기사/하차 키가 없던 시절의 스냅샷
+        SlipSnapshot legacy = new SlipSnapshot(
+                "2026/07/16-3", LocalDate.of(2026, 7, 16), PARTNER, "삼한물산", null, null,
+                "구 스냅샷", "REGION", null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null, null, List.of());
+
+        slip.restoreFromSnapshot(legacy);
+
+        assertThat(slip.getDriverName()).isNull();
+        assertThat(slip.getDriverPhone()).isNull();
+        assertThat(slip.getUnloadDate()).isNull();
+    }
 }

@@ -61,7 +61,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
@@ -112,7 +111,7 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
     private PartnerProductPriceMemoryBatchRepository priceMemoryBatchRepository;
 
     @Autowired
-    private PlatformTransactionManager transactionManager;
+    private com.samhanair.logis.slip.config.SlipDataSourceConfig.PriceMemoryJdbcAccess priceMemoryJdbcAccess;
 
     @Autowired
     private MeterRegistry meterRegistry;
@@ -387,6 +386,7 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
                     created.id(),
                     new SlipUpdateRequest(
                             updateToken,
+                            created.partnerId(),
                             created.partnerName(),
                             created.partnerCode(),
                             created.memo(),
@@ -400,7 +400,7 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
                                     .map(line -> new SlipUpdateRequest.LineRequest(
                                             line.productId(), line.productName(), line.modelName(),
                                             line.specification(), line.quantity(), line.unitPrice(), line.note(), line.id()))
-                                    .toList()),
+                                    .toList(), true),
                     UUID.randomUUID(),
                     "세트 매출 수정자");
             awaitPriceMemoryExecutorIdle();
@@ -455,7 +455,7 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
                                             line.unitPriceWithVat() == null
                                                     ? line.unitPrice() : line.unitPriceWithVat(),
                                             line.note(), null, line.unitPriceWithVat() != null, line.id()))
-                                    .toList()),
+                                    .toList(), true),
                     "actor-bundle-estimate", "세트 견적 수정자");
             awaitPriceMemoryExecutorIdle();
 
@@ -500,6 +500,7 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
                     created.id(),
                     new SlipUpdateRequest(
                             currentSlipUpdatedAt(created.id()),
+                            created.partnerId(),
                             created.partnerName(), created.partnerCode(), created.memo(),
                             created.businessNumber(), created.deliveryAddress(),
                             created.supervisionAddress(), created.projectName(),
@@ -509,7 +510,7 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
                                             line.productId(), line.productName(), line.modelName(),
                                             line.specification(), line.setHead() ? 3 : line.quantity(),
                                             line.unitPrice(), line.note(), line.id()))
-                                    .toList()),
+                                    .toList(), true),
                     UUID.randomUUID(), "R7 head 수정자");
             awaitPriceMemoryExecutorIdle();
 
@@ -675,7 +676,7 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
             List<SlipUpdateRequest.LineRequest> putLines = new ArrayList<>();
             putLines.add(new SlipUpdateRequest.LineRequest(
                     firstComponentId, "COMP-1", "COMP-1", "실내기",
-                    3, new BigDecimal("123000.00"), "신규 단품"));
+                    3, new BigDecimal("123000.00"), "신규 단품", null));
             created.lines().forEach(line -> putLines.add(new SlipUpdateRequest.LineRequest(
                     line.productId(), line.productName(), line.modelName(),
                     line.specification(), line.quantity(), line.unitPrice(), line.note(), line.id())));
@@ -684,6 +685,7 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
                     created.id(),
                     new SlipUpdateRequest(
                             updateToken,
+                            created.partnerId(),
                             created.partnerName(),
                             created.partnerCode(),
                             created.memo(),
@@ -693,7 +695,7 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
                             created.projectName(),
                             created.recipientPhone(),
                             created.paymentDueDate(),
-                            putLines),
+                            putLines, true),
                     UUID.randomUUID(),
                     "BE 변형 수정자");
             awaitPriceMemoryExecutorIdle();
@@ -780,7 +782,7 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
                                             componentLine.unitPriceWithVat() != null, componentLine.id()),
                                     new UpdateEstimateRequest.EstimateLineUpdate(
                                             firstComponentId, "COMP-1", "COMP-1", null, 1,
-                                            new BigDecimal("88000.00"), "단품 라인", null, true, null))),
+                                            new BigDecimal("88000.00"), "단품 라인", null, true, null)), true),
                     "actor-qa-variant", "QA 변형 수정자");
             awaitPriceMemoryExecutorIdle();
 
@@ -845,6 +847,7 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
                     created.id(),
                     new SlipUpdateRequest(
                             updateToken,
+                            created.partnerId(),
                             created.partnerName(),
                             created.partnerCode(),
                             created.memo(),
@@ -858,7 +861,7 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
                                     .map(line -> new SlipUpdateRequest.LineRequest(
                                             line.productId(), line.productName(), line.modelName(),
                                             line.specification(), line.quantity(), line.unitPrice(), line.note(), line.id()))
-                                    .toList()),
+                                    .toList(), true),
                     UUID.randomUUID(),
                     "세트 매입 수정자");
             awaitPriceMemoryExecutorIdle();
@@ -915,6 +918,7 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
                     created.id(),
                     new SlipUpdateRequest(
                             updateToken,
+                            restored.partnerId(),
                             restored.partnerName(),
                             restored.partnerCode(),
                             restored.memo(),
@@ -928,7 +932,7 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
                                     .map(line -> new SlipUpdateRequest.LineRequest(
                                             line.productId(), line.productName(), line.modelName(),
                                             line.specification(), line.quantity(), line.unitPrice(), line.note(), line.id()))
-                                    .toList()),
+                                    .toList(), true),
                     UUID.randomUUID(),
                     "복원 후 수정자");
             awaitPriceMemoryExecutorIdle();
@@ -993,7 +997,7 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
                                             line.unitPriceWithVat() == null
                                                     ? line.unitPrice() : line.unitPriceWithVat(),
                                             line.note(), null, line.unitPriceWithVat() != null, line.id()))
-                                    .toList()),
+                                    .toList(), true),
                     "actor-restore-estimate", "복원 후 수정자");
             awaitPriceMemoryExecutorIdle();
 
@@ -1096,7 +1100,7 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
                 priceMemoryRepository,
                 priceMemoryBatchRepository,
                 clock,
-                transactionManager,
+                priceMemoryJdbcAccess,
                 meterRegistry,
                 priceMemoryProperties,
                 collectingExecutor);
@@ -1145,6 +1149,7 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
                     created.id(),
                     new SlipUpdateRequest(
                             updateToken,
+                            partnerId,
                             "테스트 거래처",
                             "P-809-PUT",
                             "구매 PUT VAT 포함 가격기억",
@@ -1156,7 +1161,7 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
                             null,
                             List.of(new SlipUpdateRequest.LineRequest(
                                     productId, "테스트 품목", "MODEL-809", null,
-                                    1, supplyPrice, "구매 수정 라인"))),
+                                    1, supplyPrice, "구매 수정 라인", null)), true),
                     UUID.randomUUID(),
                     "구매 수정자");
 
@@ -1236,6 +1241,313 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
         verifyNoInteractions(productClient, partnerInternalClient);
     }
 
+    /**
+     * [D-R8-6 · D-R8-9 / R8-QA-1 실 PostgreSQL 회귀 — BLOCKING]
+     *
+     * <p>라이브 실증: 세트 전표를 <b>아무것도 수정하지 않고</b> 왕복 PUT(lineId 없음) → <b>200</b> →
+     * {@code GZN:t:GZS｜DCX:f:GZS} → <b>{@code GZN:f:-｜DCX:f:-}</b> (계보 전량 소실 + 구성품
+     * 배분가 LINE_SAVE 각인). 이제 400 으로 거부하고 계보·기억이 그대로 남아야 한다.
+     *
+     * <p><b>D-R8-9 갱신</b>: 구 클라이언트를 가르는 기준이 "lineId 개수" 에서 <b>"계약 마커 유무"</b>
+     * 로 바뀌었다. 따라서 이 재현은 lineId 를 싣지 않는 것에 더해 <b>마커도 싣지 않는다</b> —
+     * 그게 R8-QA-1 을 일으킨 실제 클라이언트의 모습이다. (마커를 실은 채 lineId 만 없는 요청은
+     * "전 라인 교체" 라는 <b>정상</b> 저장이며, 아래 별도 테스트가 그 허용을 잠근다.)
+     */
+    @Test
+    void bundleSlipRoundTripPutWithoutContractMarker_isRejectedAndLeavesLineageIntact() {
+        UUID partnerId = UUID.randomUUID();
+        UUID bundleProductId = UUID.randomUUID();
+        UUID firstComponentId = UUID.randomUUID();
+        UUID secondComponentId = UUID.randomUUID();
+        stubBundleExpansion(bundleProductId, firstComponentId, secondComponentId);
+
+        var created = slipService.create(
+                slipRequest(SlipType.OUTBOUND, partnerId, bundleProductId,
+                        new BigDecimal("550000.00")),
+                "actor-r8-qa1", "R8-QA-1 무수정 왕복 PUT");
+        try {
+            awaitPriceMemory(partnerId, bundleProductId);
+
+            // 구 클라이언트 재현 — 마커도 lineId 도 없이 전 라인을 통째 재전송
+            assertThatThrownBy(() -> salesSlipUpdateService.update(
+                    created.id(),
+                    updateRequest(created.id(), created, created.lines().stream()
+                            .map(line -> new SlipUpdateRequest.LineRequest(
+                                    line.productId(), line.productName(), line.modelName(),
+                                    line.specification(), line.quantity(), line.unitPrice(),
+                                    line.note(), null))
+                            .toList(), null),
+                    UUID.randomUUID(), "구 클라이언트"))
+                    .isInstanceOfSatisfying(BusinessException.class, ex ->
+                            assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
+            awaitPriceMemoryExecutorIdle();
+
+            // 계보 그대로 + 구성품 기억 0건 (결함이라면 여기서 평면화 + 배분가 각인이 보인다)
+            assertBundleSlipLineage(created.id(), firstComponentId, secondComponentId);
+            assertOnlyParentBundleMemory(partnerId, bundleProductId,
+                    firstComponentId, secondComponentId);
+        } finally {
+            cleanupSlip(created.id());
+        }
+    }
+
+    /**
+     * [D-R8-9 오탐 제거 — 실 PostgreSQL 회귀]
+     *
+     * <p>계보 보유 세트 전표에서 <b>전 라인을 지우고 전부 새 라인으로 교체</b>하는 단일 저장은
+     * lineId 가 0개지만 <b>정상</b>이다. D-R8-6 의 "lineId 개수" 기준에서 이 저장은 구 클라이언트의
+     * 통째 PUT 과 구분되지 않아 400 이었고, 사용자는 이유를 알 수 없는 거부를 봤다.
+     *
+     * <p>마커가 그 구분을 대신하므로 이제 한 번에 저장된다. 저장 결과는 <b>평면 라인</b>이어야
+     * 한다 — 새 라인이 사라진 세트의 계보를 물려받으면 그게 곧 거짓 세트 각인이다.
+     */
+    @Test
+    void bundleSlipFullLineReplacementWithMarker_isAcceptedAndDropsLineage() {
+        UUID partnerId = UUID.randomUUID();
+        UUID bundleProductId = UUID.randomUUID();
+        UUID firstComponentId = UUID.randomUUID();
+        UUID secondComponentId = UUID.randomUUID();
+        UUID replacementProductId = UUID.randomUUID();
+        stubBundleExpansion(bundleProductId, firstComponentId, secondComponentId);
+
+        var created = slipService.create(
+                slipRequest(SlipType.OUTBOUND, partnerId, bundleProductId,
+                        new BigDecimal("550000.00")),
+                "actor-r8-9", "D-R8-9 전 라인 교체");
+        try {
+            awaitPriceMemory(partnerId, bundleProductId);
+
+            // 전 라인 교체 — 마커는 싣고 lineId 는 하나도 싣지 않는다.
+            var updated = salesSlipUpdateService.update(
+                    created.id(),
+                    updateRequest(created.id(), created, List.of(
+                            new SlipUpdateRequest.LineRequest(
+                                    replacementProductId, "교체 단품", "PLAIN-809", null,
+                                    2, new BigDecimal("150000.00"), "전 라인 교체", null)),
+                            true),
+                    UUID.randomUUID(), "전 라인 교체자");
+            awaitPriceMemoryExecutorIdle();
+
+            // 400 이 아니라 200 — 이것이 D-R8-9 가 제거한 오탐이다.
+            assertThat(updated.lines()).hasSize(1);
+            // 새 라인은 사라진 세트의 계보를 물려받지 않는다.
+            assertThat(updated.lines().get(0).setHead()).isFalse();
+            assertThat(updated.lines().get(0).parentSetModel()).isNull();
+            assertThat(updated.lines().get(0).productId()).isEqualTo(replacementProductId);
+        } finally {
+            cleanupSlip(created.id());
+        }
+    }
+
+    /**
+     * [D-R8-8 / R8-BE-1 / R8-QA-6 실 PostgreSQL 회귀]
+     *
+     * <p>라이브 실증: 세트 head 라인의 품목을 무관 단품({@code ACD-2558G})으로 교체 + 단가 150000
+     * → 200 → {@code ACD-2558G:t:AF17B6474GZS}(거짓 세트 head 각인) + 기억행 <b>NONE</b>(사용자가
+     * 입력한 단가가 구성품으로 오판되어 통째 증발).
+     *
+     * <p>도메인 확정(D-R8-8) — 품목을 교체하면 더 이상 그 세트의 구성품이 아니다. 따라서 교체된
+     * 라인은 평면 라인으로 남고, 사용자 단가가 정상적으로 기억돼야 한다.
+     */
+    @Test
+    void bundleHeadProductSwappedToUnrelatedItem_dropsLineageAndRemembersUserPrice() {
+        UUID partnerId = UUID.randomUUID();
+        UUID bundleProductId = UUID.randomUUID();
+        UUID firstComponentId = UUID.randomUUID();
+        UUID secondComponentId = UUID.randomUUID();
+        UUID swappedProductId = UUID.randomUUID();
+        stubBundleExpansion(bundleProductId, firstComponentId, secondComponentId);
+
+        var created = slipService.create(
+                slipRequest(SlipType.OUTBOUND, partnerId, bundleProductId,
+                        new BigDecimal("550000.00")),
+                "actor-r8-qa6", "R8-QA-6 품목 교체");
+        try {
+            awaitPriceMemory(partnerId, bundleProductId);
+            var head = created.lines().stream()
+                    .filter(SlipLineResponse::setHead).findFirst().orElseThrow();
+
+            // head 라인의 lineId 는 그대로, 품목만 무관 단품으로 교체 + 단가 150000
+            salesSlipUpdateService.update(
+                    created.id(),
+                    updateRequest(created.id(), created, created.lines().stream()
+                            .map(line -> line.id().equals(head.id())
+                                    ? new SlipUpdateRequest.LineRequest(
+                                            swappedProductId, "무관한 단품", "ACD-2558G", null,
+                                            1, new BigDecimal("150000.00"), "품목 교체", line.id())
+                                    : new SlipUpdateRequest.LineRequest(
+                                            line.productId(), line.productName(), line.modelName(),
+                                            line.specification(), line.quantity(), line.unitPrice(),
+                                            line.note(), line.id()))
+                            .toList()),
+                    UUID.randomUUID(), "품목 교체자");
+            awaitPriceMemoryExecutorIdle();
+
+            // 교체 라인은 평면 — 거짓 세트 head 로 각인되지 않는다
+            assertThat(lineageQuantityRows(created.id())).containsExactlyInAnyOrder(
+                    new LineageQuantityRow(swappedProductId, 1, false, null),
+                    new LineageQuantityRow(secondComponentId, 1, false, "SET-809"));
+
+            // 사용자 단가 150,000 × 1.1 이 기억된다 (결함: 구성품 오판 → 기억행 NONE)
+            PartnerProductPriceMemoryResponse memory = awaitPriceMemoryValue(
+                    partnerId, swappedProductId, new BigDecimal("165000.00"));
+            assertThat(memory.source()).isEqualTo(PartnerProductPriceMemory.SOURCE_LINE_SAVE);
+            // 남은 진짜 구성품은 여전히 기억 대상이 아니다
+            assertThat(priceMemoryService.find(partnerId, secondComponentId)).isEmpty();
+        } finally {
+            cleanupSlip(created.id());
+        }
+    }
+
+    /**
+     * [D-R8-7 / R8-BE-3 / R8-QA-3 실 PostgreSQL 회귀]
+     *
+     * <p>라이브 실증: 거래처명 {@code R8검증-다른거래처} + 단가 277000 저장 → 200 →
+     * {@code partner_name} 변경 / {@code partner_id} <b>불변</b> → 기억 {@code 304700} 이
+     * <b>원 거래처</b> {@code 44f0cfc1} 에 각인. 계약에 partnerId 를 추가하고
+     * {@code collectPriceMemory} 를 헤더 갱신 이후로 옮겨, 기억이 <b>새 거래처</b>에 붙어야 한다.
+     */
+    @Test
+    void salesPutChangingPartner_imprintsMemoryOnNewPartnerNotTheOriginal() {
+        UUID originalPartnerId = UUID.randomUUID();
+        UUID newPartnerId = UUID.randomUUID();
+        UUID productId = UUID.randomUUID();
+
+        var created = slipService.create(
+                slipRequest(SlipType.OUTBOUND, originalPartnerId, productId,
+                        new BigDecimal("100000.00")),
+                "actor-r8-qa3", "R8-QA-3 거래처 변경");
+        try {
+            awaitPriceMemory(originalPartnerId, productId);
+
+            salesSlipUpdateService.update(
+                    created.id(),
+                    new SlipUpdateRequest(
+                            currentSlipUpdatedAt(created.id()),
+                            newPartnerId,
+                            "R8검증-다른거래처",
+                            created.partnerCode(), created.memo(), created.businessNumber(),
+                            created.deliveryAddress(), created.supervisionAddress(),
+                            created.projectName(), created.recipientPhone(),
+                            created.paymentDueDate(),
+                            created.lines().stream()
+                                    .map(line -> new SlipUpdateRequest.LineRequest(
+                                            line.productId(), line.productName(), line.modelName(),
+                                            line.specification(), line.quantity(),
+                                            new BigDecimal("277000.00"), line.note(), line.id()))
+                                    .toList(), true),
+                    UUID.randomUUID(), "거래처 변경자");
+            awaitPriceMemoryExecutorIdle();
+
+            // partner_id 가 실제로 바뀌었는지 (종전: partner_name 만 바뀌고 partner_id 불변)
+            UUID persistedPartnerId = jdbcTemplate.queryForObject(
+                    "SELECT partner_id FROM slips WHERE id = ?", UUID.class, created.id());
+            assertThat(persistedPartnerId).isEqualTo(newPartnerId);
+
+            // 기억은 새 거래처에 각인된다 (277,000 × 1.1 = 304,700)
+            PartnerProductPriceMemoryResponse newPartnerMemory = awaitPriceMemoryValue(
+                    newPartnerId, productId, new BigDecimal("304700.00"));
+            assertThat(newPartnerMemory.source()).isEqualTo(PartnerProductPriceMemory.SOURCE_LINE_SAVE);
+
+            // 원 거래처 기억은 생성 시점 값(VAT 포함 입력 100,000) 그대로 — 새 단가로 오염되지
+            // 않는다. 결함에서는 바로 이 자리에 304,700 이 각인됐다 (R8-QA-3 라이브 실측).
+            assertThat(priceMemoryService.find(originalPartnerId, productId).orElseThrow().unitPrice())
+                    .isEqualByComparingTo("100000.00");
+        } finally {
+            cleanupSlip(created.id());
+        }
+    }
+
+    /**
+     * [D-R8-6 견적 미러] 계보 보유 <b>견적</b>의 lineId 미전송 수정도 400 으로 거부한다.
+     *
+     * <p>전표/견적 비대칭은 이 PR 의 재발 패턴이므로 미러 회귀를 함께 고정한다. 견적은
+     * {@code lines == null}(라인 보존) / 빈 list(전 라인 제거) 계약이 별도로 있어, 게이트가 그
+     * 두 경로를 막지 않는지도 함께 확인한다.
+     */
+    @Test
+    void bundleEstimateUpdateWithoutContractMarker_isRejectedAndLeavesLineageIntact() {
+        UUID partnerId = UUID.randomUUID();
+        UUID bundleProductId = UUID.randomUUID();
+        UUID firstComponentId = UUID.randomUUID();
+        UUID secondComponentId = UUID.randomUUID();
+        stubBundleExpansion(bundleProductId, firstComponentId, secondComponentId);
+
+        var created = estimateService.create(
+                new CreateEstimateRequest(
+                        LocalDate.of(2026, 7, 16), partnerId, "테스트 거래처", null, null,
+                        LocalDate.of(2026, 8, 15), "R8-QA-1 견적 미러",
+                        List.of(new CreateEstimateRequest.EstimateLineRequest(
+                                bundleProductId, "테스트 세트", "SET-809", null,
+                                1, new BigDecimal("550000.00"), "세트 라인", null, true))),
+                "actor-r8-est", "견적 작성자");
+        try {
+            awaitPriceMemory(partnerId, bundleProductId);
+
+            assertThatThrownBy(() -> estimateService.update(
+                    created.id(),
+                    new UpdateEstimateRequest(
+                            created.partnerId(), created.partnerName(), created.partnerBusinessNo(),
+                            created.partnerAddress(), created.validUntil(), created.memo(),
+                            created.lines().stream()
+                                    .map(line -> new UpdateEstimateRequest.EstimateLineUpdate(
+                                            line.productId(), line.productName(), line.modelName(),
+                                            line.specification(), line.quantity(),
+                                            line.unitPriceWithVat() == null
+                                                    ? line.unitPrice() : line.unitPriceWithVat(),
+                                            line.note(), null, line.unitPriceWithVat() != null, null))
+                                    .toList(), null),
+                    "actor-r8-est", "구 클라이언트"))
+                    .isInstanceOfSatisfying(BusinessException.class, ex ->
+                            assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
+            awaitPriceMemoryExecutorIdle();
+
+            // 400 은 트랜잭션 롤백을 동반하므로 계보·기억이 그대로여야 한다
+            assertBundleEstimateLineage(created.id(), firstComponentId, secondComponentId);
+            assertOnlyParentBundleMemory(partnerId, bundleProductId,
+                    firstComponentId, secondComponentId);
+
+            // [D-R8-9] 헤더 전용 수정(lines == null)도 마커가 없으면 거부된다 — 게이트 우회 금지.
+            // 구 클라이언트는 partnerId 도 보내지 않아 헤더만 바꿔도 기억이 원 거래처에 각인된다.
+            assertThatThrownBy(() -> estimateService.update(
+                    created.id(),
+                    new UpdateEstimateRequest(
+                            created.partnerId(), created.partnerName(), created.partnerBusinessNo(),
+                            created.partnerAddress(), created.validUntil(), "메모만 수정", null, null),
+                    "actor-r8-est", "구 클라이언트 메모 수정"))
+                    .isInstanceOfSatisfying(BusinessException.class, ex ->
+                            assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
+
+            // 마커를 실은 헤더 전용 수정은 정상 — 라인 보존 계약은 그대로다.
+            estimateService.update(
+                    created.id(),
+                    new UpdateEstimateRequest(
+                            created.partnerId(), created.partnerName(), created.partnerBusinessNo(),
+                            created.partnerAddress(), created.validUntil(), "메모만 수정", null, true),
+                    "actor-r8-est", "메모 수정자");
+            assertBundleEstimateLineage(created.id(), firstComponentId, secondComponentId);
+        } finally {
+            cleanupEstimate(created.id());
+        }
+    }
+
+    /** 세트 전개 stub — head(COMP-1) + 구성품(COMP-2) 2행으로 전개되는 BUNDLE 품목. */
+    private void stubBundleExpansion(UUID bundleProductId, UUID firstComponentId,
+                                     UUID secondComponentId) {
+        ProductSummary bundle = bundleProduct(bundleProductId);
+        when(productClient.lookup(anyList())).thenAnswer(inv -> {
+            List<UUID> productIds = inv.getArgument(0);
+            return productIds.stream()
+                    .map(productId -> productId.equals(bundleProductId) ? bundle : product(productId))
+                    .toList();
+        });
+        when(productClient.expand(any(), any(), any(), any())).thenReturn(List.of(
+                new ExpandedLineDto(firstComponentId, "COMP-1", "COMP-1", "실내기",
+                        new BigDecimal("1"), new BigDecimal("330000.00"), "COMPONENT", true),
+                new ExpandedLineDto(secondComponentId, "COMP-2", "COMP-2", "실외기",
+                        new BigDecimal("1"), new BigDecimal("220000.00"), "COMPONENT", false)));
+    }
+
     private ProductSummary product(UUID productId) {
         return new ProductSummary(productId, "테스트 품목", "MODEL-809", "P-809",
                 UUID.randomUUID(), new BigDecimal("110000.00"), "ACTIVE", false);
@@ -1257,12 +1569,26 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
                 .orElseThrow();
     }
 
+    /** 정상 최신 클라이언트 요청 — 계약 마커를 싣는다 (D-R8-9). */
     private SlipUpdateRequest updateRequest(UUID slipId, SlipDetailResponse detail,
                                             List<SlipUpdateRequest.LineRequest> lines) {
+        return updateRequest(slipId, detail, lines, true);
+    }
+
+    /**
+     * 마커를 명시하는 요청 빌더 — 구 클라이언트 재현({@code lineIdContract = null})에 쓴다.
+     *
+     * <p>[D-R8-9] 구 클라이언트를 가르는 것은 lineId 개수가 아니라 <b>마커 유무</b>다.
+     */
+    private SlipUpdateRequest updateRequest(UUID slipId, SlipDetailResponse detail,
+                                            List<SlipUpdateRequest.LineRequest> lines,
+                                            Boolean lineIdContract) {
         return new SlipUpdateRequest(
-                currentSlipUpdatedAt(slipId), detail.partnerName(), detail.partnerCode(), detail.memo(),
+                currentSlipUpdatedAt(slipId), detail.partnerId(),
+                detail.partnerName(), detail.partnerCode(), detail.memo(),
                 detail.businessNumber(), detail.deliveryAddress(), detail.supervisionAddress(),
-                detail.projectName(), detail.recipientPhone(), detail.paymentDueDate(), lines);
+                detail.projectName(), detail.recipientPhone(), detail.paymentDueDate(), lines,
+                lineIdContract);
     }
 
     private SlipUpdateRequest.LineRequest lineRequest(SlipLineResponse line, int quantity,

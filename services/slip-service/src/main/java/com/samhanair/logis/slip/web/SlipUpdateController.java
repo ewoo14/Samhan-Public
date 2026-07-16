@@ -34,7 +34,9 @@ public class SlipUpdateController {
      * INBOUND 전표 헤더와 라인을 낙관적 잠금으로 즉시 수정한다.
      */
     @Operation(summary = "매입 전표 즉시 수정",
-            description = "WAREHOUSE/MANAGER/MASTER 가 INBOUND 전표 헤더와 라인을 updatedAt 낙관적 잠금으로 수정합니다.")
+            description = "WAREHOUSE/MANAGER/MASTER 가 INBOUND 전표 헤더와 라인을 updatedAt 낙관적 잠금으로 수정합니다. "
+                    + "[D-R8-9] 요청에 lineId 계약 마커(lineIdContract=true)가 없으면 구 클라이언트로 판정해 400 으로 거부합니다 — "
+                    + "기존 라인은 상세 응답의 id 를 lineId 로 되돌려 보내야 세트 계보가 승계됩니다.")
     @PutMapping("/{id}")
     @RequirePermission(page = "purchases.slip.edit", action = com.samhanair.logis.security.permission.PermissionAction.UPDATE)
     public ApiResponse<SlipDetailResponse> update(

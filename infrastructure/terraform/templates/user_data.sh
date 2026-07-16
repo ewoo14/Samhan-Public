@@ -211,10 +211,15 @@ SAMHAN_PRICE_MEMORY_ASYNC_CORE_POOL_SIZE=2
 SAMHAN_PRICE_MEMORY_ASYNC_MAX_POOL_SIZE=4
 SAMHAN_PRICE_MEMORY_ASYNC_QUEUE_CAPACITY=100
 SAMHAN_PRICE_MEMORY_ASYNC_SHUTDOWN_AWAIT_SECONDS=5
-# R6-M2: slip-service Hikari 커넥션 획득 대기 상한(ms). pool 고갈 시 기본 30s 대신
-# 4s 안에 가격기억 fail-soft 경계로 반환. 주의 — 가격기억 전용이 아니라 slip-service
-# 전체 DataSource 에 적용된다 (runbook: docs/runbooks/slip-price-memory-upsert-failure.md).
-DB_CONNECTION_TIMEOUT_MS=4000
+# R6-M2 + D-R8-2: slip-service 메인 DataSource Hikari 커넥션 획득 대기 상한(ms).
+# 30000 = fleet 표준(Hikari 기본). 종전 4000 전역화는 pool 포화 시 사용자 요청을 4초 만에
+# 500 으로 끊었다. 가격기억 4초 정책은 아래 전용 pool 로 격리
+# (runbook: docs/runbooks/slip-price-memory-upsert-failure.md).
+DB_CONNECTION_TIMEOUT_MS=30000
+# 가격기억 전용 pool — 메인과 격리. POOL_MAX 4 = ASYNC_MAX_POOL_SIZE 4 와 1:1.
+SAMHAN_PRICE_MEMORY_DB_CONNECTION_TIMEOUT_MS=4000
+SAMHAN_PRICE_MEMORY_DB_POOL_MAX=4
+SAMHAN_PRICE_MEMORY_DB_POOL_MIN_IDLE=0
 
 # ─── RabbitMQ (docker-compose.prod.yml 컨테이너) ────────────
 RABBIT_HOST=rabbitmq

@@ -5,6 +5,7 @@ import com.samhanair.logis.slip.estimate.domain.EstimateLine;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -14,6 +15,15 @@ import java.util.UUID;
  * 기존 라인을 추정했다. 그 방식은 신규 라인과 수정 라인을 구분할 수 없으므로 제거한다.
  * 현재 계약에서 {@code lineId != null} 인 라인은 해당 문서의 기존 라인으로 검증된 뒤 계보를
  * 승계하고, {@code lineId == null} 인 라인은 신규 평면 라인으로 남긴다.
+ *
+ * <p><b>품목 동일성 게이트 (D-R8-8)</b>: 개발책임자 도메인 확정 — <i>"세트 구성품의 정체성은
+ * 품목에 묶여 있다. 품목을 교체하면 그 라인은 더 이상 그 세트의 구성품이 아니다."</i> 따라서
+ * lineId 가 일치해도 <b>옛 productId 와 새 productId 가 다르면 계보를 승계하지 않는다</b>.
+ * 이 게이트가 없으면 구성품 행의 품목을 무관한 단품으로 교체한 저장이 남의 계보를 상속해
+ * 거짓 세트 표시가 영구 각인되고, 그 라인이 구성품으로 오판되어 사용자가 입력한 단가가
+ * 가격기억에서 조용히 누락된다 (R8-BE-1/R8-QA-6 라이브 실증).
+ *
+ * <p>이는 <b>심층방어</b>이며 클라이언트측 lineId 관리 결함(FE 위치복원)의 대체재가 아니다.
  */
 public final class BundleLineageResolver {
 
@@ -28,28 +38,28 @@ public final class BundleLineageResolver {
         return new BundleLineageResolver(Map.of());
     }
 
-    /** 기존 전표 라인의 영속 ID와 세트 계보를 캡처한다. */
+    /** 기존 전표 라인의 영속 ID와 (품목, 세트 계보) 를 캡처한다. */
     public static BundleLineageResolver fromSlipLines(List<SlipLine> lines) {
         Map<UUID, BundleLineage> lineages = new HashMap<>();
         if (lines != null) {
             for (SlipLine line : lines) {
                 if (line != null && line.getId() != null) {
                     lineages.put(line.getId(), new BundleLineage(
-                            line.getParentSetModel(), line.isSetHead()));
+                            line.getProductId(), line.getParentSetModel(), line.isSetHead()));
                 }
             }
         }
         return new BundleLineageResolver(lineages);
     }
 
-    /** 기존 견적 라인의 영속 ID와 세트 계보를 캡처한다. */
+    /** 기존 견적 라인의 영속 ID와 (품목, 세트 계보) 를 캡처한다. */
     public static BundleLineageResolver fromEstimateLines(List<EstimateLine> lines) {
         Map<UUID, BundleLineage> lineages = new HashMap<>();
         if (lines != null) {
             for (EstimateLine line : lines) {
                 if (line != null && line.getId() != null) {
                     lineages.put(line.getId(), new BundleLineage(
-                            line.getParentSetModel(), line.isSetHead()));
+                            line.getProductId(), line.getParentSetModel(), line.isSetHead()));
                 }
             }
         }
@@ -104,21 +114,21 @@ public final class BundleLineageResolver {
     }
 
     private void assign(SlipLine line, UUID lineId) {
-        if (lineId == null) {
+        if (line == null || lineId == null) {
             return;
         }
         BundleLineage lineage = lineagesById.get(lineId);
-        if (line != null && lineage != null && lineage.isBundleComponent()) {
+        if (lineage != null && lineage.inheritableBy(line.getProductId())) {
             line.assignBundleComponent(lineage.parentSetModel(), lineage.setHead());
         }
     }
 
     private void assign(EstimateLine line, UUID lineId) {
-        if (lineId == null) {
+        if (line == null || lineId == null) {
             return;
         }
         BundleLineage lineage = lineagesById.get(lineId);
-        if (line != null && lineage != null && lineage.isBundleComponent()) {
+        if (lineage != null && lineage.inheritableBy(line.getProductId())) {
             line.assignBundleComponent(lineage.parentSetModel(), lineage.setHead());
         }
     }
@@ -129,9 +139,25 @@ public final class BundleLineageResolver {
         }
     }
 
-    private record BundleLineage(String parentSetModel, boolean setHead) {
+    /**
+     * 기존 영속 라인 1건의 (품목, 세트 계보) 캡처.
+     *
+     * @param productId 캡처 시점의 품목 UUID — 승계 대상 라인이 같은 품목인지 검증하는 기준
+     */
+    private record BundleLineage(UUID productId, String parentSetModel, boolean setHead) {
+
         private boolean isBundleComponent() {
             return parentSetModel != null && !parentSetModel.isBlank();
+        }
+
+        /**
+         * 이 계보를 {@code candidateProductId} 라인이 승계할 수 있는지.
+         *
+         * <p>D-R8-8 — 세트 계보이면서 품목이 그대로일 때만 승계한다. 품목이 바뀌었으면 그 라인은
+         * 더 이상 그 세트의 구성품이 아니므로 (null 품목 포함) 승계를 거부하고 평면 라인으로 남긴다.
+         */
+        private boolean inheritableBy(UUID candidateProductId) {
+            return isBundleComponent() && Objects.equals(productId, candidateProductId);
         }
     }
 }

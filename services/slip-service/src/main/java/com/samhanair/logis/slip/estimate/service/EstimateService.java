@@ -22,6 +22,7 @@ import com.samhanair.logis.slip.price.service.PartnerProductPriceMemoryCommand;
 import com.samhanair.logis.slip.price.service.PartnerProductPriceMemoryService;
 import com.samhanair.logis.slip.realtime.EstimateListRealtime;
 import com.samhanair.logis.slip.service.BundleLineageResolver;
+import com.samhanair.logis.slip.service.LineIdContractGate;
 import com.samhanair.logis.shared.realtime.collection.CollectionRealtimePublisher;
 import jakarta.persistence.OptimisticLockException;
 import java.math.BigDecimal;
@@ -204,6 +205,12 @@ public class EstimateService {
      */
     public EstimateDetailResponse update(UUID id, UpdateEstimateRequest req, String callerId,
                                          String callerName) {
+        // [D-R8-9] 계약 마커 검증은 조회·헤더 갱신보다 <b>반드시</b> 먼저다. 이 메서드는
+        // validateLineIds 보다 앞서 editHeader 로 헤더를 변경하고, req.lines() == null 이면
+        // validateLineIds 를 아예 호출하지 않는다 — 게이트를 라인 검증 안에 두면 구 클라이언트의
+        // 헤더 변경이 이미 적용된 뒤에 거부되거나(부분 적용), 헤더 전용 수정은 게이트를 통째로
+        // 우회한다. 거부는 어떤 상태 변경보다 앞서야 한다.
+        requireLineIdContract(req);
         Estimate estimate = loadOrThrow(id);
         applyMutation(() -> estimate.editHeader(req.partnerId(), req.partnerName(),
                 req.partnerBusinessNo(), req.partnerAddress(), req.validUntil(), req.memo()));
@@ -524,7 +531,9 @@ public class EstimateService {
      * 요청 lineId 가 현재 견적의 활성 라인인지 검증한다.
      *
      * <p>타 견적 UUID 주입은 400 INVALID_INPUT 으로 통일해 다른 문서 존재 여부를 노출하지
-     * 않는다. lineId 미전송은 구 클라이언트 호환을 위해 신규 평면 라인으로 처리하고
+     * 않는다. 개별 라인의 {@code lineId == null} 은 편집 중 추가된 신규 라인을 뜻하는 정상
+     * 값이고, 전 라인이 lineId 를 싣지 않은 "전 라인 교체" 저장도 정상이다 — 구 클라이언트와의
+     * 구분은 {@link #requireLineIdContract} 의 요청 레벨 마커가 담당한다 (D-R8-9).
      * fingerprint 휴리스틱 폴백은 사용하지 않는다.
      */
     private void validateLineIds(List<EstimateLine> existingLines,
@@ -544,6 +553,18 @@ public class EstimateService {
                         "lineId 는 현재 견적의 활성 라인에서 중복 없이 지정해야 합니다");
             }
         }
+    }
+
+    /**
+     * [D-R8-6 · D-R8-9] 견적 수정은 lineId 계약 선언을 의무화한다 —
+     * {@code SlipUpdateService.requireLineIdContract} 미러 (전표/견적 비대칭 재발 차단).
+     * 판정은 공용 {@link LineIdContractGate} 단일 구현에 위임하므로 세 미러는 드리프트할 수 없다.
+     *
+     * <p>종전 미러는 {@code requestedLines.isEmpty()} 를 게이트 면제 조건으로 두어 <b>전표 미러와
+     * 이미 비대칭</b>이었다. 마커 판정은 라인을 보지 않으므로 그 비대칭도 함께 사라진다.
+     */
+    private void requireLineIdContract(UpdateEstimateRequest request) {
+        LineIdContractGate.require(request.lineIdContract());
     }
 
     private void collectPriceMemory(List<PartnerProductPriceMemoryCommand> commands,

@@ -294,7 +294,7 @@ class SlipSalesQueryControllerIT extends AbstractPostgresIT {
                 "드래프트 메모",
                 "tester");
         // partnerCode 는 updateSalesHeader 로 설정 (OUTBOUND + DRAFT 상태에서 호출 가능)
-        draft.updateSalesHeader("드래프트거래처", draftCode, null, null, null, null, null, null, null);
+        draft.updateSalesHeader(null, "드래프트거래처", draftCode, null, null, null, null, null, null, null);
         slipRepository.saveAndFlush(draft);
 
         // when — 5월 조회
@@ -345,7 +345,7 @@ class SlipSalesQueryControllerIT extends AbstractPostgresIT {
                 "tester");
 
         // partnerCode 직접 설정 (updateSalesHeader — OUTBOUND + DRAFT 허용)
-        slip.updateSalesHeader(partnerName, partnerCode, null, null, null, null, null, null, null);
+        slip.updateSalesHeader(null, partnerName, partnerCode, null, null, null, null, null, null, null);
 
         Slip saved = slipRepository.saveAndFlush(slip);
         entityManager.flush();

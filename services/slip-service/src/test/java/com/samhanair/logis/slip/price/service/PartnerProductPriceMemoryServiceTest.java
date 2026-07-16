@@ -36,6 +36,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import com.samhanair.logis.slip.config.SlipDataSourceConfig.PriceMemoryJdbcAccess;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.SimpleTransactionStatus;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -63,7 +64,8 @@ class PartnerProductPriceMemoryServiceTest {
         Executor collectingExecutor = queuedTasks::add;
         lenient().when(transactionManager.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
         service = new PartnerProductPriceMemoryService(
-                repository, batchRepository, clock, transactionManager, meterRegistry,
+                repository, batchRepository, clock,
+                new PriceMemoryJdbcAccess(null, null, transactionManager), meterRegistry,
                 properties, collectingExecutor);
     }
 
@@ -149,6 +151,12 @@ class PartnerProductPriceMemoryServiceTest {
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<PartnerProductPriceMemoryCommand>> captor = ArgumentCaptor.forClass(List.class);
+        // ⚠️ [R8-BE-4] 이 verify 는 "properties 값이 batchRepository 로 전달됐다" 까지만 증명한다.
+        // timeout 이 upsert 에 <b>실제로 적용됐는지</b>는 mock 으로 알 수 없다 —
+        // set_config(..., is_local=true) 는 트랜잭션 로컬이라, JdbcTemplate 이 TM 의 트랜잭션에
+        // 참여하지 못하면 호출은 그대로 일어나면서 timeout 만 조용히 증발한다(false-green).
+        // 실효성 가드는 PartnerProductPriceMemoryTimeoutIT — 실 PostgreSQL 에서 upsert 와 같은
+        // 커넥션의 pg_settings 를 읽어 단언한다. 이 verify 를 그 대체재로 삼지 말 것.
         verify(batchRepository).applyTransactionTimeouts(1_000, 3_000);
         verify(batchRepository).upsertAll(captor.capture(), any(LocalDateTime.class));
         assertThat(captor.getValue()).hasSize(2);

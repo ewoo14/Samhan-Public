@@ -126,6 +126,9 @@ class Phase26cSlipImmutableIT extends AbstractPostgresIT {
         updateReq.put("updatedAt", slip.getModifiedAt() != null
                 ? slip.getModifiedAt().toString() : java.time.LocalDateTime.now().toString());
         updateReq.put("lines", List.of(lineItem));
+        // [D-R8-9] 위 productId 와 같은 이유 — 계약 마커가 없으면 게이트가 먼저 400 을 내
+        // SENT 상태 가드(409)에 도달하지 못한다.
+        updateReq.put("lineIdContract", true);
 
         mockMvc.perform(put("/slips/{id}/sales", slipId)
                         .contentType(MediaType.APPLICATION_JSON)

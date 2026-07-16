@@ -1,5 +1,6 @@
 package com.samhanair.logis.slip.price.service;
 
+import com.samhanair.logis.slip.config.SlipDataSourceConfig.PriceMemoryJdbcAccess;
 import com.samhanair.logis.slip.price.config.PartnerProductPriceMemoryProperties;
 import com.samhanair.logis.slip.price.domain.PartnerProductPriceMemory;
 import com.samhanair.logis.slip.price.repository.PartnerProductPriceMemoryBatchRepository;
@@ -25,7 +26,6 @@ import java.util.concurrent.TimeUnit;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -40,6 +40,8 @@ public class PartnerProductPriceMemoryService {
     public static final String UPSERT_SUCCESS_COUNTER = "slip_price_memory_upsert_success_total";
     /** Prometheus export: {@code slip_price_memory_upsert_failed_total}. */
     public static final String UPSERT_FAILED_COUNTER = "slip_price_memory_upsert_failed_total";
+    /** Prometheus export: {@code slip_price_memory_upsert_skipped_total}. */
+    public static final String UPSERT_SKIPPED_COUNTER = "slip_price_memory_upsert_skipped_total";
     /** Prometheus export: count/sum/max 계열 {@code slip_price_memory_batch_size_*}. */
     public static final String BATCH_SIZE_SUMMARY = "slip_price_memory_batch_size";
     /** Prometheus export: {@code slip_price_memory_upsert_duration_seconds_*}. */
@@ -63,14 +65,24 @@ public class PartnerProductPriceMemoryService {
     private final TransactionTemplate transactionTemplate;
     private final Counter successCounter;
     private final Counter failedCounter;
+    private final Counter skippedCounter;
     private final DistributionSummary batchSizeSummary;
     private final Timer upsertDuration;
 
+    /**
+     * @param priceMemoryJdbcAccess 가격기억 전용 DataSource 에 결속된 TM/JdbcTemplate 묶음 —
+     *        무자격 {@code PlatformTransactionManager}(= JPA TM, 메인 pool)를 받도록 되돌리면
+     *        {@code batchRepository} 의 JdbcTemplate 이 이 트랜잭션에 참여하지 못해
+     *        {@code set_config(..., is_local=true)} 로 건 lock/statement timeout 이 upsert 에
+     *        적용되지 않는다 (R8-BE-4 함정 ①). 이 타입이 batchRepository 의 JdbcTemplate 과
+     *        <b>같은</b> DataSource 결속을 구조적으로 보장하며,
+     *        {@code PartnerProductPriceMemoryTimeoutIT} 가 실 PostgreSQL 에서 가드한다
+     */
     public PartnerProductPriceMemoryService(
             PartnerProductPriceMemoryRepository repository,
             PartnerProductPriceMemoryBatchRepository batchRepository,
             Clock clock,
-            PlatformTransactionManager transactionManager,
+            PriceMemoryJdbcAccess priceMemoryJdbcAccess,
             MeterRegistry meterRegistry,
             PartnerProductPriceMemoryProperties properties,
             @Qualifier("priceMemoryExecutor") Executor priceMemoryExecutor) {
@@ -79,11 +91,13 @@ public class PartnerProductPriceMemoryService {
         this.clock = clock;
         this.properties = properties;
         this.priceMemoryExecutor = priceMemoryExecutor;
-        this.transactionTemplate = new TransactionTemplate(transactionManager);
+        this.transactionTemplate = new TransactionTemplate(priceMemoryJdbcAccess.transactionManager());
         this.transactionTemplate.setPropagationBehavior(
                 org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         // Spring transaction timeout 은 Hikari 커넥션 획득 뒤에 시작한다. 획득 전 대기는
-        // spring.datasource.hikari.connection-timeout(기본 4초)이 별도로 제한한다.
+        // 가격기억 전용 pool 의 app.slip.price-memory.datasource.hikari.connection-timeout
+        // (기본 4초)이 별도로 제한한다 — 전역 spring.datasource.hikari.connection-timeout
+        // (fleet 표준 30초) 이 아니다 (R8-BE-4/D-R8-2 로 pool 격리).
         this.transactionTemplate.setTimeout(properties.getTransactionTimeoutSeconds());
         this.transactionTemplate.setName("partner-product-price-memory");
         this.successCounter = Counter.builder(UPSERT_SUCCESS_COUNTER)
@@ -91,6 +105,9 @@ public class PartnerProductPriceMemoryService {
                 .register(meterRegistry);
         this.failedCounter = Counter.builder(UPSERT_FAILED_COUNTER)
                 .description("가격기억 upsert 실패 또는 queue 거부 command 누적 건수")
+                .register(meterRegistry);
+        this.skippedCounter = Counter.builder(UPSERT_SKIPPED_COUNTER)
+                .description("recency guard 로 갱신되지 않은 가격기억 command 누적 건수")
                 .register(meterRegistry);
         this.batchSizeSummary = DistributionSummary.builder(BATCH_SIZE_SUMMARY)
                 .description("가격기억 set-based upsert batch 크기")
@@ -200,14 +217,24 @@ public class PartnerProductPriceMemoryService {
     private void executeBatchInNewTransaction(List<PartnerProductPriceMemoryCommand> commands) {
         batchSizeSummary.record(commands.size());
         long startedAtNanos = System.nanoTime();
+        // upsertAll 의 affected row 수를 람다 밖으로 회수한다 (effectively-final 제약 회피).
+        int[] affected = new int[1];
         try {
             transactionTemplate.executeWithoutResult(status -> {
                 batchRepository.applyTransactionTimeouts(
                         properties.getLockTimeoutMs(), properties.getStatementTimeoutMs());
-                batchRepository.upsertAll(commands, LocalDateTime.now(clock));
+                affected[0] = batchRepository.upsertAll(commands, LocalDateTime.now(clock));
             });
-            // recency guard 로 오래된 command 가 skip 되어도 statement 자체는 성공이다.
+            // recency guard 로 오래된 command 가 skip 되어도 statement 자체는 성공이다
+            // (D-R4-2 — 최신성 권위 = remembered_at 캡처 시각). success 의 의미는 그대로 두되,
+            // [R8-BE-6] 갱신되지 않은 건수를 별도 계측한다 — 종전에는 upsertAll 의 int 반환값을
+            // 폐기해 전량 skip 돼도 100% 성공으로 보였고, 다중 인스턴스 clock skew 로 인한
+            // 조용한 유실이 metric 상 관측 불가였다.
             successCounter.increment(commands.size());
+            int skipped = commands.size() - affected[0];
+            if (skipped > 0) {
+                skippedCounter.increment(skipped);
+            }
         } catch (RuntimeException ex) {
             failedCounter.increment(commands.size());
             throw ex;

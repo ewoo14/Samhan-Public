@@ -143,7 +143,7 @@ class SlipLockByPeriodInternalIT extends AbstractPostgresIT {
                 null,
                 "마감 테스트",
                 "tester");
-        slip.updateSalesHeader("마감테스트거래처", partnerCode, null, null, null, null, null, null, null);
+        slip.updateSalesHeader(null, "마감테스트거래처", partnerCode, null, null, null, null, null, null, null);
 
         Slip saved = slipRepository.saveAndFlush(slip);
         entityManager.flush();

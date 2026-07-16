@@ -259,9 +259,14 @@ services:
       SAMHAN_PRICE_MEMORY_ASYNC_MAX_POOL_SIZE: ${SAMHAN_PRICE_MEMORY_ASYNC_MAX_POOL_SIZE:-4}
       SAMHAN_PRICE_MEMORY_ASYNC_QUEUE_CAPACITY: ${SAMHAN_PRICE_MEMORY_ASYNC_QUEUE_CAPACITY:-100}
       SAMHAN_PRICE_MEMORY_ASYNC_SHUTDOWN_AWAIT_SECONDS: ${SAMHAN_PRICE_MEMORY_ASYNC_SHUTDOWN_AWAIT_SECONDS:-5}
-      # R6-M2: Hikari 커넥션 획득 대기 상한(ms) — application.yml 기본 4000.
-      # 가격기억 전용이 아니라 slip-service 전체 DataSource 에 적용.
-      DB_CONNECTION_TIMEOUT_MS: ${DB_CONNECTION_TIMEOUT_MS:-4000}
+      # R6-M2 + D-R8-2: Hikari 커넥션 획득 대기 상한(ms).
+      # DB_CONNECTION_TIMEOUT_MS = slip-service 메인 DataSource 전역 — fleet 표준 30000 복원.
+      # 가격기억의 4초 정책은 전용 pool(SAMHAN_PRICE_MEMORY_DB_*)로 격리했다.
+      DB_CONNECTION_TIMEOUT_MS: ${DB_CONNECTION_TIMEOUT_MS:-30000}
+      # 가격기억 전용 pool (app.slip.price-memory.datasource.hikari) — 메인과 별개.
+      SAMHAN_PRICE_MEMORY_DB_CONNECTION_TIMEOUT_MS: ${SAMHAN_PRICE_MEMORY_DB_CONNECTION_TIMEOUT_MS:-4000}
+      SAMHAN_PRICE_MEMORY_DB_POOL_MAX: ${SAMHAN_PRICE_MEMORY_DB_POOL_MAX:-4}
+      SAMHAN_PRICE_MEMORY_DB_POOL_MIN_IDLE: ${SAMHAN_PRICE_MEMORY_DB_POOL_MIN_IDLE:-0}
     ports:
       - "127.0.0.1:8086:8086"
     depends_on: *service-depends

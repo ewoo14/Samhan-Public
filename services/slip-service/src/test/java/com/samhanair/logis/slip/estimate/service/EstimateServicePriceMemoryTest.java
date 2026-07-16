@@ -90,7 +90,7 @@ class EstimateServicePriceMemoryTest {
                 partnerId, "삼한", null, null, null, null,
                 List.of(new UpdateEstimateRequest.EstimateLineUpdate(
                         productId, "에어컨", "M-1", null, 1,
-                        new BigDecimal("99000.00"), null, null, true))),
+                        new BigDecimal("99000.00"), null, null, true, null)), true),
                 "user-2", "김매니저");
 
         ArgumentCaptor<List<PartnerProductPriceMemoryCommand>> captor = ArgumentCaptor.forClass(List.class);

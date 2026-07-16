@@ -72,6 +72,8 @@ public class SalesSlipUpdateService {
     @Transactional
     public SlipDetailResponse update(UUID id, SlipUpdateRequest request,
                                      UUID actorId, String actorName) {
+        // [D-R8-9] 매입(SlipUpdateService) 미러 — 계약 마커 검증은 어떤 상태를 읽기도 전에.
+        requireLineIdContract(request);
         Slip slip = load(id);
         verifyVersion(slip, request.updatedAt());
         // validateLines 는 BusinessException(SLIP_UPDATE_INVALID_LINE) 을 던지므로 try 외부에서 처리
@@ -86,10 +88,9 @@ public class SalesSlipUpdateService {
         bundleLineage.restoreSlipLines(replacementLines, request.lines().stream()
                 .map(SlipUpdateRequest.LineRequest::lineId)
                 .toList());
-        List<PartnerProductPriceMemoryCommand> priceMemoryCommands = collectPriceMemory(
-                slip, replacementLines, actorId == null ? null : actorId.toString());
         try {
             slip.updateSalesHeader(
+                    request.partnerId(),
                     request.partnerName(),
                     request.partnerCode(),
                     request.memo(),
@@ -99,6 +100,10 @@ public class SalesSlipUpdateService {
                     request.projectName(),
                     request.recipientPhone(),
                     request.paymentDueDate());
+            // [D-R8-7] 가격기억 수집은 반드시 헤더 갱신 <b>이후</b>다 — 이전에 수집하면 거래처를
+            // 바꾼 저장의 단가가 갱신 전 partnerId(원 거래처)에 각인된다 (R8-QA-3 라이브 실증).
+            List<PartnerProductPriceMemoryCommand> priceMemoryCommands = collectPriceMemory(
+                    slip, replacementLines, actorId == null ? null : actorId.toString());
             slip.replaceSalesLines(replacementLines, actorId == null ? null : actorId.toString());
             Slip saved = slipRepository.saveAndFlush(slip);
             // after 는 saveAndFlush 결과 기준으로 캡처하여 ordering 명확화
@@ -168,8 +173,10 @@ public class SalesSlipUpdateService {
      * 요청 lineId 가 현재 매출 전표의 활성 라인인지 검증한다.
      *
      * <p>타 문서 UUID 주입은 400 INVALID_INPUT 으로 통일해 다른 문서 존재 여부를
-     * 노출하지 않는다. lineId 미전송은 구 클라이언트 호환을 위해 신규 평면 라인으로
-     * 처리하며 fingerprint 휴리스틱으로 되돌아가지 않는다.
+     * 노출하지 않는다. 개별 라인의 {@code lineId == null} 은 편집 중 추가된 신규 라인을 뜻하는
+     * 정상 값이고, 전 라인이 lineId 를 싣지 않은 "전 라인 교체" 저장도 정상이다 — 구 클라이언트와의
+     * 구분은 {@link #requireLineIdContract} 의 요청 레벨 마커가 담당한다 (D-R8-9).
+     * fingerprint 휴리스틱으로는 되돌아가지 않는다.
      */
     private void validateLineIds(List<SlipLine> existingLines,
                                  List<SlipUpdateRequest.LineRequest> requestedLines) {
@@ -188,6 +195,19 @@ public class SalesSlipUpdateService {
                         "lineId 는 현재 전표의 활성 라인에서 중복 없이 지정해야 합니다");
             }
         }
+    }
+
+    /**
+     * [D-R8-6 · D-R8-9] 매출 전표 PUT 은 lineId 계약 선언을 의무화한다 —
+     * {@link SlipUpdateService#requireLineIdContract} 미러 (매입/매출 비대칭 재발 차단).
+     * 판정은 공용 {@link LineIdContractGate} 단일 구현에 위임하므로 두 미러는 드리프트할 수 없다.
+     *
+     * <p>R8-QA-1 라이브 실측: 세트 전표를 무수정 왕복 PUT(lineId 없음) → 200 → 계보 전량 소실 +
+     * 구성품 배분가 LINE_SAVE 각인. "구 클라이언트 호환" 은 호환이 아니라 조용한 파괴다.
+     * 그 경로의 주체인 구 클라이언트는 마커를 보내지 않으므로 여기서 차단된다.
+     */
+    private void requireLineIdContract(SlipUpdateRequest request) {
+        LineIdContractGate.require(request.lineIdContract());
     }
 
     private SlipLine toLine(Slip slip, SlipUpdateRequest.LineRequest line) {
