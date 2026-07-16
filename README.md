@@ -39,7 +39,7 @@
 | **user-service** | user_db | 직원·부서·급여·전자서명·역할변경 |
 | **product-service** | product_db | 품목·카테고리·세트(번들)·사양·DC·견적 lookup(자재/실외기/분기) |
 | **inventory-service** | inventory_db | 창고·재고(잔고/Lot/시리얼)·이동·재고실사·입고검수·창고이동 |
-| **slip-service** | slip_db | 입출고전표·견적·배차·협업(collab/presence)·외부배송 |
+| **slip-service** | slip_db | 입출고전표·견적·거래처+품목 최근단가 기억·배차·협업(collab/presence)·외부배송 |
 | **accounting-service** | accounting_db | 분개·회계전표(판매/구매)·세금계산서·현금·은행·채권·CODEF |
 | **partner-order-service** | partner_orders | 거래처 주문(주문서)·임시저장·편집요청 |
 | **partner-service** | partners | 거래처 마스터·연락처·배송지·여신이력·첨부 |

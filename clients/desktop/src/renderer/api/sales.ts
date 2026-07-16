@@ -800,6 +800,8 @@ export async function releasePartnerOrder(orderNumber: string): Promise<PartnerO
  * (단건 상세 `/admin/partners/{partnerCode}` 조회 시 별도 확보).
  */
 export interface PartnerSummary {
+  /** 내부 partnerId UUID — 화면 표시 금지, API payload 전용. */
+  partnerId?: string | null
   /** 사업자등록번호 (= BE `bizNo`, 사용자 노출 식별자). */
   businessRegistrationNumber: string
   /** 거래처명 (= BE `name`). */
@@ -818,6 +820,7 @@ export interface PartnerSummary {
 
 /** BE `PartnerSummaryResponse` — `/admin/partners/search` items row (raw). */
 interface AdminPartnerSummaryRow {
+  partnerId?: string | null
   partnerCode: string
   name: string | null
   bizNo: string | null
@@ -852,6 +855,7 @@ export async function searchPartners(
     { params: { q: keyword.trim(), page: 0, size } },
   )
   return res.data.data.items.map((row) => ({
+    partnerId: row.partnerId ?? null,
     businessRegistrationNumber: row.bizNo ?? row.partnerCode,
     companyName: row.name ?? '',
     representativeName: null,

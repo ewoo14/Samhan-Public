@@ -87,6 +87,8 @@ class SlipServiceAuditDiffTest {
     @Mock private com.samhanair.logis.slip.realtime.SlipRealtimeBroker broker;
     /** 보상 감사 로그 — 단위 테스트 격리. */
     @Mock private com.samhanair.logis.slip.service.CompensationAuditWriter compensationAuditWriter;
+    /** #809 가격기억 — 단위 테스트 격리. */
+    @Mock private com.samhanair.logis.slip.price.service.PartnerProductPriceMemoryService priceMemoryService;
 
     @InjectMocks private SlipService service;
 

@@ -123,6 +123,44 @@ export const Dragging: Story = {
   args: { isDragging: true },
 }
 
+/**
+ * #809 단가 출처 마커 — 거래처 최근단가(REMEMBERED) hit.
+ * 강조행(priceRefreshChanged) + 칩 + 저장일 title. 칩 있는 행만 단가 input 22px(R4-D6 :has 조건부).
+ */
+export const PriceMemoryRemembered: Story = {
+  args: {
+    line: {
+      ...baseLine,
+      priceSource: 'REMEMBERED',
+      priceMemoryUpdatedAt: '2026-07-10T09:00:00',
+      priceRefreshChanged: true,
+    },
+    partnerSelected: true,
+  },
+}
+
+/**
+ * #809 단가 출처 마커 — 기억 miss 로 판매가(CATALOG) 폴백 (D-R4-1: '정가' 라벨 금지).
+ * 거래처 선택 상태 → 설명 "이 거래처에 저장된 최근단가가 없어 판매가를 적용했습니다".
+ */
+export const PriceCatalogFallback: Story = {
+  args: {
+    line: { ...baseLine, priceSource: 'CATALOG' },
+    partnerSelected: true,
+  },
+}
+
+/**
+ * #809 거래처 미선택 — CATALOG 설명이 거래처를 단정하지 않음("판매가를 적용했습니다", R4-D4a).
+ * REMEMBERED 라인이라면 마커 자체가 해제된다(D-R4-4 — 단가값은 유지).
+ */
+export const PriceCatalogWithoutPartner: Story = {
+  args: {
+    line: { ...baseLine, priceSource: 'CATALOG' },
+    partnerSelected: false,
+  },
+}
+
 export const FullTable: Story = {
   render: () => {
     const Demo = () => {

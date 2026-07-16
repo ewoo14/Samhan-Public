@@ -708,8 +708,12 @@ public class Slip extends BaseEntity {
      *
      * <p>기존 승인 요청 흐름과 별개로 INBOUND 전표의 구매관리 필드를 즉시 갱신한다. null 값은
      * 기존 값을 보존한다.
+     *
+     * @param partnerId 거래처 UUID (null 이면 보존) — D-R8-7 신규. 종전에는 {@code partnerName} 만
+     *        갱신돼 거래처를 바꿔 저장해도 {@code partner_id} 가 불변이었고, (거래처+품목) 가격기억이
+     *        <b>원 거래처</b>에 각인됐다 (R8-BE-3 라이브 실증)
      */
-    public void updateHeader(String partnerName, String partnerCode, String memo,
+    public void updateHeader(UUID partnerId, String partnerName, String partnerCode, String memo,
                              String businessNumber, String deliveryAddress,
                              String supervisionAddress, String projectName,
                              String recipientPhone, LocalDate paymentDueDate) {
@@ -718,6 +722,9 @@ public class Slip extends BaseEntity {
                     "매입 전표만 직접 수정할 수 있습니다.");
         }
         requireEditable();
+        if (partnerId != null) {
+            this.partnerId = partnerId;
+        }
         if (partnerName != null) {
             this.partnerName = partnerName;
         }
@@ -762,6 +769,7 @@ public class Slip extends BaseEntity {
      * <p>기존 승인 요청 흐름과 별개로 OUTBOUND 전표의 판매관리 필드를 즉시 갱신한다.
      * null 값은 기존 값을 보존한다. DRAFT/SAVED 단계에서만 허용.
      *
+     * @param partnerId 거래처 UUID (null 이면 보존) — D-R8-7 신규. {@link #updateHeader} 미러
      * @param partnerName 거래처명 (null 이면 보존)
      * @param partnerCode 거래처코드 (null 이면 보존)
      * @param memo 메모 (null 이면 보존)
@@ -774,7 +782,7 @@ public class Slip extends BaseEntity {
      * @throws BusinessException(SLIP_UPDATE_NON_SALES) slipType 이 OUTBOUND 가 아닐 때
      * @throws BusinessException(CONFLICT) DRAFT/SAVED 가 아닌 단계일 때
      */
-    public void updateSalesHeader(String partnerName, String partnerCode, String memo,
+    public void updateSalesHeader(UUID partnerId, String partnerName, String partnerCode, String memo,
                                   String businessNumber, String deliveryAddress,
                                   String supervisionAddress, String projectName,
                                   String recipientPhone, LocalDate paymentDueDate) {
@@ -783,6 +791,9 @@ public class Slip extends BaseEntity {
                     ErrorCode.SLIP_UPDATE_NON_SALES.getDefaultMessage());
         }
         requireEditable();
+        if (partnerId != null) {
+            this.partnerId = partnerId;
+        }
         if (partnerName != null) {
             this.partnerName = partnerName;
         }
@@ -1963,7 +1974,10 @@ public class Slip extends BaseEntity {
                         line.getNote(),
                         line.getUnitPriceWithVat(),
                         line.getVatAmount(),
-                        line.getSupplyAmount()))
+                        line.getSupplyAmount(),
+                        // R6-H3 — 세트 계보 캡처. head 만 true, 일반 라인은 null 로 생략(NON_NULL).
+                        line.isSetHead() ? Boolean.TRUE : null,
+                        line.getParentSetModel()))
                 .toList();
         return new SlipSnapshot(
                 this.slipNo,
@@ -1981,6 +1995,11 @@ public class Slip extends BaseEntity {
                 this.paymentDueDate,
                 this.destinationWarehouseId,
                 this.destinationWarehouseName,
+                // 기사/하차 3필드 (R8-BE-5) — editDriver 의 EDIT 스냅샷이 기사 변경을 담고
+                // 복원이 당시 값으로 되돌리도록 캡처한다. restoreFromSnapshot 과 대칭.
+                this.driverName,
+                this.driverPhone,
+                this.unloadDate,
                 // audit overlay 필드 10개 (PR #318 cycle1 P1-1) — restoreFromSnapshot 과 대칭
                 this.shippingAddress,
                 this.inspectionAddress,
@@ -2006,6 +2025,11 @@ public class Slip extends BaseEntity {
      * <p>{@code deliveryTag} 는 스냅샷의 enum name 문자열을 {@link DeliveryTag#valueOf(String)} 로
      * 역매핑한다 (null 안전). status / version / revisionCount 등 라이프사이클 메타는 복원 대상이
      * 아니며 — 복원도 신규 RESTORE revision 으로 별도 기록되므로 본 메서드는 헤더/라인 상태만 되돌린다.
+     *
+     * <p>라인 금액 semantics (#822 계열 sweep): 스냅샷 라인의 {@code unitPriceWithVat} 가 non-null
+     * 이면 {@link SlipLine#restoreAuthoritativeAmounts} 로 캡처 시점의 lineTotal/supplyAmount/
+     * vatAmount/unitPriceWithVat 권위값을 그대로 승계한다 — {@link SlipLine#create} 재계산만으로는
+     * VAT 포함 입력 라인에서 반올림 드리프트가 생긴다. null(legacy) 라인은 종전 재계산 유지.
      *
      * <p>마감 lock 가드: {@link #requireNotLocked()} 를 가장 먼저 호출한다 — lock_flag=true 슬립은
      * 복원도 CONFLICT 로 거부한다 (마감 후 매출 정정 차단 정책과 일관). status 기반 마감 정책
@@ -2037,6 +2061,12 @@ public class Slip extends BaseEntity {
         this.paymentDueDate = snapshot.paymentDueDate();
         this.destinationWarehouseId = snapshot.destinationWarehouseId();
         this.destinationWarehouseName = snapshot.destinationWarehouseName();
+        // 기사/하차 3필드 역적용 (R8-BE-5) — toSnapshot 과 대칭. 구 스냅샷(키 없음)은 null 이
+        // 역적용되어 캡처 시점의 "기사 미지정" 상태를 그대로 재현한다 (헤더 필드 전반의 복원
+        // 규약 = "스냅샷 값 그대로 덮어씀" 과 일관 — null-보존 규약은 편집 경로에만 적용된다).
+        this.driverName = snapshot.driverName();
+        this.driverPhone = snapshot.driverPhone();
+        this.unloadDate = snapshot.unloadDate();
         // audit overlay 필드 10개 역적용 (PR #318 cycle1 P1-1) — toSnapshot 과 대칭.
         // applyOverlayPatch 가 수정하는 필드가 복원 시 정확히 당시 값으로 롤백되도록 직접 set.
         this.shippingAddress = snapshot.shippingAddress();
@@ -2060,14 +2090,27 @@ public class Slip extends BaseEntity {
         List<SlipSnapshot.Line> snapshotLines = snapshot.lines();
         if (snapshotLines != null) {
             for (SlipSnapshot.Line snapLine : snapshotLines) {
-                this.lines.add(SlipLine.create(this,
+                SlipLine restored = SlipLine.create(this,
                         snapLine.productId(),
                         snapLine.productName(),
                         snapLine.modelName(),
                         snapLine.specification(),
                         snapLine.quantity(),
                         snapLine.unitPrice(),
-                        snapLine.note()));
+                        snapLine.note());
+                // R6-H3 — 스냅샷의 세트 계보 복원. 계보가 없으면(일반 라인/구 스냅샷 null) 평면
+                // 재생성 시 이후 저장에서 구성품 배분가가 가격기억에 각인되는 오염이 재유입된다.
+                if (snapLine.parentSetModel() != null && !snapLine.parentSetModel().isBlank()) {
+                    restored.assignBundleComponent(
+                            snapLine.parentSetModel(), Boolean.TRUE.equals(snapLine.setHead()));
+                }
+                // #822 계열 sweep — 스냅샷 캡처 금액 권위값 승계. create 는 공급단가에서
+                // vat/withVat 를 재계산하므로 VAT 포함 입력 라인(11의 배수가 아닌 단가)에서
+                // 캡처값 대비 반올림 드리프트가 생긴다. legacy(withVat null) 라인은 no-op.
+                restored.restoreAuthoritativeAmounts(snapLine.lineTotal(),
+                        snapLine.supplyAmount(), snapLine.vatAmount(),
+                        snapLine.unitPriceWithVat());
+                this.lines.add(restored);
             }
         }
     }

@@ -52,6 +52,7 @@ class SlipServiceListSpecTest {
     @Mock private SlipNumberService slipNumberService;
     @Mock private ProductClient productClient;
     @Mock private InventoryClient inventoryClient;
+    @Mock private com.samhanair.logis.slip.price.service.PartnerProductPriceMemoryService priceMemoryService;
 
     @InjectMocks private SlipService service;
 

@@ -791,6 +791,15 @@ W10-3 시점 = 4 weight (`Regular / Medium / SemiBold / Bold`) 의무 + graceful
 
 ## 참조 문서
 
+- 2026-07-15 #809 / PR #820: 전표·견적 `(거래처+품목)` VAT 포함 최근단가 기억. R3 BE에서
+  100품목 POST bulk 조회, `remembered_at` 최신성 guard, 최대 100라인 set-based upsert,
+  fail-soft 전용 timeout/계측/Prometheus 경보를 보강했다. 주문은 범위 밖이다.
+  세트 계보는 **`lineId` 왕복 계약**(`34f978ec9`)으로 보존하며, 계보 보유 문서의 PUT 에서 `lineId`
+  미전송은 **400** 이다(D-R8-6 — 미전송 시 계보 전량 파괴를 라이브 실증). 세트 구성품의 **품목을
+  교체하면 계보를 승계하지 않는다**(D-R8-8). `BUNDLE_SET` 기억은 **세트 선택 시점에만 정의**된다
+  (D-R8-5). 가격기억은 **전용 DataSource pool** 로 격리해 4초 fail-soft 예산이 전표 저장 경로(전역
+  30초)를 오염시키지 않는다(D-R8-2). 상세: `docs/specs/809-slip-estimate-recent-manual-price-spec.md`.
+
 - 누적 결정: `migration/decisions/DECISIONS.md`
 - Phase 6 회고: `docs/dev-reports/phase6-retrospective.md`
 - Phase 7 진입 평가: `docs/migration/phase7/M-PHASE-7-readiness.md`

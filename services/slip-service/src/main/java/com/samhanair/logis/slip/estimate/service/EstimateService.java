@@ -17,17 +17,26 @@ import com.samhanair.logis.slip.estimate.web.dto.CreateEstimateRequest;
 import com.samhanair.logis.slip.estimate.web.dto.EstimateDetailResponse;
 import com.samhanair.logis.slip.estimate.web.dto.EstimateResponse;
 import com.samhanair.logis.slip.estimate.web.dto.UpdateEstimateRequest;
+import com.samhanair.logis.slip.price.domain.PartnerProductPriceMemory;
+import com.samhanair.logis.slip.price.service.PartnerProductPriceMemoryCommand;
+import com.samhanair.logis.slip.price.service.PartnerProductPriceMemoryService;
 import com.samhanair.logis.slip.realtime.EstimateListRealtime;
+import com.samhanair.logis.slip.service.BundleLineageResolver;
+import com.samhanair.logis.slip.service.LineIdContractGate;
 import com.samhanair.logis.shared.realtime.collection.CollectionRealtimePublisher;
 import jakarta.persistence.OptimisticLockException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.data.domain.Page;
@@ -52,6 +61,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @Transactional
 @RequiredArgsConstructor
+@Slf4j
 public class EstimateService {
 
     private final EstimateRepository estimateRepository;
@@ -60,6 +70,8 @@ public class EstimateService {
     private final EstimateToSlipConverter slipConverter;
     private final EstimateRevisionService estimateRevisionService;
     private final CollectionRealtimePublisher collectionRealtimePublisher;
+    /** #809 — 거래처+품목 최근 VAT 포함 입력단가 기억. 실패해도 견적 저장은 계속된다. */
+    private final PartnerProductPriceMemoryService priceMemoryService;
 
     /**
      * 견적 라인 추가 — BUNDLE(세트) 품목이면 product-service expand 로 구성품 라인 N개로 전개(옵션 A,
@@ -70,20 +82,29 @@ public class EstimateService {
     private int addEstimateLines(Estimate estimate, int lineNo, UUID productId, ProductSummary summary,
                                  String reqName, String reqModel, String specification, int quantity,
                                  BigDecimal unitPrice, String note, BundleSetOptions setOptions,
-                                 boolean priceVatInclusive) {
+                                 boolean priceVatInclusive, UUID sourceLineId, String actor,
+                                 List<PartnerProductPriceMemoryCommand> priceMemoryCommands,
+                                 List<PendingPlainLine> pendingPlainLines) {
         boolean bundle = summary != null && "BUNDLE".equals(summary.productType())
                 && summary.modelCode() != null && !summary.modelCode().isBlank();
         if (!bundle) {
             String productName = reqName != null ? reqName : (summary != null ? summary.name() : null);
             String modelName = reqModel != null ? reqModel : (summary != null ? summary.modelName() : null);
             // 단가 부가세포함: priceVatInclusive 면 라인 단위로 공급가액/부가세 분리.
-            estimate.addLine(priceVatInclusive
+            EstimateLine line = priceVatInclusive
                     ? EstimateLine.createFromVatInclusive(estimate, lineNo, productId, productName, modelName,
                             specification, quantity, unitPrice, note)
                     : EstimateLine.create(estimate, lineNo, productId, productName, modelName,
-                            specification, quantity, unitPrice, note));
+                            specification, quantity, unitPrice, note);
+            estimate.addLine(line);
+            // PUT 의 기존 라인은 sourceLineId 로 계보를 복원해야 하므로, 전 라인 저장 후
+            // lineId 기반 복원 결과를 반영할 수 있도록 LINE_SAVE 기억 수집과 함께 지연한다
+            // — {@link #resolveLineageAndCollectPlainLineMemory}.
+            pendingPlainLines.add(new PendingPlainLine(line, unitPrice, priceVatInclusive, sourceLineId));
             return lineNo + 1;
         }
+        collectPriceMemory(priceMemoryCommands, estimate.getPartnerId(), productId, unitPrice,
+                priceVatInclusive, PartnerProductPriceMemory.SOURCE_BUNDLE_SET, actor);
         ExpandedLineDto.Options opts = setOptions == null ? null : new ExpandedLineDto.Options(
                 setOptions.remoteOption(), Boolean.TRUE.equals(setOptions.remoteExcluded()),
                 setOptions.panelOption(), setOptions.panelShape360(),
@@ -156,18 +177,25 @@ public class EstimateService {
 
         // 4. 라인 추가 — BUNDLE(세트)면 product-service expand 로 구성품 라인 N개 전개(옵션 A), 아니면 1 라인.
         int lineNo = 1;
+        List<PartnerProductPriceMemoryCommand> priceMemoryCommands = new java.util.ArrayList<>();
+        List<PendingPlainLine> pendingPlainLines = new java.util.ArrayList<>();
         for (CreateEstimateRequest.EstimateLineRequest lineReq : req.lines()) {
             lineNo = addEstimateLines(estimate, lineNo, lineReq.productId(),
                     byId.get(lineReq.productId()), lineReq.productName(), lineReq.modelName(),
                     lineReq.specification(), lineReq.quantity(), lineReq.unitPrice(),
                     lineReq.note(), lineReq.setOptions(),
-                    Boolean.TRUE.equals(lineReq.priceVatInclusive()));
+                    Boolean.TRUE.equals(lineReq.priceVatInclusive()), null, requesterId, priceMemoryCommands,
+                    pendingPlainLines);
         }
+        // 신규 생성은 승계할 기존 계보가 없다 — 빈 resolver 로 기억 수집만 수행.
+        resolveLineageAndCollectPlainLineMemory(BundleLineageResolver.empty(), pendingPlainLines,
+                estimate.getPartnerId(), requesterId, priceMemoryCommands);
 
         Estimate saved = estimateRepository.save(estimate);
         // 권한 재편 Phase 2.2 Task 2 — 생성 직후 CREATE 스냅샷 1건 캡처 (revision 1)
         estimateRevisionService.capture(saved, EstimateRevisionType.CREATE, null,
                 parseActorId(requesterId), resolveActorName(requesterName, requesterId), null);
+        priceMemoryService.rememberBatchAfterCommit(priceMemoryCommands, "estimate.create");
         publishListChanged("CREATED");
         return EstimateDetailResponse.from(saved);
     }
@@ -177,6 +205,12 @@ public class EstimateService {
      */
     public EstimateDetailResponse update(UUID id, UpdateEstimateRequest req, String callerId,
                                          String callerName) {
+        // [D-R8-9] 계약 마커 검증은 조회·헤더 갱신보다 <b>반드시</b> 먼저다. 이 메서드는
+        // validateLineIds 보다 앞서 editHeader 로 헤더를 변경하고, req.lines() == null 이면
+        // validateLineIds 를 아예 호출하지 않는다 — 게이트를 라인 검증 안에 두면 구 클라이언트의
+        // 헤더 변경이 이미 적용된 뒤에 거부되거나(부분 적용), 헤더 전용 수정은 게이트를 통째로
+        // 우회한다. 거부는 어떤 상태 변경보다 앞서야 한다.
+        requireLineIdContract(req);
         Estimate estimate = loadOrThrow(id);
         applyMutation(() -> estimate.editHeader(req.partnerId(), req.partnerName(),
                 req.partnerBusinessNo(), req.partnerAddress(), req.validUntil(), req.memo()));
@@ -185,6 +219,15 @@ public class EstimateService {
             // 기존 라인 모두 제거 (orphan removal)
             estimate.requireEditable();
             List<EstimateLine> existing = List.copyOf(estimate.getLines());
+            validateLineIds(existing, req.lines());
+            BundleLineageResolver bundleLineage = BundleLineageResolver.fromEstimateLines(existing);
+            // [R9] 기존 계보 구성품 ID를 요청과 per-line 대조한다. 빈 목록은 명시 전체삭제로 허용하고,
+            // 누락 구성품과 익명 라인이 함께 있는 모호한 부분 재생성만 전표 미러와 같이 거부한다.
+            LineIdContractGate.requireLineIdsForLineage(
+                    bundleLineage.bundleComponentLineIds(),
+                    req.lines().stream()
+                            .map(UpdateEstimateRequest.EstimateLineUpdate::lineId)
+                            .toList());
             for (EstimateLine line : existing) {
                 estimate.removeLine(line);
             }
@@ -194,20 +237,31 @@ public class EstimateService {
                     .map(UpdateEstimateRequest.EstimateLineUpdate::productId)
                     .distinct()
                     .toList();
-            List<ProductSummary> summaries = productClient.lookup(productIds);
+            // 빈 목록은 명시 전체삭제다. 조회할 품목이 없으므로 외부 호출 없이 정상 경로를 완결한다.
+            List<ProductSummary> summaries = productIds.isEmpty()
+                    ? List.of()
+                    : productClient.lookup(productIds);
             Map<UUID, ProductSummary> byId = new HashMap<>();
             for (ProductSummary s : summaries) {
                 byId.put(s.id(), s);
             }
 
             int lineNo = 1;
+            List<PartnerProductPriceMemoryCommand> priceMemoryCommands = new java.util.ArrayList<>();
+            List<PendingPlainLine> pendingPlainLines = new java.util.ArrayList<>();
             for (UpdateEstimateRequest.EstimateLineUpdate lineReq : req.lines()) {
                 lineNo = addEstimateLines(estimate, lineNo, lineReq.productId(),
                         byId.get(lineReq.productId()), lineReq.productName(), lineReq.modelName(),
                         lineReq.specification(), lineReq.quantity(), lineReq.unitPrice(),
                         lineReq.note(), lineReq.setOptions(),
-                        Boolean.TRUE.equals(lineReq.priceVatInclusive()));
+                        Boolean.TRUE.equals(lineReq.priceVatInclusive()), lineReq.lineId(), callerId,
+                        priceMemoryCommands,
+                        pendingPlainLines);
             }
+            // 전 라인 구성 완료 후 sourceLineId 로 기존 계보를 복원하고 비구성품만 기억 수집.
+            resolveLineageAndCollectPlainLineMemory(bundleLineage, pendingPlainLines,
+                    estimate.getPartnerId(), callerId, priceMemoryCommands);
+            priceMemoryService.rememberBatchAfterCommit(priceMemoryCommands, "estimate.update");
         }
 
         // 권한 재편 Phase 2.2 — 헤더/라인 변경 후 EDIT 스냅샷 캡처. 도메인 가드를 통과한 성공 경로에서만 도달한다.
@@ -436,6 +490,104 @@ public class EstimateService {
 
     private String callerOrSystem(String callerId) {
         return (callerId == null || callerId.isBlank()) ? "system" : callerId.trim();
+    }
+
+    /**
+     * #809 가격기억 저장 단가 정규화.
+     *
+     * <p>전표와 공유하는 store basis 는 VAT 포함 입력 단가다. 견적도
+     * {@code priceVatInclusive=true} 경로에서 화면 입력값을 {@code unitPriceWithVat} 로 보존하므로
+     * 같은 값을 저장한다. legacy 공급단가 입력은 1.1 배로 정규화한다.
+     */
+    /**
+     * 지연된 일반(비세트전개) 라인에 요청의 sourceLineId 로 기존 세트 계보를 복원한 뒤,
+     * 복원 결과 비구성품으로 남은 라인만 LINE_SAVE 기억 후보로 수집한다.
+     *
+     * <p>lineId 는 문서 서비스가 소유권을 검증한 기존 라인 ID이거나 신규 라인을 뜻하는
+     * {@code null} 이다. 세트 전개 경로에서 직접 계보가 부여된 구성품 라인은 본 대상에
+     * 포함하지 않는다.
+     *
+     * @param bundleLineage replace 전 캡처한 기존 라인 계보 (신규 생성은 {@code empty()})
+     * @param pendingPlainLines 비세트전개 경로로 생성된 라인 + 원 요청 단가/부가세포함 여부
+     * @param partnerId 거래처 UUID (null 이면 기억 수집 생략)
+     * @param actor 기억 actor (audit)
+     * @param priceMemoryCommands 수집 대상 command 버킷
+     */
+    private void resolveLineageAndCollectPlainLineMemory(
+            BundleLineageResolver bundleLineage, List<PendingPlainLine> pendingPlainLines,
+            UUID partnerId, String actor, List<PartnerProductPriceMemoryCommand> priceMemoryCommands) {
+        bundleLineage.restoreEstimateLines(pendingPlainLines.stream()
+                .map(PendingPlainLine::line)
+                .toList(),
+                pendingPlainLines.stream().map(PendingPlainLine::sourceLineId).toList());
+        for (PendingPlainLine pending : pendingPlainLines) {
+            if (!BundleLineageResolver.isBundleComponent(pending.line())) {
+                collectPriceMemory(priceMemoryCommands, partnerId, pending.line().getProductId(),
+                        pending.unitPrice(), pending.priceVatInclusive(),
+                        PartnerProductPriceMemory.SOURCE_LINE_SAVE, actor);
+            }
+        }
+    }
+
+    /**
+     * 계보 복원 대기 중인 일반 라인 1건 — 복원 결과에 따라 LINE_SAVE 기억 여부가 갈리므로
+     * 원 요청 단가(부가세포함 여부 포함)를 함께 보존한다.
+     */
+    private record PendingPlainLine(EstimateLine line, BigDecimal unitPrice, boolean priceVatInclusive,
+                                    UUID sourceLineId) {
+    }
+
+    /**
+     * 요청 lineId 가 현재 견적의 활성 라인인지 검증한다.
+     *
+     * <p>타 견적 UUID 주입은 400 INVALID_INPUT 으로 통일해 다른 문서 존재 여부를 노출하지
+     * 않는다. 개별 라인의 {@code lineId == null} 은 편집 중 추가된 신규 라인을 뜻하는 정상 값이다.
+     * 다만 기존 계보 구성품 ID가 누락된 요청에 신규 익명 라인이 함께 있으면 부분 재생성으로 계보가
+     * 파괴될 수 있어 {@link LineIdContractGate}가 별도로 거부한다. 빈 목록은 명시 전체삭제로
+     * 허용하며 fingerprint 휴리스틱 폴백은 사용하지 않는다.
+     */
+    private void validateLineIds(List<EstimateLine> existingLines,
+                                 List<UpdateEstimateRequest.EstimateLineUpdate> requestedLines) {
+        Set<UUID> ownedLineIds = existingLines.stream()
+                .map(EstimateLine::getId)
+                .filter(Objects::nonNull)
+                .collect(java.util.stream.Collectors.toSet());
+        Set<UUID> requestedLineIds = new HashSet<>();
+        for (UpdateEstimateRequest.EstimateLineUpdate line : requestedLines) {
+            UUID lineId = line.lineId();
+            if (lineId == null) {
+                continue;
+            }
+            if (!ownedLineIds.contains(lineId) || !requestedLineIds.add(lineId)) {
+                throw new BusinessException(ErrorCode.INVALID_INPUT,
+                        "lineId 는 현재 견적의 활성 라인에서 중복 없이 지정해야 합니다");
+            }
+        }
+    }
+
+    /**
+     * [D-R8-6 · D-R8-9] 견적 수정은 lineId 계약 선언을 의무화한다 —
+     * {@code SlipUpdateService.requireLineIdContract} 미러 (전표/견적 비대칭 재발 차단).
+     * 판정은 공용 {@link LineIdContractGate} 단일 구현에 위임하므로 세 미러는 드리프트할 수 없다.
+     *
+     * <p>종전 미러는 {@code requestedLines.isEmpty()} 를 게이트 면제 조건으로 두어 <b>전표 미러와
+     * 이미 비대칭</b>이었다. 마커 판정은 라인을 보지 않으므로 그 비대칭도 함께 사라진다.
+     */
+    private void requireLineIdContract(UpdateEstimateRequest request) {
+        LineIdContractGate.require(request.lineIdContract());
+    }
+
+    private void collectPriceMemory(List<PartnerProductPriceMemoryCommand> commands,
+                                    UUID partnerId, UUID productId, BigDecimal unitPrice,
+                                    boolean priceVatInclusive, String source, String actor) {
+        if (partnerId == null || productId == null || unitPrice == null) {
+            return;
+        }
+        BigDecimal vatInclusiveUnitPrice = priceVatInclusive
+                ? unitPrice
+                : unitPrice.multiply(new BigDecimal("1.1")).setScale(2, RoundingMode.HALF_UP);
+        commands.add(new PartnerProductPriceMemoryCommand(
+                partnerId, productId, vatInclusiveUnitPrice, source, actor));
     }
 
     /** 견적 목록 변경 발화 (커밋 후). */

@@ -536,7 +536,7 @@ body {
         <div class="arch-node"><div class="node-name">user-service :8083</div><div class="node-desc">직원·조직도</div></div>
         <div class="arch-node"><div class="node-name">product-service :8084</div><div class="node-desc">제품 마스터</div></div>
         <div class="arch-node"><div class="node-name">inventory-service :8085</div><div class="node-desc">재고 FIFO</div></div>
-        <div class="arch-node"><div class="node-name">slip-service :8086</div><div class="node-desc">전표 STI</div></div>
+        <div class="arch-node"><div class="node-name">slip-service :8086</div><div class="node-desc">전표·견적 STI · 거래처 최근단가</div></div>
         <div class="arch-node"><div class="node-name">accounting-service :8087</div><div class="node-desc">회계 14보고서</div></div>
         <div class="arch-node"><div class="node-name">partner-order-service :8088</div><div class="node-desc">거래처 주문</div></div>
         <div class="arch-node"><div class="node-name">dc-config-service :8089</div><div class="node-desc">DC 설정</div></div>
@@ -704,7 +704,7 @@ body {
         </div>
       </div>
       <div class="svc-card-db">slip_db</div>
-      <div class="svc-card-desc">전표 핵심 서비스. Single Table Inheritance(출고/입고). 10단계 라이프사이클 상태머신 도메인 메서드 가드. 전자서명 + 배송 사진(MinIO). 견적 생성. 전표번호 YYYY/MM/DD-{순번}. Excel 내보내기. Redis SSE 실시간 이벤트. 검수완료→배차발송 에픽에서 외부기사/배송사 마스터(external_carrier), 타배송사 발송 이력(external_dispatch), SMS/PRINT/BOTH 채널, 배차의뢰서 print-data를 보유한다. 출고 컷오프 마스터(slip_outbound_cutoff)와 OutboundCutoffGuard로 배송태그별 당일 마감 초과 시 출고전표 생성/태그확정을 8지점에서 409 차단한다.</div>
+      <div class="svc-card-desc">전표 핵심 서비스. Single Table Inheritance(출고/입고). 10단계 라이프사이클 상태머신 도메인 메서드 가드. 전자서명 + 배송 사진(MinIO). 견적 생성. 전표번호 YYYY/MM/DD-{순번}. Excel 내보내기. Redis SSE 실시간 이벤트. 전표·견적은 (거래처+품목)의 마지막 VAT 포함 저장단가를 기억해 <strong>거래처 최근단가</strong>로 자동채움한다. 세트는 parent만 <code>BUNDLE_SET</code> 출처로 기억하고 구성품은 제외한다 — 이 기억의 의미는 <strong>&ldquo;세트를 선택하며 입력한 단가&rdquo;</strong>이며 선택 시점에만 정의된다(수정 경로는 갱신하지 않는다 · D-R8-5). 거래처 변경 N개 라인은 hit-only <code>POST /slips/price-memory/bulk</code> 1회로 조회한다. 주문은 가격기억 대상에서 제외한다. 검수완료→배차발송 에픽에서 외부기사/배송사 마스터(external_carrier), 타배송사 발송 이력(external_dispatch), SMS/PRINT/BOTH 채널, 배차의뢰서 print-data를 보유한다. 출고 컷오프 마스터(slip_outbound_cutoff)와 OutboundCutoffGuard로 배송태그별 당일 마감 초과 시 출고전표 생성/태그확정을 8지점에서 409 차단한다.</div>
       <div class="svc-tags">
         <span class="stag purple">STI 상태머신</span>
         <span class="stag blue">@Version 낙관적 락</span>
@@ -712,6 +712,8 @@ body {
         <span class="stag red">Redis SSE</span>
         <span class="stag yellow">Apache POI</span>
         <span class="stag green">ShedLock</span>
+        <span class="stag blue">거래처 최근단가 Bulk</span>
+        <span class="stag purple">BUNDLE_SET</span>
       </div>
     </div>
 

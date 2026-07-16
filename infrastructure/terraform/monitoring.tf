@@ -32,6 +32,90 @@ resource "aws_cloudwatch_log_group" "docker" {
   }
 }
 
+# ─── slip-service 가격기억 fail-soft 감지 (#809, CUTOVER M-19) ────────────────
+# 애플리케이션 WARN 문자열을 메트릭으로 변환해 health=UP 인 조용한 기능 저하도
+# 운영 알람으로 승격한다.
+#
+# 로그 원천 (R6-H5 재설계): slip-service 로그는 docker-compose.prod.yml 의 awslogs
+# driver 가 위 docker log group 의 stream "slip-service" 로 직접 전달한다.
+# user_data.sh CloudWatch Agent 의 json 와일드카드 tail 은 AWS 문서상 "최신 수정
+# 파일만 push" 라 17개 컨테이너 동시 기록에서 라인 유실이 가능해 alarm 원천으로
+# 쓰지 않는다 (나머지 컨테이너 best-effort 수집 전용).
+#
+# 잔여 한계 (정직 기록): treat_missing_data=notBreaching 이므로 전달 경로 자체가
+# 끊기면 datapoint 부재로 alarm 이 계속 OK 로 남는다. 보상 통제 = CUTOVER.md M-19 의
+# 양성 도달 검사(인위 감시 문자열 → filter-log-events 도달 + alarm 발화 확인).
+# 상시 전달 heartbeat alarm 은 미구현이며, 실 EC2 부재로 라이브 실측은 cutover 시
+# M-19 에서 최초 수행된다 (2026-07-16 기준 AWS 공식 문서 기반 설계 검증까지 완료).
+
+resource "aws_cloudwatch_log_metric_filter" "slip_price_memory_upsert_failed" {
+  name           = "slip-price-memory-upsert-failed"
+  log_group_name = aws_cloudwatch_log_group.docker.name
+  pattern        = "\"partner-product price memory batch upsert failed\""
+
+  metric_transformation {
+    name          = "SlipPriceMemoryUpsertFailed"
+    namespace     = "SamhanLogis/Slip"
+    value         = "1"
+    default_value = "0"
+  }
+}
+
+resource "aws_cloudwatch_log_metric_filter" "slip_price_memory_queue_rejected" {
+  name           = "slip-price-memory-queue-rejected"
+  log_group_name = aws_cloudwatch_log_group.docker.name
+  pattern        = "\"partner-product price memory queue rejected\""
+
+  metric_transformation {
+    name          = "SlipPriceMemoryQueueRejected"
+    namespace     = "SamhanLogis/Slip"
+    value         = "1"
+    default_value = "0"
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "slip_price_memory_upsert_failed" {
+  alarm_name        = "${local.name_prefix}-slip-price-memory-upsert-failure"
+  alarm_description = "slip-service 가격기억 batch upsert 실패 감지"
+  namespace         = "SamhanLogis/Slip"
+  metric_name       = "SlipPriceMemoryUpsertFailed"
+
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  period              = 300
+  statistic           = "Sum"
+  threshold           = 0
+  treat_missing_data  = "notBreaching"
+
+  alarm_actions = [aws_sns_topic.alerts.arn]
+  ok_actions    = [aws_sns_topic.alerts.arn]
+
+  tags = {
+    Name = "${local.name_prefix}-slip-price-memory-upsert-failure"
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "slip_price_memory_queue_rejected" {
+  alarm_name        = "${local.name_prefix}-slip-price-memory-queue-rejected"
+  alarm_description = "slip-service 가격기억 비동기 queue 포화 감지"
+  namespace         = "SamhanLogis/Slip"
+  metric_name       = "SlipPriceMemoryQueueRejected"
+
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  period              = 300
+  statistic           = "Sum"
+  threshold           = 0
+  treat_missing_data  = "notBreaching"
+
+  alarm_actions = [aws_sns_topic.alerts.arn]
+  ok_actions    = [aws_sns_topic.alerts.arn]
+
+  tags = {
+    Name = "${local.name_prefix}-slip-price-memory-queue-rejected"
+  }
+}
+
 # ─── ALB 5xx 알람 ──────────────────────────────────────────────────────────────
 
 resource "aws_cloudwatch_metric_alarm" "alb_5xx" {

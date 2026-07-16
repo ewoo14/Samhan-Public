@@ -49,6 +49,18 @@ usermod -aG docker ec2-user
 echo "[3/7] CloudWatch Agent 설치"
 dnf install -y amazon-cloudwatch-agent
 
+# CloudWatch Agent 수집 설계 (#809 R6-H5 — AWS 공식 문서
+# "CloudWatch Agent Configuration File: Logs Section" 근거):
+#   - collect_list 의 file_path 와일드카드는 "Only the latest file is pushed to
+#     CloudWatch Logs based on file modification time" — 17개 컨테이너 json 로그가
+#     entry 1개에 매치되면 가장 최근 수정 파일만 push 되어 특정 컨테이너 라인이
+#     유실될 수 있다. 아래 Docker 와일드카드 entry 는 best-effort 수집 전용이다.
+#   - alarm 원천(가격기억 metric filter 2건)인 slip-service 로그는 이 entry 가 아니라
+#     docker-compose.prod.yml 의 awslogs logging driver 가 같은 log group 의
+#     stream "slip-service" 로 직접 전달한다 (CUTOVER.md M-19 참조).
+#     awslogs driver 전환 후 slip-service 는 json 파일을 만들지 않아 이중 수집 없음.
+#   - log_stream_name 지원 변수는 {instance_id}/{hostname}/{local_hostname}/{ip_address}
+#     뿐이다. {container_id} 는 지원 변수가 아니라 리터럴로 렌더되므로 사용 금지.
 cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << 'CW_CONFIG'
 {
   "logs": {
@@ -58,7 +70,7 @@ cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json << 'CW_C
           {
             "file_path": "/var/lib/docker/containers/**/*-json.log",
             "log_group_name": "/samhanlogis/production/docker",
-            "log_stream_name": "{hostname}/{container_id}",
+            "log_stream_name": "{hostname}/docker-others",
             "timezone": "Asia/Seoul"
           },
           {
@@ -187,6 +199,27 @@ SAMHAN_AROLOGIS_JWT_SECRET=$${AROLOGIS_JWT_SECRET}
 # ─── Eureka ──────────────────────────────────────────────────
 EUREKA_URL=http://eureka-server:8761/eureka/
 SAMHAN_DISCOVERY_PROVIDER=eureka
+
+# ─── slip-service auth/가격기억 운영 노브 (#809) ─────────────
+# docker-compose.prod.yml 의 명시 environment 매핑을 통해 slip-service 에 전달.
+SAMHAN_AUTH_CONNECT_TIMEOUT_MS=2000
+SAMHAN_AUTH_READ_TIMEOUT_MS=3000
+SAMHAN_PRICE_MEMORY_LOCK_TIMEOUT_MS=1000
+SAMHAN_PRICE_MEMORY_STATEMENT_TIMEOUT_MS=3000
+SAMHAN_PRICE_MEMORY_TRANSACTION_TIMEOUT_SECONDS=4
+SAMHAN_PRICE_MEMORY_ASYNC_CORE_POOL_SIZE=2
+SAMHAN_PRICE_MEMORY_ASYNC_MAX_POOL_SIZE=4
+SAMHAN_PRICE_MEMORY_ASYNC_QUEUE_CAPACITY=100
+SAMHAN_PRICE_MEMORY_ASYNC_SHUTDOWN_AWAIT_SECONDS=5
+# R6-M2 + D-R8-2: slip-service 메인 DataSource Hikari 커넥션 획득 대기 상한(ms).
+# 30000 = fleet 표준(Hikari 기본). 종전 4000 전역화는 pool 포화 시 사용자 요청을 4초 만에
+# 500 으로 끊었다. 가격기억 4초 정책은 아래 전용 pool 로 격리
+# (runbook: docs/runbooks/slip-price-memory-upsert-failure.md).
+DB_CONNECTION_TIMEOUT_MS=30000
+# 가격기억 전용 pool — 메인과 격리. POOL_MAX 4 = ASYNC_MAX_POOL_SIZE 4 와 1:1.
+SAMHAN_PRICE_MEMORY_DB_CONNECTION_TIMEOUT_MS=4000
+SAMHAN_PRICE_MEMORY_DB_POOL_MAX=4
+SAMHAN_PRICE_MEMORY_DB_POOL_MIN_IDLE=0
 
 # ─── RabbitMQ (docker-compose.prod.yml 컨테이너) ────────────
 RABBIT_HOST=rabbitmq

@@ -145,6 +145,69 @@ class EstimateRestoreTest {
     }
 
     @Test
+    @DisplayName("[#822] restoreFromSnapshot: VAT 포함 단가 라인은 unit_price_with_vat 권위값이 "
+            + "복원된다 (11의 배수가 아닌 단가 — 결함: 전량 NULL 화 + 합계 드리프트, 라이브 QA 16b)")
+    void restoreFromSnapshotPreservesVatInclusiveUnitPrice() throws Exception {
+        UUID estimateId = UUID.randomUUID();
+        Estimate estimate = Estimate.create("2026/07/16-1", LocalDate.of(2026, 7, 16), 1,
+                UUID.randomUUID(), "삼한물산", "123-45-67890", "서울시 주소",
+                LocalDate.of(2026, 8, 16), "VAT포함 복원", "user-1");
+        injectId(estimate, estimateId);
+        // 87,999(비 11배수) × 3 = 263,997 → 공급 239,997 / 부가세 24,000 (라인 단위 권위값)
+        estimate.addLine(EstimateLine.createFromVatInclusive(estimate, 1, UUID.randomUUID(),
+                "컴프레서", "CP-9", "380V", 3, new BigDecimal("87999"), "VAT포함 라인"));
+
+        EstimateSnapshot snapshot = estimate.toSnapshot();
+        // 캡처 자체가 권위값을 담아야 한다 (결함: EstimateSnapshot.Line 에 필드 부재)
+        assertThat(snapshot.lines().get(0).unitPriceWithVat()).isEqualByComparingTo("87999.00");
+
+        // 라인 전량 교체(공급 단가 라인) 후 복원
+        for (EstimateLine line : java.util.List.copyOf(estimate.getLines())) {
+            estimate.removeLine(line);
+        }
+        estimate.addLine(EstimateLine.create(estimate, 1, UUID.randomUUID(),
+                "교체품목", null, null, 1, new BigDecimal("50000.00"), null));
+
+        estimate.restoreFromSnapshot(snapshot);
+
+        EstimateLine restored = estimate.getLines().get(0);
+        // 결함(수정 전): create 공급 semantics 재생성 → withVat NULL(legacy provenance 오전환)
+        assertThat(restored.getUnitPriceWithVat()).isEqualByComparingTo("87999.00");
+        assertThat(restored.getUnitPrice()).isEqualByComparingTo("79999.00");
+        assertThat(restored.getSupplyAmount()).isEqualByComparingTo("239997");
+        assertThat(restored.getVatAmount()).isEqualByComparingTo("24000");
+        assertThat(restored.getLineTotal()).isEqualByComparingTo("263997");
+        // 헤더 합계 = 복원 라인 권위값 기준 재계산 (편집 폼 총합 ≠ DB 총합 불일치 재발 방지)
+        assertThat(estimate.getTotalSupply()).isEqualByComparingTo("239997");
+        assertThat(estimate.getTotalVat()).isEqualByComparingTo("24000");
+        assertThat(estimate.getTotalAmount()).isEqualByComparingTo("263997");
+    }
+
+    @Test
+    @DisplayName("[#822] restoreFromSnapshot: 구 스냅샷(unitPriceWithVat 부재=null)은 종전 공급 "
+            + "semantics 재계산을 유지한다 (하위호환)")
+    void restoreFromSnapshotLegacySnapshotKeepsSupplyRecalculation() throws Exception {
+        UUID estimateId = UUID.randomUUID();
+        Estimate estimate = rev1Estimate(estimateId);
+        // 구 시그니처 생성자(10-arg) = #822 이전 JSONB 형상과 동형 (withVat 키 부재 → null 역직렬화)
+        EstimateSnapshot legacy = new EstimateSnapshot("2026/05/29-3", LocalDate.of(2026, 5, 29),
+                estimate.getPartnerId(), "삼한물산", "123-45-67890", "서울시 주소",
+                LocalDate.of(2026, 6, 29), "레거시 스냅샷",
+                java.util.List.of(new EstimateSnapshot.Line(UUID.randomUUID(), "펌프", "MX-100",
+                        "220V", 2, new BigDecimal("15000.00"), new BigDecimal("30000.00"),
+                        new BigDecimal("3000.00"), new BigDecimal("33000.00"), "라인메모")));
+
+        estimate.restoreFromSnapshot(legacy);
+
+        EstimateLine restored = estimate.getLines().get(0);
+        assertThat(restored.getUnitPriceWithVat()).isNull();
+        assertThat(restored.getUnitPrice()).isEqualByComparingTo("15000.00");
+        assertThat(restored.getSupplyAmount()).isEqualByComparingTo("30000.00");
+        assertThat(restored.getVatAmount()).isEqualByComparingTo("3000.00");
+        assertThat(restored.getLineTotal()).isEqualByComparingTo("33000.00");
+    }
+
+    @Test
     @DisplayName("restoreFromSnapshot: QUOTE_ACCEPTED(편집 불가) 견적은 복원도 CONFLICT (도메인 가드)")
     void restoreFromSnapshotThrowsConflictWhenNotEditable() throws Exception {
         UUID estimateId = UUID.randomUUID();

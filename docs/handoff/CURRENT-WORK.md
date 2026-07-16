@@ -4,6 +4,356 @@
 
 ---
 
+## 🔵 2026-07-16 (회사PC) — #809 **R8 리뷰+fix 1차 완주 · R8 fix 2차 중단 지점** (집PC 재개)
+
+> **다음 세션(집PC) 첫 읽기(최우선).** 개발책임자 지시: **"집PC에서 재개"**.
+> 🚨 **먼저 `git pull` 하고 sync 카운트를 읽어라.** (지난 회사PC 세션이 로컬 16커밋 뒤처진 걸 못 읽고 stale 핸드오프에 물렸음 — 반복 금지.)
+
+### 상태 (전부 원격 push 완료)
+- **브랜치** `feat/809-partner-product-price-memory` · **HEAD `e8f558cd4`** · **원격 완전 동기화(0 0)** · PR **#820 OPEN**·base=main
+- **워크플로우 개편 반영**: 2026-07-16 개발책임자 지시로 **1차 적대검증 = FABLE5 → OPUS 4.8**(FABLE5 토큰 극심·폐지). 커밋 `178e3a113`. [[feedback_canonical_workflow]] 갱신됨. 5단계 = CODEX SOL 5.6 은 그대로.
+- **PM genuine 검증(R8 fix 1차 기준·HEAD `a964607f0`)**: slip-service **1343** / desktop **763** / DS **49** / typecheck 0 — 전부 0 fail/**skip**
+
+### 🔴 재개 지점 = **R8 fix 2차 재디스패치** (신규 4건 · fresh)
+R8 fix 1차의 라이브 QA 가 **신규 4건**(HIGH 2·MEDIUM 2)을 포착 → fix 2차 착수했으나 **세션 정리로 중단.**
+- **미완 WIP = `wip/809-r8-fix2-incomplete` 브랜치(`14e1b3c02`) 로 격리·push됨.** 🚫 **완료로 착각 금지** — "R8-QA-12 유닛 테스트 추가" 직전 중단·**gradle/vitest 미검증**. `e8f558cd4` 에서 **fresh 재디스패치**하되 WIP diff 는 참조만([[feedback_codex_detached_write_settle]] 정신).
+- 신규 4건 + 확정 처리 방침(전부 [PR 게시](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4989664888)):
+  | ID | 등급 | 확정 |
+  |---|---|---|
+  | **R8-QA-9** | HIGH | 전표 수정 진입 시 거래처 빈칸 → **바로 fix**(disabled 요소가 combobox `open` 을 못 닫음 — `SlipDetailPage:511-522`·`AsyncAutocomplete:129,267`) |
+  | **R8-QA-11** | HIGH | 거래처만 바꿔 저장 → 옛 거래처 협상단가가 새 거래처 각인 → **D-R8-10**: `SlipFormPage` 재조회·배너·강조(31건)를 수정모달에 **공용 추출 이식**(복붙 금지). `SlipDetailPage:1386-1406` |
+  | **R8-QA-12** | MEDIUM | 동시 서버측 행삭제 → 피어 저장 400+입력 증발 → **D-R8-11**: 행삭제 잠금(`slipCoeditActive`) **제거** + Y.Doc 직독으로만 방어. 잠금 제거로 **R8-QA-2 근본 fix 를 2창 GUI 로 실증 가능**해짐(이번엔 꼭 라이브 재현) |
+  | **R8-QA-13** | MEDIUM | 계약 마커 자기신고 → **바로 fix**: 계보 보유 문서 + 마커 true + lineId 0개 = 거부. `LineIdContractGate:75-79`. ⚠️ 계보 **없는** 평면 문서 전 라인 교체는 정상(오탐 금지) |
+
+### 🧪 라이브 QA 하네스 (검증됨)
+- 렌더러: `cd clients/desktop; $env:VITE_API_BASE_URL="http://localhost:8080"; node_modules\.bin\vite --config playwright/809-price-memory-real-qa/vite.809-realqa.config.ts --port 5219 --strictPort` (design-system **소스 alias**·dist 비의존)
+- 실행: `$env:QA_BASE_URL="http://localhost:5219"; node_modules\.bin\playwright test --config=playwright.real-qa.config.ts --reporter=line --timeout=60000`
+- 계정 **`dev_manager` / `dev_p05_pass!`**(⚠️`dev_master` 는 `sales.slip.create` 없어 403)
+- 스샷 → `docs/qa/809-partner-product-price-memory/r8-postfix2/` (신규). **r2·r4·r4-postfix·r5·r5-postfix·r6·r6-postfix·r8·r8-postfix 전부 불가침**
+- 🔴 **환경 재빌드 필수**(집PC 는 이미지·dist stale): `.\gradlew :services:slip-service:bootJar -x test` → docker build+`up -d --no-deps --force-recreate slip-service` · `cd clients/web/design-system; npm run build`. **재배포 후 `unzip -l /app/app.jar | grep LineIdContractGate` 로 배포본 실증.** 집PC 는 influxd 8086 점유 → `docker-compose.slip-port-override.yml`(18086) 필요할 수 있음
+
+### 🔵 남은 경로
+R8 fix 2차(OPUS·신규 4건) → PM 검증(변경모듈 전체 genuine) → 라이브 QA 재실행(**R8-QA-2 를 잠금 제거 후 GUI 실증**) → **R8 fix 2차 게시** → **R9 = CODEX SOL 5.6 5차원**(`gpt-5.6-sol`·개편 후 Codex 첫 검증·`mcp__codex__codex` 직접) → 양측 0수렴 → PM 종합 10-게이트 → CI green → 머지. **이 슬라이스 완주로 세션 정리(다음 슬라이스 미착수).**
+
+### 📌 개발책임자 결정 (R8 누적 · 전부 PR 게시)
+- **D-R8-1** legacy 견적 데드락 = 이 PR fix(CRDT 편입으로 근본 해소) · **D-R8-2** Hikari 전용 DataSource 격리+전역 30s · **D-R8-3→D-R8-5 번복** BUNDLE_SET 기억 = 설계 귀결·결함 아님(spec close) · **D-R8-6** lineId 미전송 PUT=400 · **D-R8-7** 전표 거래처 자유입력 봉쇄+Autocomplete 통일 · **D-R8-8** 세트 구성품 품목 교체=계보 승계 금지(BE 검증+FE 직독) · **D-R8-9** 요청 레벨 계약 마커 · **D-R8-10** 수정 거래처 변경 유지+파생 fix · **D-R8-11** 행삭제 잠금 제거+직독
+- 게시 앵커: [R8 리뷰](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4987613082) · [D-R8-5~8](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4987642891) · [D-R8-9](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4988099852) · [R8 fix 1차](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4989142660) · [D-R8-10/11](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4989664888)
+
+### 🔴 R8 정직 고지 (승계)
+- **R8 fix 1차가 신규 4건을 낳음** — 7라운드 연속 패턴이나, 이번은 28→4로 **국소화**(전부 R8 fix 가 건드린 지점의 마감 미스 = 수렴 신호). R9 Codex 첫 검증에서 새 지적 가능.
+- **R8-QA-2 근본 fix(Y.Doc 직독) 라이브 미실증** — fix 1차의 행삭제 잠금이 트리거 봉쇄. **D-R8-11 로 잠금 제거 후 fix 2차 라이브 QA 에서 꼭 2창 GUI 실증할 것.**
+- **라이브 수치 휘발성** — revision 21(R8 리뷰)→56(정정 시점). QA 쓰기로 증가. **고정 수치 단언 테스트 금지**·구조를 근거로.
+- **R8-QA-7 진단 정정** — r2 스위트 붕괴 원인은 "product_code NULL"(무관) 아니라 **픽스처 품목 3종 부재**. fix 2차는 스펙 자급 픽스처 유지 확인.
+
+### ⚙️ 이번 세션(회사PC) 환경 교훈
+- 🚨 **git pull + sync 카운트 먼저** — stale 핸드오프에 물리는 것 방지(이번 세션 초반 실제 발생)
+- **XML 집계 `-Raw` 필수** — `Get-Content` 배열 반환이 `[xml]` 캐스트 실패→일부 파일 누락(1333 오집계→1343 정정). `[xml]$d = Get-Content $x -Raw -Encoding UTF8`
+- **DataSource 2개 기동 성공 실증** — 전용 pool 격리해도 `@Primary` 로 autoconfig back-off 회피됨(health UP)
+- **미완 에이전트 산출물 = WIP 브랜치 격리**(feature 청결 유지·집PC 참조 가능). stash 는 원격 안 넘어가 타 PC 재개 시 무의미
+
+### 🔴 잔여 슬라이스 큐 (이번 세션에 이슈 등록 완료 — #809 완주 후 순차)
+**#810**(입금매핑·결정 6건 확정) → **#826**(주문서 통합·슬6 이식) → **#827**(레거시 GAS·🔴Google 자격 블로커) → **#825**(전역 입력 UX·결정 5건 확정) → **#824**(품목행 공급가액·부가세·결정 확정) → **#823**(매출배분 거래처 검증) → **전표 거래처 필수화**(별도 슬라이스) → **#828**(role=row orphan) → #773 잔여 · #816 후속(DELAYED 실배선)
+- 신규 등록 이슈: #823 #824 #825 #826 #827 #828 (전부 개발책임자 결정 반영·본문 박제됨)
+
+---
+
+## 🟢 2026-07-16 (집PC 야간 완주) — #809 **R4~R7 완주 · lineId 계약으로 근본원인 해소 · R8 착수 지점**
+
+> **다음 세션(회사PC) 첫 읽기(최우선).** 개발책임자 지시: **"R8 은 회사PC에서부터 진행"**.
+
+### 🔴 재개 지점 = **R8 = FABLE5 5차원 full 라운드 재시작**
+**범위 점증(lineId 계약 도입) → [[feedback_expanded_scope_reinstate_review]] 에 따라 리뷰 재가동 필수.**
+- R8(FABLE5 5차원) → fix → R9(CODEX SOL 5.6 5차원) → **양측 0수렴** → PM 종합 10-게이트 → 머지
+- **예상 2라운드** — 근본원인이 제거돼 이전처럼 "fix 가 새 결함을 낳는" 구조가 끊겼음
+
+### 상태
+- **브랜치** `feat/809-partner-product-price-memory` · **HEAD `34f978ec9`** · **PR #820 OPEN**·base=main
+- **CI 36/36 SUCCESS**(on `34f978ec9`) · slip-service **1298** · partner 314 · approval-core 16 · ecount-io 13 · notification-publisher 4 · desktop **749** · DS **49** — 전부 0 fail/error/skip
+- 라이브 QA **19/19**(직전 HEAD `90a2c6ed9` 기준 · 스샷 41장 `r6-postfix/`)
+
+### 🔑 이번 세션의 핵심 — **7라운드 미수렴의 근본원인 제거**
+```
+update 계약이 라인 안정 ID 없이 전 라인을 통째 교체
+  → 서버가 "신규 라인"과 "수정된 기존 라인"을 구분 불가
+  → 버려진 세트 계보를 fingerprint 휴리스틱으로 되찾으려는 모든 시도가 반례에 붕괴
+     R5 greedy(라이브 CONFIRMED 오귀속) → R6 2-패스(R7 이 BLOCKING+반례 probe 로 붕괴)
+  → 개발책임자 결정: lineId 왕복 계약 도입 → 계보를 애초에 버리지 않음
+```
+- `BundleLineageResolver` = **136줄 · 휴리스틱 잔존 0**(Comparator/distance/tie/FallbackCandidate 전부 0 — PM grep 확인)
+- `lineId==null`·미전송 → **신규 평면 라인. 폴백 없음**(폴백을 남기면 같은 결함 재발)
+- 타 문서 ID·중복 → **400**(403 아닌 이유: 문서 존재 oracle 노출 회피)
+- 견적 `EstimateLineResponse` 에 `setHead`/`parentSetModel` 노출 추가(전표엔 있던 비대칭 해소)
+- R7 반례가 테스트 이름에 잠김: `modifiedSetHead_quantityOnly_stillPreservesLineageByLineId` · `sameProductComponentAndPlainLine_keepTheirOwnLineageRegardlessOfRequestOrder` · `swappingRequestOrder_doesNotChangeLineageAssignment` · IT `lineIdFromAnotherSlip_isRejectedAsBadRequestBeforeReplacement`
+
+### 🔴 R8 fix 대상 (R7 이 냈으나 **미fix** — 이미 진단 완료)
+| ID | 내용 |
+|---|---|
+| **R7-BE-3** [HIGH·CONFIRMED] | `SlipSnapshot` 이 **`driver`·`unloadDate` 누락** — `SlipService.editDriver:403` 이 *"toSnapshot 필드"* 라 **명시**하는데 record 에 없음. 라이브 실측: **활성 revision 2,028건 전부 그 키 0건**, `unload_date` 보유 활성 전표 7건. point-in-time 복원이 현재 값을 남김 |
+| **R7-FE** [MEDIUM] | **duplicate mock 이 권한 검사 없음** → 생성 권한 없는 역할도 복사 성공(실 BE 는 403). `mockRequirePermission()` 존재하나 duplicate 분기서 미호출 |
+| **R7-FE** [MEDIUM] | **duplicate mock/test 가 세트 계보 미검증** → 전역 `SAMPLE_LINES` 반환 + `lines.length>0` 만 확인 → **H2 원결함이 mock gate 통과**. `__mockStatus:201` 도 미반영 |
+| **R7-FE** [MEDIUM] | **거래처 해제 시 두 폼 모두 stale 안내 계속 낭독** — R6-M5 는 **재선택 refresh 시작에서만** 비움. 해제 분기엔 setter 없음(**또 slip/estimate 비대칭**) |
+| **R7-FE** [LOW·CONFIRMED] | **mock UUID regex 가 GET 실 wire 보다 엄격** — `partnerId=1-1-1-1-1` → 실 API **204** / mock **400**(JDK17 `UUID.fromString` 축약형 수용). POST bulk 는 Jackson 이 canonical 36자만 수용해 현 regex 와 일치 → **GET/POST 검증 분리 필요** |
+| **R7-FE** [LOW] | R6-M4 의 "양방향 실증"이 **fixture 계층 차이**였음(PM 게시 정정 완료) — API 경계 테스트와 페이지 테스트의 책임 분리 필요 |
+
+### 🔵 개발책임자 확인 **대기 3건** (머지 게이트를 막음 — R8 fix 에 함께 넣으려면 답 필요)
+1. **R6-H6** 정상 coedit 모드에서 **legacy 견적 1,926건 저장 데드락**(`PartnerAutocomplete disabled={coeditActive}` 인데 "거래처를 다시 선택해 주세요"). **main 도 동일 = #809 회귀 아님**. 이 PR 에서 고칠지 / 별도 이슈 / 오류 문구만 정정.
+2. **R6-M1** Hikari `connection-timeout` **4s 전역화**(fleet **26모듈 중 slip-service 유일**). R5 진단은 옳았으나 처방이 범위 초과. 권고 = 가격기억 전용 DataSource 격리 후 전역 30s 복원.
+3. **R6-M8** **BUNDLE_SET parent 기억이 생성 시점 1회뿐**(수정 경로 미갱신 → 재선택 시 구값). ※ **lineId 계약 도입으로 재검토 가능해짐**.
+
+### 📮 이번 세션 게시 (PR #820)
+[R4 리뷰](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4980286625) · [D-R4 결정 4건](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4980376041) · [R4 fix](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4981726892) · [R5 리뷰](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4982532949) · [R5 fix](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4983603804) · [R6 리뷰](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4984027656) · [R6 fix](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4985345956) · [R7 + lineId 결정](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4985570977)
+
+### 📌 개발책임자 결정 (누적)
+- **D-R3-1~4**(R3) · **D-R4-1** `정가`→**`판매가`** · **D-R4-2** 최신성 권위=`remembered_at` 캡처 시각 유지 · **D-R4-3** 서브-원 드리프트 수용 · **D-R4-4** 거래처 해제 시 단가 유지+마커만 해제
+- **범위 외 결함 = PM 자율 이슈 등록 후 보고** → [[feedback_fix_in_current_pr_no_split]] 박제. 선례 **#821**·**#822**
+- **#821**(nightly 유령 필터) = "유지 + #820 에서 같이 fix" → 완료
+- **#822**(견적 revision 복원 시 `unitPriceWithVat` 소실) = PM 이 "범위 외" 등록 → **라이브 실측이 근거를 뒤집어 범위 내로 정정**([이슈 코멘트](https://github.com/ewoo14/Samhan-Public/issues/822#issuecomment-4984944601)) → #820 에서 fix 완료·머지 시 close
+- **lineId 왕복 계약 도입**(2026-07-16) — 위 §핵심 참조
+
+### 🔴 PM 자기 지적 (전부 PR 게시됨 — 반복 방지용)
+1. **로컬 통과 ≠ CI green** — R4 fix 게시에서 로컬 740/740 을 근거로 green 보고했으나 CI 는 red(flaky).
+2. **R4-F2 도달성 과장** — "legacy 1927/1927 전부 오염 대상" 은 과장. 실 legacy **1,926건 전부 `partner_id NULL`** → upsert null-skip → **현 실데이터로 도달 불가**.
+3. **"#809 회귀" 가설 반증** — legacy 저장 차단은 **main 도 동일**(main hydrate 가 `setPartner` 미호출).
+4. **R5 문서 배치 누락** — R4 는 돌렸는데 R5 는 안 돌려 dev-report 가 R5 와 모순. **4개 차원 독립 지적**.
+5. **라이브 프로브 병렬 실행** — BE·QA 가 같은 DB 동시 쓰기 → QA false-RED. → [[feedback_parallel_agent_gradle_shared_tree_contention]] **3변종** 박제.
+6. **스펙 리터럴 false-RED** — `'f|NULL'` 이 틀림(PG `boolean::text` = `true`/`false`). ⚠️ 단 **캐스트 없는 raw boolean 은 `t`/`f`** 라 일괄 치환은 새 false-RED 를 만듦(에이전트가 막음).
+7. **R6-M4 "양방향 실증" 오보** — `String()` 만 무력화한 실증은 **fixture 계층 차이**였음(R7-FE 가 적발).
+8. **R6 리뷰 총계 오기** — LOW 를 6 이라 썼으나 실제 L1~L7 = 7개.
+
+### ⚙️ 🔴 회사PC 착수 시 필수 (이 세션에서 실증된 함정)
+- 🔴 **Docker 이미지·design-system dist 는 git 으로 안 따라온다.** 이 세션 시작 시 slip-service 가 **07-11 빌드**(V58 미적용·테이블 부재)였고 dist 는 **07-08**(stale → desktop typecheck **31건 false-RED**). **다른 PC 의 "준비 완료" 를 믿지 말 것.**
+- 재배포: `.\gradlew :services:slip-service:bootJar -x test` → `docker compose -p infrastructure --project-directory <repo>/infrastructure -f docker-compose.yml -f docker-compose.local-all.yml -f docker-compose.slip-port-override.yml build|up -d --no-deps --force-recreate slip-service`
+- **host influxd 가 8086 점유** → slip-service 호스트 포트 **18086**(커밋된 `docker-compose.slip-port-override.yml`)
+- **design-system dist 재빌드**: `cd clients/web/design-system && npm run build` (**desktop typecheck 전 필수**)
+- **codex**: `~/.codex/config.toml` 기본 model=`gpt-5.5` → **디스패치마다 명시**. 이 세션 실측: `gpt-5.6-sol` ✅ · `gpt-5.6-luna` ✅
+- **gradle test 는 foreground**(백그라운드 killed) · PowerShell `Select-Object -First N` 파이프 조기종료가 **exit 255 오탐**(무시하고 XML 집계로 판정)
+- **라이브 QA 하네스**: `playwright/809-price-memory-real-qa/vite.809-realqa.config.ts`(design-system **소스 alias** — dist 신선도 비의존). 스샷 경로는 라운드별 신규 디렉토리로(`r6-postfix/` 까지 사용됨 — **r2~r6-postfix 전부 불가침**)
+
+### 완주 라운드 (전부 PR 게시됨)
+| 라운드 | 결과 | 게시 |
+|---|---|---|
+| R4 FABLE5 | 27건(HIGH 4·M 9·L 14) → 전건 fix | [리뷰 4980286625](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4980286625) · [결정 4980376041](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4980376041) · [fix 4981726892](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4981726892) |
+| R5 CODEX SOL 5.6 | 22건(**BLOCKING 1**·H 8·M 9·L 4) → 전건 fix | [리뷰 4982532949](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4982532949) · [fix 4983603804](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4983603804) |
+| **R6 FABLE5 재수렴** | **22건(HIGH 6·M 10·L 6) · 0수렴 실패** | [리뷰 4984027656](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4984027656) |
+
+### 🔴 재개 지점 = **R6 fix 4배치 진행 중** (BE ∥ DevOps ∥ QA ∥ 문서) → **2차 = FE+Design 병합 미착수**
+- **1차 배치 담당**: BE(H1 two-pass resolver·H2 BE 복사 endpoint·H3 스냅샷 계보·M2·L3·L4) · DevOps(H5 M-19 도달검사·M2 infra·M10 #821 코멘트·L7 PR body) · QA(M9 스펙 격리·L6·G1/G6/G7/G8/G10 갭) · 문서(dev-report R5+R6 절·spec 화면계약 3요소)
+- **🔴 2차 배치(미착수) = FE+Design 병합** — `clients/**` 전부. 담당: **H2 FE 측**(BE endpoint 계약 수신 후 `duplicateSlip` 배선) · **H4**(대비 3표면: `EstimateFormPage.tsx:1321,1318` · `global.css:77`) · **M3**(mock UUID 완화 or MOCK_ADMIN_PARTNERS RFC-4122 승격) · **M4**(coedit 테스트 fixture 를 number 로 — 현재 가짜) · **M5**(slip `refreshAutoPricesForPartner` 첫 줄에 `setPriceLookupAnnouncement('')` 1줄) · **M6**(contrast 가드가 tokens.css 파싱해 실값 결선) · **L1**(failedProductIds 주석) · **L2**(role=row orphan) · **L5**(H4 override 부작용)
+- 이후: PM genuine 검증 → 재배포 → 라이브 QA 재실행 → 커밋/푸시 → **R6 fix 게시** → **R7 = CODEX SOL 5.6 재수렴**
+
+### 🔵 개발책임자 확인 대기 3건 (R6 리뷰 §확인요청)
+1. **R6-H6** 정상 coedit 모드 legacy 견적 **1,926건 저장 데드락**(`PartnerAutocomplete disabled={coeditActive}` 인데 "거래처를 다시 선택해 주세요") — **main 도 동일 = #809 회귀 아님**. 이 PR 에서 고칠지/별도 이슈로 이관할지.
+2. **R6-M1** Hikari `connection-timeout` **4s 전역화 유지 여부** — fleet 26모듈 중 slip-service 유일. 진단은 옳았으나 처방이 범위 초과. 권고=가격기억 전용 DataSource 격리 후 전역 30s 복원.
+3. **R6-M8** BUNDLE_SET parent 기억이 **생성 시점 1회뿐**(수정 경로 미갱신 → 재선택 시 구값) — 의도 확정+spec 명시 vs 결함 처리.
+
+### 🔴 이 PR 의 구조적 패턴 (개발책임자 보고 필요)
+```
+R1 M-2 fix  → R3 CH-1(9.1% 과소) 유발
+R3 CH-1 fix → 계열 sweep 누락 → R4 F2 로 귀환
+R4 fix 7종  → R5 가 전부 새 결함/오판으로 적발
+R5 fix 6종  → R6 가 또 전부 새 결함으로 적발
+```
+**6라운드 연속 "fix 가 새 결함을 낳음".** 특히 R5-H1 의 `BundleLineageResolver` 는 **버려진 정보(계보)를 fingerprint 휴리스틱으로 되찾으려는 설계**라 BE·QA 두 차원이 독립적으로 깨뜨렸음(greedy 오귀속·자기강화 루프). **근본 해법은 update 계약에 라인 안정 ID 를 실어 계보를 버리지 않는 것**일 수 있음 — 아키텍처 결정이라 개발책임자 판단 필요.
+
+### 📌 개발책임자 결정 (누적)
+- **D-R3-1~4**(R3) · **D-R4-1** `정가`→**`판매가`** · **D-R4-2** 최신성 권위=`remembered_at` 캡처 시각 유지 · **D-R4-3** 서브-원 드리프트 수용 · **D-R4-4** 거래처 해제 시 단가 유지+마커만 해제
+- **범위 외 결함 = PM 자율 이슈 등록 후 보고** (2026-07-15 확정 → [[feedback_fix_in_current_pr_no_split]] 박제) · 선례 **#821**
+- **#821**(nightly 유령 필터 3연속 실패) = **"유지 + #820 에서 같이 fix"** → 범위 점증분으로 R5/R6 검증 대상
+
+### 🔴 PM 자기 지적 (정직 기록 — 전부 PR 게시됨)
+1. **"CI green" 오보** — R4 fix 게시에서 로컬 740/740 을 근거로 green 보고했으나 CI 는 red(flaky). **로컬 통과 ≠ CI green.**
+2. **R4-F2 도달성 과장** — "legacy 1927/1927 전부 오염 대상" 은 과장. 실 legacy **1,926건 전부 `partner_id NULL`** → upsert null-skip → **현 실데이터로는 도달 불가**.
+3. **"#809 회귀" 가설 반증** — legacy 저장 차단은 main 도 동일. #809 은 메시지만 정확히 바꿈.
+4. **R5 문서 배치 누락** — R4 는 돌렸는데 R5 는 안 돌려 dev-report 가 R5 와 모순. **4개 차원이 독립 지적**.
+5. **라이브 프로브 병렬 실행** — BE·QA 차원이 같은 DB 동시 쓰기 → QA 12a false-RED. → [[feedback_parallel_agent_gradle_shared_tree_contention]] **3변종**으로 박제.
+
+### ⚙️ 이 PC 환경 (DESKTOP-8SO2GTL · `C:\Users\user`) — 세션 시작 시 실측한 것
+- 🔴 **Docker 이미지·design-system dist 는 git 으로 안 따라온다** — 세션 시작 시 slip-service 가 **07-11 빌드**(V58 미적용·테이블 부재)였고 dist 는 **07-08**(stale → desktop typecheck 31건 false-RED). **다른 PC 의 "준비 완료" 를 믿지 말 것.**
+- 재배포: `.\gradlew :services:slip-service:bootJar -x test` → `docker compose -p infrastructure --project-directory <repo>/infrastructure -f docker-compose.yml -f docker-compose.local-all.yml -f docker-compose.slip-port-override.yml build|up -d --no-deps --force-recreate slip-service`
+- **호스트 influxd 가 8086 점유** → slip-service 호스트 포트 **18086**(커밋된 `docker-compose.slip-port-override.yml`)
+- design-system dist 재빌드: `cd clients/web/design-system && npm run build` (**desktop typecheck 전 필수**)
+- codex CLI **0.144.4** · `~/.codex/config.toml` 기본 model=`gpt-5.5` → **디스패치마다 `gpt-5.6-sol` 명시**(정상 응답 확인)
+- gradle test 는 **foreground**(백그라운드 killed) · `Select-Object -First N` 파이프 조기종료가 **exit 255 오탐**을 만듦(무시하고 XML 집계로 판정)
+
+---
+
+## 🚨 2026-07-15 (집PC) — 표준 워크플로우 전면 개편 (개발책임자 지시 · 전 세션 엄수)
+
+> **구 워크플로우 전부 삭제·폐기.** 유일 진실원 = [.claude/memory/feedback_canonical_workflow.md](../../.claude/memory/feedback_canonical_workflow.md) (CLAUDE.md §4 병기). 이후 모든 슬라이스(진행 중 #809·대기 #810 포함)는 새 캐논으로 진행 — 아래 #809 재개 절의 "R4 Opus 5-agent"는 새 캐논의 **FABLE5 5-agents(이상) 적대검증 라운드**로, "Codex 적대"는 **CODEX SOL 5.6 라운드**로 읽는다.
+
+- **새 파이프라인**: OPUS 4.8 기획(기획 단계 조기 PR 개설+기획 리뷰 게시) → CODEX SOL 5.6 기획검수(게시) → CODEX LUNA 5.6 구현(게시) → FABLE5 5-agents(이상) 적대리뷰·라이브QA·fix·검증(게시) → CODEX SOL 5.6 5-agents(이상) 동일(게시) → 두 검증 **0수렴까지 반복** → PM 종합(게시)·CI green·머지. **엄수·단축금지·순차·모든 단계 리뷰 게시(실행=게시 1:1)·라이브QA 스크린샷 다수 필수.**
+- **codex 모델 ID 실측**(집PC): `gpt-5.6-sol`(기획검수/적대리뷰)·`gpt-5.6-luna`(구현) 정상 응답 — 디스패치마다 명시(config 기본값 의존 금지). 모델 부재 시 임의 대체 금지(개발책임자 선확인·구 Sonnet 대체 모드 폐기).
+- **삭제 메모리 4파일**(유효 규율은 캐논에 흡수): `feedback_review_5agent_no_shortcut_strict` · `feedback_workflow_discipline_root_cause` · `feedback_sonnet_substitution_when_codex_unavailable` · `feedback_codex_model_auto_switch`. sync 스크립트에 **prune(삭제 전파)** 추가.
+- **🔴 회사PC 필수 1회**: `git pull` 후 `.\scripts\sync-claude-memory.ps1` 실행(삭제 4파일+홈 stale 구 워크플로우 잔존 파일 자동 제거). 로컬 `~/.claude/agents/` 7종 frontmatter 도 `model: fable` 로 갱신 권장(집PC 완료 — 캐논의 "디스패치 시 model 명시" 규칙이 1차 방어).
+
+---
+
+## 🔄 2026-07-15 (집PC 저녁) — #809 **R3 완주+30건 fix 완료 · R4 착수 지점**에서 세션 정리 (집PC 재개 예정)
+
+> **다음 세션 첫 읽기(최우선).** codex CLI 0.144.4 업그레이드 + 세션 재시작으로 **`gpt-5.6-sol` 400 차단 해소 확인**(연결 테스트 통과). 그 뒤 R3 완주 → 30건 fix → 검증 green → push 까지 완료. **R4 는 디스패치했으나 세션 정리로 유실 → 재디스패치 필요.**
+
+### 상태 (전부 디스크/git/PR 보존)
+- **브랜치** `feat/809-partner-product-price-memory` · **HEAD `71a6f0412`** · **원격 동기화됨(push 완료)** · PR **#820 OPEN**·MERGEABLE·base=main
+- **R3 = 5/5 차원 완주** — 미실행이던 **DevOps·QA 2개 차원** 실행해 **신규 15건**(BLOCKING 1·HIGH 5·MEDIUM 7·LOW 2) 포착 → **R3 최종 30건**(BLOCKING 3·HIGH 12·MEDIUM 12·LOW 3)
+- **30건 전부 fix 완료** (Codex 3배치·PM 커밋 대행): `77ea69c77`(BE 39파일) → `9ff6387f1`(FE 14파일) → `71a6f0412`(QA/문서 8파일). **누계 59파일 +2944/−398**
+- **PM genuine 검증 green**: slip-service **1265**(`--rerun-tasks --no-build-cache`·3m49s·0 fail/error/**skip**·1241→+24) · desktop **726**(708→+18)+`typecheck exit 0` · design-system **41** · partner-service 314(이번 라운드 무변경)
+
+### 🟢 라이브 QA 준비 = **이미 완료** (다음 세션은 바로 실행 가능)
+- Docker 스택 가동 중(게이트웨이 :8080 · slip-service :8086 · postgres :5432 healthy)
+- **slip-service 재배포 + 신규 V58 적용 실측 확인**: checksum **`1743979716`**(구 `1238323700` 아님) · **`remembered_at TIMESTAMP NOT NULL` 생성됨** · unique `ux_partner_product_price_memory_pair (partner_id, product_id)` 존재
+- **V58 외과 재적용 절차(수행함·재현용)**: V58 이 **최신 마이그**(58>57>56)라 out-of-order 없음 → `DROP TABLE partner_product_price_memory; DELETE FROM flyway_schema_history WHERE version='58';` → `docker compose -f infrastructure/docker-compose.yml -f infrastructure/docker-compose.local-all.yml up -d --build slip-service`. **전면 DB 재생성 금지**(slip_db 에 전표 21·견적 3 등 타 QA 픽스처 존재)
+- `partner_product_price_memory` **현재 0행** — 경화된 스펙이 자기 데이터 seed
+- 고아 vite **정리 완료**(5190~5299 리스닝 0)
+
+### 🔴 재개 지점 = **R4 Opus 5-agent (전부 재디스패치 필요)**
+5개 다 띄웠으나 세션 정리로 kill. **findings 미수집 = 처음부터.** 각 차원 초점:
+1. **BE** — recency guard `<=` 등호 경계·**등록시점 캡처 vs 커밋순서 역전**(Codex 스스로 "엄격히는 DB sequence 가 정답"이라 인정)·clock skew · set-based upsert 의 `modified_at = EXCLUDED.created_at` 트릭 · **soft-delete+오래된 remembered_at 조합에서 revive 막힘이 의도인가** · **dedup 이 모든 진입경로에 선행되나**(중복 conflict 키=PG 하드에러→fail-soft 로 배치 전체 조용히 死) · executor **shutdown/drain**·큐100 초과 · `set_config(is_local)` 가 `upsertAll` 과 **같은 커넥션**인가 · bulk↔단건 parity · short-circuit 이 인가 의미 유지하나
+2. **FE** — **`localAutoPriceWritesRef` pending map**(CH-5 핵심·Codex 자기지목 최우선): provider callback 순서·**leak**·**같은 값 재입력 시 USER 승격 누락**·정리 · **닫힌 판정 `CATALOG|REMEMBERED` 가 "조회 전 null 신규라인"을 영구 배제하지 않나** · 요청 token 무효화 시점 · **bulk 요청 자체 실패 시 CATALOG 강등으로 사용자 단가 덮나**(견적도 대칭인가)
+3. **Design** — 🔑 **진행 중 단서**: Codex 의 AA 2건(**7.149 / 15.083**)은 **실토큰 기준 정확함이 검증됨**. 그러나 **"Codex 가 확인하지 않은 대비 1건" 을 발견**하고 **다크모드 도달 가능성 확인 중**에 끊김 → **여기부터 이어갈 것** · 협소 폭 `거래처 최근단가`(7자, 기존 3자) 줄바꿈 · **마커 `aria-live` 가 라인 50개서 스크린리더 폭주?** · `aria-describedby` 가 `CollaborativeSlipInput` wrapper 통과하나 · **`정가` 용어가 기존 라벨과 일치하나**(grep 대조)
+4. **DevOps** — 🔴 **CI allowlist 1:1 대조 최우선**(신규: `PriceMemoryRequestSizeValidationTest`·`PartnerProductPriceMemoryMetricsTest`·`MobilePartnerOrderServiceTest`·`slip.test.ts`·`LineRow.test.tsx`. **design-system vitest 가 CI 잡에 있나?**) · **Micrometer 이름 변환**(`Counter.builder("…_total")` → 실제 `…_total_total` 로 export 되지 않나?) · rule 파일이 컨테이너에 **마운트**되나 · **executor shutdown 없으면 배포마다 큐 유실** · `@ConfigurationProperties` prefix 바인딩
+5. **QA** — 라이브 실행(아래 절차). 🔑 **진행 흔적: 렌더러 200 + `dev_manager` 실 토큰 로그인까지 성공, 스위트 실행 직전에 끊김**
+
+### 🧪 라이브 QA 실행 절차 (스펙 R4 메타 갱신 = 이번 커밋에 포함됨)
+```powershell
+# 1) 렌더러 (mock OFF·신규포트·strictPort — 고아 vite=false-RED 원천)
+cd clients/desktop
+$env:VITE_API_BASE_URL="http://localhost:8080"; npx vite --config vite.web.config.ts --port 5216 --strictPort
+# 2) 실행 (node_modules/.bin 직접·desktop cwd)
+$env:QA_BASE_URL="http://localhost:5216"
+node_modules\.bin\playwright test --config=playwright.real-qa.config.ts --reporter=line --timeout=60000
+```
+- 계정 **`dev_manager` / `dev_p05_pass!`** (⚠️ `dev_master` 는 `sales.slip.create` 없어 전표생성 403 — 알려진 사실·#809 회귀 아님)
+- 스샷 → `docs/qa/809-partner-product-price-memory/r4/` (r2/ 는 **superseded 이나 이력 보존**·덮어쓰기 금지)
+- **R3 fix 신규 UI 실증 필수**: 마커가 `최근가`→**`거래처 최근단가`** · miss 에 **`정가`** · 거래처 변경 시 **배너+변경행 강조** · 네트워크에 **`POST /slips/price-memory/bulk` 1건**(품목수만큼 GET 아님)
+- 🚫 **스펙 단언 약화 금지** — 깨지면 깨진 대로 보고(R3 이 잡은 false-green 부활 금지)
+
+### 📌 개발책임자 결정 (이번 세션 확정·[PR 박제](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4977514774))
+- **D-R3-1** UUID 쿼리스트링 = **현행 유지**(기준="화면"만·DevTools 는 개발자도구). 코드변경 0·문서 명시로 close
+- **D-R3-2** CH-7 = **현행 유지 + 변경행 강조/배너**. `USER_CONFIRMED` 보존안 **기각**(focus 오승격 위험)
+- **D-R3-3** soft-delete 기억값 = **반환 유지**(삭제 엔티티 걸린 기존 문서 편집 시 단가 보존). 생존확인 RPC 추가 금지(CH-8 악화)
+- **D-R3-4** CH-8 = **bulk endpoint + OR short-circuit + timeout**
+
+### 📮 이번 세션 게시 (PR #820)
+[R3 완주(DevOps/QA)](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4977464830) · [개발책임자 결정](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4977514774) · [R3 fix 완료](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4978782435)
+
+### 🔴 정직 고지 (승계)
+- **R2 라이브 QA "7/7 PASS" = superseded** — R3 QA(CB-3)가 **스펙 자체의 false-green** 적발(견적 저장 POST 500 이어도 통과·임의 기존 견적 조회·productId 존재만 단언). **R4 실행이 #809 첫 유효 라이브 증거**
+- **R2 리포트 자기모순 확정** — "미해소 4건"(상단) vs "6건"(하단) → **6건이 정답**(§6 열거 = B-3·BLOCKING-1·B-1·B-2·H-2·H-6). 정정하되 **과장 사실은 이력으로 보존**
+- **의도된 trade-off** — 가격기억 flush 가 **bounded async** 라 저장 직후 짧은 창에서 이전값/miss 가능·프로세스 종료 시 유실 가능. 원 저장 fail-soft 우선. FE 는 서버결과 그대로 표시·자동재시도 없음
+- **실 브라우저/스크린리더 수동 QA 미수행** (CH-6/CH-7 a11y 는 자동테스트 수준까지만)
+
+### 🔵 남은 워크플로우
+**R4 Opus 5-agent+라이브QA → 게시 → Codex 적대 5-agent → 0수렴까지 반복 → PM 종합 9-게이트 → CI green → 머지**
+
+### ⚙️ 이번 세션 환경 교훈 (메모리 박제 완료)
+- **codex CLI 이중설치 400 해소 실증** — `npm i -g @openai/codex@latest`(0.144.4) + **세션 재시작**으로 반영. 연결 테스트 1줄로 검증
+- 🚨 **MCP 1800s abort 복구법 정정** — `git diff` 해시 2회 비교는 **false-STABLE**(Codex 가 검증/사고 중엔 파일을 안 씀). **진짜 신호 = rollout 로그 LastWriteTime 90s 무변동 + codex PID**. **abort 가 턴을 자를 때도 있고 안 자를 때도 있다**(배치A=abort 후 3분 더 돌아 완주 / 배치B=즉시 잘림)
+- 💡 **abort 로 잃은 threadId·최종보고는 rollout jsonl 에서 회수** — `~/.codex/sessions/<y>/<M>/<d>/rollout-<ts>-<threadId>.jsonl` (파일명에 threadId·본문에 assistant 전문). **`codex-reply` 로 이어받기 가능**(이번에 2회 성공). ⚠️ UTF-8 명시(`Get-Content -Encoding UTF8`)·MCP 가 잠그므로 `[System.IO.File]::ReadAllLines` 실패
+- **promtool 이 PM 브리프 오타 포착** — `rules_files`(오타) vs **`rule_files`**(정식). 그대로 뒀으면 Prometheus 설정 로드 실패
+- **dedup 이 load-bearing 이 됨** — 단일 multi-row `INSERT..ON CONFLICT` 는 중복 conflict 키 시 PG 하드에러(*"cannot affect row a second time"*) → fail-soft 라 배치 전체가 조용히 死. CM-9 테스트가 가드
+- **gradle `:test` 는 foreground 만**(백그라운드 killed) — 3m49s. **bootJar 는 백그라운드 정상**
+
+### 🔴 백로그 (승계·#809 완주 후 순차)
+1. **레거시 GAS 통합 점검** — 레거시 코드 신규 재수신(`tools/legacy-gas/` 갱신)+전메뉴 계승 재검증. **OCR 제외**
+2. **'주문서 관리' + '주문서 관리(이관)' → 하나로 통합**
+3. **전역 입력 UX** — 전 메뉴 자동완성+모달 복수선택(캡슐). 🔴 **단수 강제 필드 구분 필수**
+4. **품목행 공급가액·부가세 열** — 자동계산 우선·편집 가능. 🔴 착수 전 역산방향·합계강제·면세/영세 확정
+- **전표 거래처 필수화**(별도 슬라이스·기존 null 전표 조사 선행) · **매출전표 배분 거래처 불일치 검증 부재 이슈 미등록**(초안 `scratchpad/issue-sales-allocation.md` = **구세션 scratchpad·유실 가능** → `docs/handoff/DRAFT-issue-sales-allocation-partner-mismatch.md` 에 보존본 있음)
+- #773 잔여(S3 무결성편집·S1.5 다서비스·S1d Google자격·totalDiscount) · #816 후속(DELAYED 실배선·실 벤더 발송 W10-2)
+
+---
+
+## 🔄 2026-07-15 (집PC) — #809 **Codex 적대 3/5 지점에서 세션 재시작** (codex CLI 업그레이드 반영용) ✅ 해소됨
+
+> **다음 세션 첫 읽기(최우선).** 재시작 사유 = **codex CLI 버전 불일치**. 개발책임자 지시로 `~/.codex/config.toml` 이 `model = "gpt-5.6-sol"` 로 갱신됐는데 MCP 가 쓰는 npm 전역 codex 가 **0.131.0 구버전**이라 `400 The 'gpt-5.6-sol' model requires a newer version of Codex` 로 전 호출 차단. **`npm i -g @openai/codex@latest` 로 0.144.4 업그레이드 완료**했으나 **MCP 서버가 구버전 프로세스로 상주** → 재시작 필요. (⚠️ codex.exe kill 금지 — MCP vendor 공유 종료됨 → [[feedback_codex_kill_shares_mcp_vendor]])
+
+### 상태 (전부 디스크/git/PR 보존)
+- **브랜치** `feat/809-partner-product-price-memory` · **HEAD `85c5c435a`** · PR **#820 OPEN** · base=main
+- **검증 green**(PM 독립·genuine `--rerun-tasks --no-build-cache`): slip-service **1241** / partner-service **314** / desktop typecheck+vitest **708** — 전부 0 fail 0 skip
+- **라이브 QA R2 7/7 PASS**(`docs/qa/809-partner-product-price-memory/r2/` 스샷 13장 + qa-report) — 견적 DOA 해소·BUNDLE_SET·거래처 변경 재조회·최근가 마커·수정경로 ×1.1·전표 회귀 없음 전부 실증. DB 실측 3행.
+
+### 🔴 재개 지점 = Codex 적대 **DevOps·QA 2개 차원 미실행**
+캐논상 Codex 도 5-agent 필수. BE/FE/Design 3개만 완료(config 갱신 직전 통과). **"substance 커버"로 무마 금지** → [[feedback_codex_rescue_unreliable_use_mcp]]
+1. `ToolSearch select:mcp__codex__codex,mcp__codex__codex-reply` → 재등록 확인
+2. **연결 테스트**(모델/effort 1줄 확인) → `gpt-5.6-sol` 정상 응답하면 진행. 여전히 400 이면 config.toml 모델을 개발책임자와 재협의
+3. **DevOps·QA 적대 디스패치**(프롬프트 재사용: 아래 R3 게시 코멘트에 각 차원 초점 정리됨)
+
+### 🔴 R3 Codex 적대 findings (fix 대기) — PR #820 [issuecomment-4977100576](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4977100576)
+**BLOCKING 2 · HIGH 7 · MEDIUM 5 · LOW 1.** R1 Opus 5-agent 가 놓친 genuine 다수 = 적대 검증 가치 실증.
+- **CB-1 (BLOCKING·데이터 손실)** 편집 모드 기존 견적 라인이 `priceSource: null` 로 hydrate 돼 **자동채움 라인으로 오인** → 거래처 변경 시 **저장된 단가가 덮임**. `EstimateFormPage.tsx:121`
+- **CB-2 (BLOCKING)** 견적 최근가 응답에 **현재 거래처 stale 가드 부재**(전표엔 있음·비대칭) → A 응답이 B 라인에 채워짐. `:521`
+- **CH-1 (HIGH·가격왜곡)** **legacy 복사 9.1% 과소** — `unitPriceWithVat=null`(V12 backfill 없음) → `?? unitPrice`(공급단가)를 `priceVatInclusive:true` 로 전송 → 100,000 → 90,909. R1 M-2 fix 의 역효과. `slip.ts:676`
+- **CH-2 (HIGH·결정④ 위배)** 동시 저장 시 **afterCommit flush 순서로 "마지막 저장"이 뒤집힘** → `DO UPDATE ... WHERE existing.modified_at <= :eventTs` guard 필요
+- **CH-3~5 (HIGH·FE)** coedit provider 가드 없는 write(R1 M-4 fix 불완전) · 전표 재조회 **catch 경로** 가드 부재 · 원격 coedit 단가가 `USER` 미승격 → 마커 거짓 + 재조회가 덮음
+- **CH-6~7 (HIGH·Design)** 마커가 "거래처 전용 과거가" 의미 전달 부족 + `title` 뿐이라 키보드/터치 a11y 미연결·miss 무표시 / **결정 ④ UX 충돌 판정**(CATALOG 라인이 거래처 변경 시 말없이 바뀜)
+- **MEDIUM 5**: afterCommit REQUIRES_NEW 커넥션 대기 · **mock 모드 #809 전 경로 死**(R1 H-4 fix 불완전 — mock 이 구 wire) · UUID 쿼리스트링 노출 정책 미확정 · **QA 리포트 PASS 과장 + "미해소 4건/6건" 자기모순** · 문서 동기화(README/ROADMAP/overview 0건)
+- **LOW**: `@Schema` 가 source 를 "LINE_SAVE" 로만 설명(실제 `BUNDLE_SET` 도 반환)
+- **적대 반증 실패(clean 유지)**: 동일 (partner,product) 중복 라인 dedupe · 수정 PUT ×1.1 · revive audit · 주문 제외 · 문서-코드 대체로 일치
+
+### 이번 세션 완료분 (참고)
+- Codex MCP 복구 → #809 구현 인수 → **PM 게이트 BLOCKING 4건**(IT 48 fail·CI allowlist false-green·**fail-soft 역전**·**실 DB 검증 0**) 포착·fix
+- **R1 Opus 5-agent**(BLOCKING 4·HIGH 6·MEDIUM 11·LOW 8) + **개발책임자 결정 4건**(①VAT 포함 승인+spec 정정 ②BUNDLE 구성품 제외+세트 parent 기억 ③'최근가' 마커 ④수정·복사 전부 배선) → **29건 전부 fix** → R2 게시 + 라이브 QA 7/7
+- 게시: [Codex개발+PM게이트](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4976246801) · [R1](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4976479928) · [개발책임자 결정](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4976498183) · [R2](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4976926587) · [R3](https://github.com/ewoo14/Samhan-Public/pull/820#issuecomment-4977100576)
+
+### 🔴 개발책임자 신규 지시 (2026-07-15·#809 완주 후 순차) — TODO 등록됨
+1. **레거시 GAS 통합 점검** — 현 메뉴가 레거시 기능 계승 맞는지·실시간 메뉴/상세변동 반영 맞는지 전수 재검증. **레거시 코드를 신규로 다시 받아** 재검증(`tools/legacy-gas/` 갱신). **OCR 제외**(구글 드라이브 사용 예정 — 에어디자이너·제이시스템 전용 주문서 처리)
+2. **'주문서 관리' + '주문서 관리(이관)' → '주문서 관리' 하나로 통합** (사용자 혼동)
+3. **전역 입력 UX** — 모든 메뉴에서 거래처명·전표번호·**품목 등 모든 데이터** 자동완성(방향키 선택) + 미완성 입력 시 **모달 리스트 선택(복수선택 → 캡슐 누적·개별 삭제, 이카운트 방식)**. 🔴 **단 단수 강제 필드 구분 필수**(판매전표 거래처는 단수여야 회계 반영됨)
+4. **품목행에 공급가액·부가세 열 추가** — 단가/합계 기반 **자동계산 우선**, **단 편집 가능**. 🔴 착수 전 확정: 편집 시 역산 방향·`공급가액+부가세=합계` 강제 여부·면세/영세 대응(현 도메인 VAT 10% 고정)
+
+### 📋 단수 필드 전수 조사 완료 (전역 입력 UX 에픽 정찰 산출)
+**핵심 결론 3가지**:
+1. **단수 규칙은 이미 코드에 인코딩돼 있다** — 회계 체인이 뒤로 갈수록 조여짐(판매전표 `partner_id` nullable → 매출전표·세금계산서·입금보고서 **NOT NULL** → 일마감 **`UNIQUE(closing_date, partner_id, closing_kind, source_kind)`** = 거래처가 집계 UNIQUE 키). 주문 병합(N주문→1전표)조차 `"병합은 같은 거래처 주문만 가능합니다"` 409 + 테스트로 잠김. **에픽 = 새 규칙 제정이 아니라 기존 규칙을 UI 로 끌어올리는 일**
+2. **진짜 위험은 복수 입력이 아니라 미선택 저장** — `slips.partner_id` nullable + `@NotNull` 없음 + FE 필수검증 없음 → 거래처 없는 전표가 CONFIRMED 까지 간 뒤 **회계 전환이 조용히 실패**(#809 최근단가·세금계산서 발행도 동반 사멸)
+3. **패턴**: 복수 선택은 **원천 문서**(주문/통장거래/전표)에만, **귀속 키**(거래처·계정·창고)는 **항상 단수**, 묶을 때는 **동일성 검증 후 1개로 수렴**
+- 단수 강제: 전표/견적 거래처·출고/입고창고·배송태그·라인 품목 · 분개 계정과목/거래처 · 입금보고서 거래처+차/대 계정 · 일마감 거래처 · 세금계산서 거래처 · **재고이동 출발/도착창고**(`CHECK (source <> destination)`) · 재고 (품목,창고) 쌍(`UNIQUE`) · 배차 기사(partial UNIQUE) · 결재 기안자(`updatable=false`) · 사용자 부서(조인테이블 없음=겸직 불가)·팀장(부서당 1명 DB 강제) · **품목 `usageScope`**(`BOTH` 가 이미 조합값 → 칩 적용 시 이중표현 붕괴)
+- 복수 허용·칩 미적용(에픽 우선 후보): **세금계산서 일괄발행 원천 전표**(`List<UUID>`) · **제외 거래처**(CSV TEXT = 칩 규칙이 겨냥하는 안티패턴) · 일정 참석자 · 권한그룹 · 견적 노출 카테고리 · 세트 구성품 · 배송지/담당자
+- ⚠️ **함정**: inventory `Batch*Request` 6종은 **이름만 batch**이고 List 를 안 받음(스칼라+quantity) → 칩 붙이면 오설계
+- 🔴 확정 필요 잔여: 일마감 거래처 **`null`=전체마감** vs 칩 0개 시맨틱 충돌 · 안전재고 창고 `null`=전체 · 통장필터 `[]`=전체/미선택 3-상태 · 자동완성 반환값이 서비스마다 다름(UUID vs partnerCode) · 주문 병합 UX · 쪽지 수신자 1명=1row · 거래처 3택1 대체키
+
+### ✅ 개발책임자 결정 (2026-07-15·단수 조사 후)
+- **전표 거래처 = 필수화(FE+BE 양쪽 차단)** — 기존 null 전표 실상황 조사 선행 후 **별도 슬라이스**. 회계 무결성 도메인
+- **매출전표 배분 거래처 불일치 검증 부재 = 별도 이슈 등록 후 순차** — 원천 전표 거래처가 헤더 거래처와 같은지 **검증 없음**(`SalesAccountingSlipCreateAttemptService:71-92`), `SlipLineSnapshot` 이 partnerId 를 안 실어와 **검증 자체가 불가** → 거래처 A 출고전표를 거래처 B 매출전표에 배분 가능 = **매출 귀속 오류**. 이슈 본문 초안 = `scratchpad/issue-sales-allocation.md`(미등록 — 다음 세션에서 `gh issue create`)
+
+### ⚙️ 환경 교훈 (이번 세션 실증)
+- **gradle test 백그라운드 실행이 `:test` 진입 직후 일관되게 killed**(v3/v4 재현·로그 1568 bytes 동일 지점). **foreground 실행 시 정상**(3m36s~3m50s). 이후 검증은 **foreground** 로.
+- **codex CLI 이중 설치**: PATH npm 전역(`AppData\Roaming\npm\codex.ps1`)과 데스크톱 앱 번들(`AppData\Local\OpenAI\Codex\bin\<hash>\codex.exe`)이 **버전이 다름**(0.131.0 vs 0.144.2). **MCP 는 PATH 쪽**을 씀 → config.toml 모델을 올릴 때 **PATH codex 도 같이 업그레이드**해야 함(`npm i -g @openai/codex@latest`).
+- **MCP tool idle timeout 1800s** — 대형 fix 디스패치가 timeout 으로 abort 돼도 **산출물은 디스크에 남는다**(26파일 확인). `git status` + 안정화(diff 해시 2회 비교)로 완료 판정 후 이어가면 됨.
+
+---
+
+## 🔄 2026-07-15 (집PC morning) — #809 최근단가 자동채움 **구현 재개 지점**(세션 재시작·MCP 복구 후 이어받기)
+
+> **다음 세션 첫 읽기(최우선).** #809 개발책임자 결정 morning 확정 완료 → Codex 구현 착수 단계. **세션 재시작 사유**: codex-exec 프로세스 종료 시 codex MCP 서버가 세션 도구 레지스트리에서 이탈(인세션 /mcp 재연결로 복구 안 됨·서버 자체는 Connected). 개발책임자 지시 = **Codex는 MCP로 진행**. 재시작하면 `mcp__codex__codex` 재등록됨.
+
+### 상태 (전부 디스크/git 보존 — 재시작 무관)
+- **브랜치**: `feat/809-partner-product-price-memory`(체크아웃 상태·PR **#820** OPEN). 조기 PR 시드(docs만·코드 0).
+- **결정 확정**(PR #820 issuecomment-4975169714·전부 PM 권고 수렴): ① 전표+견적만(**주문 제외**·주문은 DcConfig 규칙가 유지) ② slip-service 단일 신규테이블 `partner_product_price_memory`(견적도 slip-service 영속→cross-service 불필요) ③ 라인저장 시 upsert ④ **effective(마지막 저장 라인단가) 기억**·override 우선 ⑤ VAT=아래 crux2 ⑥ partnerId(UUID) 키.
+- **codex-exec 참조 stash**: `git stash@{0}`("codex-exec-809-partial-reference"). **중단되어 미완**(신뢰 불가)이나 **partnerId FE 배선 gap을 독립 발견**(아래 crux1). 재구현은 MCP로 fresh, stash는 참조만.
+- **Codex 브리프(gap 반영본)**: `C:\Users\ewoo2\AppData\Local\Temp\claude\C--dev-Samhan-Public\0585cd7a-77aa-4645-8101-ef2a5317eb3a\scratchpad\809-codex-brief.md` (구세션 scratchpad·디스크 존속). 새 세션은 아래 crux로 재작성 가능.
+
+### 🔴 crux1 — partnerId FE 배선 gap (WRITE 기능화 필수)
+- **Explore §5 "PartnerOption carries .id" 부정확**(실코드 확인): design-system `PartnerOption`(`clients/web/design-system/.../PartnerAutocomplete.tsx`)에 **id 필드 없음**. desktop 전표 create 페이로드(`SlipFormPage.tsx` 580-619)도 **partnerId 미전송**(comment 725-727: partnerName denormalize만). → `slip.partnerId`(=`req.partnerId()`·SlipService 236/244) **null** → 전표측 upsert null-skip = **#816형 비기능**.
+- **해소 배선**(codex-exec가 독립 도출·동일): partner-service `PartnerSummaryResponse.partnerId(UUID)` 노출(`from(Partner)`에 `p.getId()`·UUID 비공개 가드=화면표시 금지·payload 전용 Javadoc) → desktop `partnerApi.ts`·design-system `PartnerOption.id?` 배선 → `SlipFormPage.selectedPartner.id` → create 페이로드 `partnerId` 추가. ⚠️부작용: BE 288-294 businessNumber/partnerCode resolve 활성화(dormant→on·fail-soft·신규 전표만·리뷰 검증대상·dev-report 명시). 견적은 partnerId 이미 전송(598).
+
+### 🔴 crux2 — VAT basis 라운드트립 (가격 correctness)
+- 전표 FE `priceVatInclusive:true`(617) → 입력 필드 = **VAT 포함 단가**(BE `createFromVatInclusive` 분리). 기억값 저장·반환 basis = **FE 입력 필드와 동일**해야 사용자 입력 단가 그대로 재현(supply-basis 저장 시 매회 ~10% 왜곡=금지). **전표·견적 store 공유** → 두 입력 basis 일치 검증 필수(estimate priceVatInclusive 취급 trace). 라운드트립 테스트((거래처,품목,단가P) 저장→재조회=P) 필수.
+
+### 정찰 앵커 (재브리핑용)
+- WRITE 훅: `SlipService.addSlipLinesExpanded`(SlipService.java:145-199·단품 160·BUNDLE 구성품 190)·`EstimateService.addEstimateLines`(70-123·80-84/107-114). 둘 다 header→partnerId·productId·unitPrice scope 내. null-guard·fail-soft(#816 `DispatchNotificationRecorder` REQUIRES_NEW 선례)·aborted-tx 회피.
+- upsert 템플릿: `EstimateNumberSequenceRepository` native `INSERT..ON CONFLICT`(단 DO UPDATE). Flyway **V58**. 엔티티=BaseEntity+`@SQLRestriction`. unique(partner_id,product_id).
+- READ 엔드포인트: **사용자 대면(게이트웨이)·/internal 금지**(X-Internal-Token/MASTER은 브라우저 불가). 예 `GET /slips/price-memory?partnerId&productId`·인가=전표 생성과 동일.
+- FE 자동채움: 전표 `SlipFormPage.updateLine` onChange 2경로(1048-1062·1135-1148)·견적 `EstimateFormPage.handleModelLookup`(486-533·504-507). hit=remembered/miss=sellingPrice·override 보존·stale 가드(#815 교훈)·견적 bizno 폴백 시 조회 금지.
+
+### 🟢 다음 (새 세션 순서)
+1. 핸드오프(본 절)+`docs/specs/809-...`+`docs/dev-reports/2026-07-15-809-...` 읽기.
+2. `ToolSearch select:mcp__codex__codex,mcp__codex__codex-reply` → 재등록 확인.
+3. scratchpad 브리프(또는 crux 재작성)로 **mcp__codex__codex 구현 디스패치**(danger-full-access·effort high·git 금지·PM 커밋대행).
+4. git diff 검증 → 커밋 → **Opus 5-agent 리뷰(가격 correctness 엄격)+라이브QA ↔ Codex 적대 0수렴** → PM 종합 9-게이트 → CI → 머지. (#810은 #809 완주 후 순차.)
+- ⚙️ **교훈 박제**: codex-exec 종료 시 `Name=codex.exe` 일괄 kill이 **MCP 서버 공유 vendor 바이너리까지 종료**→세션 MCP 이탈. 특정 exec PID 트리만 종료할 것. → [[feedback_codex_kill_shares_mcp_vendor]]
+
+---
+
 ## ✅ 2026-07-15 (집PC 야간 자율) — #816 배차 상세 알림 발송이력 백엔드 **머지 완주**(#819 `b3834888a`)
 
 > **다음 세션 첫 읽기.** 개발책임자 "1,2,3,4 순차"의 2번(#816). 야간 자율("오전 답변 전까지 끊김없이·워크플로우 엄수·비단축"). **핵심 교훈: R1 리뷰가 승인된 설계(③-A)의 구조적 비기능성을 포착 → 개발책임자 ③-B 재설계 → 전면 재구현.**

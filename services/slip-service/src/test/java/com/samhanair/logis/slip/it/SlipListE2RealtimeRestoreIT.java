@@ -357,6 +357,7 @@ class SlipListE2RealtimeRestoreIT extends AbstractPostgresIT {
         Map<String, Object> putBody = new java.util.HashMap<>();
         putBody.put("updatedAt", updatedAtAfterCreate);
         putBody.put("lines", List.of(lineOf("E2-B-put", 1, 20000)));
+        putBody.put("lineIdContract", true); // [D-R8-9] 정상 최신 클라이언트 재현
 
         // 매출 direct PUT 편집 — 기존 라인(A) 전량 soft-delete(T1) 후 신규 라인(B) 생성.
         mockMvc.perform(put("/slips/{id}/sales", id)
@@ -549,7 +550,7 @@ class SlipListE2RealtimeRestoreIT extends AbstractPostgresIT {
                 null,
                 "복원 충돌용",
                 "tester");
-        slip.updateSalesHeader("동일번호활성행", "E2-DUAL", null, null, null, null, null, null, null);
+        slip.updateSalesHeader(null, "동일번호활성행", "E2-DUAL", null, null, null, null, null, null, null);
         slipRepository.saveAndFlush(slip);
     }
 

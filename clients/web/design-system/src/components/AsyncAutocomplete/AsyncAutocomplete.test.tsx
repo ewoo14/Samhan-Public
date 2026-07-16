@@ -43,4 +43,49 @@ describe('AsyncAutocomplete', () => {
     ))).toBe(true)
     expect(view.container.querySelector('[role="listbox"]')).toBeNull()
   })
+
+  it('open 상태에서 disabled 로 플립되면 선택 라벨을 복원하고 aria-expanded 를 내린다 (R8-QA-9)', () => {
+    const selected: Option = { id: 'p-4', label: '한일냉동기술' }
+    const search = vi.fn<(q: string) => Promise<Option[]>>().mockResolvedValue([])
+
+    const view = render(
+      <AsyncAutocomplete<Option>
+        value={selected}
+        onChange={vi.fn()}
+        search={search}
+        getKey={(item) => item.id}
+        getInputLabel={(item) => item.label}
+        renderOption={(item) => <span>{item.label}</span>}
+        listboxLabel="거래처 목록"
+        ariaLabel="거래처"
+        disabled={false}
+      />,
+    )
+
+    const input = screen.getByRole('combobox', { name: '거래처' }) as HTMLInputElement
+
+    // 포커스 → open + draft='' → 표시값이 빈칸(전표 수정 진입 순간 재현)
+    fireEvent.focus(input)
+    expect(input.value).toBe('')
+    expect(input.getAttribute('aria-expanded')).toBe('true')
+
+    // disabled 로 플립(coedit provider 로딩) — React 는 disabled 요소에 onBlur 미발화
+    view.rerender(
+      <AsyncAutocomplete<Option>
+        value={selected}
+        onChange={vi.fn()}
+        search={search}
+        getKey={(item) => item.id}
+        getInputLabel={(item) => item.label}
+        renderOption={(item) => <span>{item.label}</span>}
+        listboxLabel="거래처 목록"
+        ariaLabel="거래처"
+        disabled
+      />,
+    )
+
+    // disabled 감지 effect 가 open 을 닫아 selectedLabel 이 복원돼야 한다.
+    expect(input.value).toBe('한일냉동기술')
+    expect(input.getAttribute('aria-expanded')).toBe('false')
+  })
 })

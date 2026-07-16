@@ -17,6 +17,7 @@ import {
   type ApiEnvelope,
   type PageResponse,
 } from './client'
+import { withLineIdContract } from './lineIdContract'
 import type { SlipStatus } from '@samhan/design-system'
 import type { DeliveryTagCode } from '@samhan/design-system'
 
@@ -287,6 +288,8 @@ export function toApiBundleSetOptions(
 
 /** 라인 input — BE `CreateSlipRequest.SlipLineRequest`. */
 export interface SlipLineInput {
+  /** 상세 응답 `id` 왕복값 — payload 전용, 화면 미표시. 신규 라인은 null/미지정. */
+  lineId?: string | null
   productId: string
   productName?: string
   modelName?: string
@@ -310,6 +313,13 @@ export interface SlipLineInput {
 /** 매입 전표 direct PUT 수정 요청 — BE `SlipUpdateRequest`. */
 export interface SlipUpdateRequest {
   updatedAt: string
+  /**
+   * 거래처 UUID — payload 전용(화면 미표시). null 이면 BE 가 기존 거래처를 보존한다.
+   *
+   * <p>D-R8-7 신규. 종전 계약은 partnerName 만 받아 거래처를 바꿔 저장해도 partner_id 가
+   * 불변이었고, 그 결과 (거래처+품목) 가격기억이 <b>원 거래처</b>에 각인됐다(R8-QA-3 라이브 실증).
+   */
+  partnerId?: string | null
   partnerName?: string | null
   partnerCode?: string | null
   memo?: string | null
@@ -405,6 +415,42 @@ export interface ProductLookupResult {
   productType?: string
 }
 
+interface ProductLookupWireResult {
+  id: string
+  modelName: string
+  name: string
+  sellingPrice: string | number | null
+  modelCode?: string | null
+  productType?: string | null
+}
+
+/** 거래처+품목 최근 수동단가 기억 응답 — 단가는 VAT 포함 입력 단가. */
+export interface PriceMemoryResult {
+  unitPrice: number
+  source: string
+  /** 원 전표/견적이 실제 저장된 logical event time (`remembered_at`). */
+  updatedAt: string | null
+}
+
+/** 거래처+복수 품목 최근 수동단가 bulk 응답 항목 — miss 품목은 응답에서 생략된다. */
+export interface BulkPriceMemoryResult extends PriceMemoryResult {
+  productId: string
+}
+
+export interface BulkPriceMemoryLookupResult {
+  /** 성공 chunk 에서 반환된 hit. 성공 chunk 의 miss 는 배열에서 생략된다. */
+  hits: BulkPriceMemoryResult[]
+  /**
+   * 호출 자체가 실패한 chunk 에 포함됐던 productId.
+   *
+   * R6-L1 정정: 현재 두 폼 호출자(SlipFormPage/EstimateFormPage 의
+   * refreshAutoPricesForPartner)는 `hits` 만 소비하고 이 배열은 사용하지 않는다 —
+   * 실패 품목도 hit 미포함 품목과 동일하게 판매가(CATALOG) fallback 으로 처리된다.
+   * (miss 와 chunk 실패를 구분해 고지하려는 후속 소비자를 위해 필드는 유지.)
+   */
+  failedProductIds: string[]
+}
+
 /**
  * 전표 페이지 조회. 빈 필터 시 전체.
  *
@@ -450,6 +496,63 @@ export async function createSlip(
 ): Promise<SlipDetail> {
   const res = await apiClient.post<ApiEnvelope<SlipDetail>>('/slips', body)
   return res.data.data
+}
+
+/**
+ * 거래처+품목 최근 수동단가 조회.
+ *
+ * partnerId/productId 는 화면 표시 금지 UUID이며 API payload 전용이다. 204/miss 는 null.
+ */
+export async function getPriceMemory(
+  partnerId: string,
+  productId: string,
+): Promise<PriceMemoryResult | null> {
+  const res = await apiClient.get<ApiEnvelope<PriceMemoryResult>>(
+    '/slips/price-memory',
+    {
+      params: { partnerId, productId },
+    },
+  )
+  if (res.status === 204) return null
+  return res.data.data
+}
+
+/** BE bulk 계약 상한 — 1회 호출당 고유 productId 최대 개수 (BE 는 요청당 100개 제한). */
+const PRICE_MEMORY_BULK_CHUNK_SIZE = 100
+
+/**
+ * 거래처+복수 품목 최근 수동단가 bulk 조회.
+ *
+ * 거래처 변경처럼 여러 자동채움 라인을 동시에 갱신할 때만 사용한다. BE 계약상 hit 항목만
+ * 반환하며 전체 miss 도 200 + 빈 배열이다. productIds 는 중복 제거 후 1개 이상이어야 하고,
+ * BE 상한(100개) 초과분은 100개 단위 chunk 순차 호출로 합산한다 — 고유 품목 101개↑에서
+ * throw 되어 전 라인이 조용히 판매가(CATALOG) 강등되는 것을 방지(R4-F5).
+ * chunk 실패는 해당 productId 만 failedProductIds 로 분리하고 앞선 성공 hit 는 보존한다
+ * (R6-L1: 현재 폼 호출자는 hits 만 소비 — 실패 품목도 miss 와 동일하게 판매가 fallback).
+ */
+export async function getPriceMemories(
+  partnerId: string,
+  productIds: string[],
+): Promise<BulkPriceMemoryLookupResult> {
+  const uniqueProductIds = [...new Set(productIds)]
+  if (uniqueProductIds.length === 0) {
+    throw new Error('price memory bulk productIds must contain at least 1 unique item')
+  }
+  const results: BulkPriceMemoryResult[] = []
+  const failedProductIds: string[] = []
+  for (let start = 0; start < uniqueProductIds.length; start += PRICE_MEMORY_BULK_CHUNK_SIZE) {
+    const chunk = uniqueProductIds.slice(start, start + PRICE_MEMORY_BULK_CHUNK_SIZE)
+    try {
+      const res = await apiClient.post<ApiEnvelope<BulkPriceMemoryResult[]>>(
+        '/slips/price-memory/bulk',
+        { partnerId, productIds: chunk },
+      )
+      results.push(...(res.data.data ?? []))
+    } catch {
+      failedProductIds.push(...chunk)
+    }
+  }
+  return { hits: results, failedProductIds }
 }
 
 /**
@@ -532,7 +635,8 @@ export async function updatePurchaseSlip(
 ): Promise<SlipDetail> {
   const res = await apiClient.put<ApiEnvelope<SlipDetail>>(
     `/slips/${encodeURIComponent(id)}`,
-    body,
+    // [D-R8-9] 계약 마커는 여기서만 얹는다 — 호출자가 잊을 수 없게. 누락 시 BE 400.
+    withLineIdContract(body),
   )
   return res.data.data
 }
@@ -555,7 +659,8 @@ export async function updateSalesSlip(
 ): Promise<SlipDetail> {
   const res = await apiClient.put<ApiEnvelope<SlipDetail>>(
     `/slips/${encodeURIComponent(id)}/sales`,
-    body,
+    // [D-R8-9] 매입 미러 — 계약 마커 스탬프.
+    withLineIdContract(body),
   )
   return res.data.data
 }
@@ -598,6 +703,8 @@ export interface AddLineRequest {
   note?: string
   /** 세트 전개 옵션 — BUNDLE 품목 라인 추가 시 전달(BE addSlipLinesExpanded). 에픽 후속 #2. */
   setOptions?: BundleSetOptions
+  /** 단가 부가세포함 여부 — true 면 unitPrice 가 VAT 포함 단가. */
+  priceVatInclusive?: boolean
 }
 
 /**
@@ -616,31 +723,29 @@ export async function removeLine(slipId: string, lineId: string): Promise<void> 
 }
 
 /**
- * 전표 복사 — 기존 전표의 헤더 + 라인을 그대로 복사하여 신규 DRAFT 전표 생성.
- * BE 별도 endpoint 없이 클라이언트에서 createSlip 으로 동등 본문 POST.
+ * 전표 복사 — BE `POST /slips/{id}/duplicate` 1회 호출 (R6-H2 서버 복사 전환).
+ *
+ * 기존 FE 는 전개된 구성품 라인을 평면 본문으로 재-POST 해 세트 계보
+ * (setHead/parentSetModel)가 소실되고 구성품 배분가가 "복사 1클릭"마다 가격기억에
+ * 각인되는 결함이 있었다. 서버 복사 semantics: 헤더는 기존 FE 승계 범위와 동일,
+ * 전표일자=오늘 + 신규 채번 + DRAFT, 라인은 금액 권위값 verbatim + 계보 승계,
+ * 가격기억은 비구성품 라인만 기록, sourceOrderLineId 미승계.
+ *
+ * 요청 body 없음. 응답(201)은 기존 POST /slips 와 동일 스키마(`SlipDetailResponse`) —
+ * lines[].setHead / lines[].parentSetModel 포함으로 복사본 세트 표시 즉시 렌더 가능.
+ *
+ * 에러 코드:
+ * - 403 Forbidden — 생성 권한 없음
+ * - 404 Not Found — 원본 미존재/삭제
+ * - 409 Conflict  — OUTBOUND 당일 마감 초과
+ *
+ * @param sourceId 원본 전표 UUID (path param 전용, 화면 표시 금지)
  */
-export async function duplicateSlip(source: SlipDetail): Promise<SlipDetail> {
-  const body: CreateSlipRequest = {
-    slipType: source.slipType,
-    sourceWarehouseId: source.sourceWarehouseId ?? undefined,
-    destinationWarehouseId: source.destinationWarehouseId ?? undefined,
-    partnerId: source.partnerId ?? undefined,
-    partnerName: source.partnerName ?? undefined,
-    deliveryTag: source.deliveryTag ?? undefined,
-    memo: source.memo ?? undefined,
-    driverName: source.driverName ?? undefined,
-    driverPhone: source.driverPhone ?? undefined,
-    lines: source.lines.map((l) => ({
-      productId: l.productId,
-      productName: l.productName ?? undefined,
-      modelName: l.modelName ?? undefined,
-      specification: l.specification ?? undefined,
-      quantity: l.quantity,
-      unitPrice: l.unitPrice,
-      note: l.note ?? undefined,
-    })),
-  }
-  return createSlip(body)
+export async function duplicateSlip(sourceId: string): Promise<SlipDetail> {
+  const res = await apiClient.post<ApiEnvelope<SlipDetail>>(
+    `/slips/${encodeURIComponent(sourceId)}/duplicate`,
+  )
+  return res.data.data
 }
 
 /**
@@ -654,11 +759,22 @@ export async function duplicateSlip(source: SlipDetail): Promise<SlipDetail> {
 export async function lookupProductByModelName(
   modelName: string,
 ): Promise<ProductLookupResult> {
-  const res = await apiClient.get<ApiEnvelope<ProductLookupResult>>(
+  const res = await apiClient.get<ApiEnvelope<ProductLookupWireResult>>(
     '/slips/lookup-product',
     { params: { modelName } },
   )
-  return res.data.data
+  const data = res.data.data
+  if (!data?.id || !data.name) {
+    throw new Error('product lookup response contract mismatch')
+  }
+  return {
+    productId: data.id,
+    modelName: data.modelName,
+    productName: data.name,
+    sellingPrice: String(data.sellingPrice ?? '0'),
+    modelCode: data.modelCode ?? undefined,
+    productType: data.productType ?? undefined,
+  }
 }
 
 /**

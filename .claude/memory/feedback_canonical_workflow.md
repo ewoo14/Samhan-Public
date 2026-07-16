@@ -1,61 +1,51 @@
 ---
 name: feedback_canonical_workflow
-description: 🚨 슬라이스/PR 표준 워크플로우 유일 진실원 — Opus 기획+PR → Codex 개발+리뷰 → (Opus 5-agent+fix+라이브QA스샷+TM게시 ↔ Codex 5-agent+fix+라이브QA스샷+TM게시) 0수렴까지 → PM 종합 리뷰 게시 → CI green → PM 머지. 다른 워크플로우 정의 없음(본 파일이 유일).
+description: 🚨 표준 워크플로우 유일 진실원(2026-07-15 전면 개편 · 2026-07-16 1차 적대검증 FABLE5→OPUS 4.8 교체) — OPUS 4.8 기획+조기PR+게시 → CODEX SOL 5.6 기획검수+게시 → CODEX LUNA 5.6 구현+게시 → (OPUS 4.8 5+agent 적대리뷰·라이브QA·fix·검증+게시 → CODEX SOL 5.6 5+agent 동일+게시) 0수렴 반복 → PM 종합+게시 → CI green → PM 머지. 엄수·단축금지·모든 단계 리뷰 게시·라이브QA 스샷 다수. 구 워크플로우 전부 폐기.
 metadata:
   type: feedback
 ---
 
-🚨 2026-06-23 신설 · **2026-06-24 개발책임자 재확정·완성(영구박제)**. **본 파일이 슬라이스/PR 워크플로우의 유일한 진실원이다.** 과거·경쟁 워크플로우 메모리(team-lead 승인체인 github-pr-workflow · multi-agent-team-pattern · integrated-pr-pattern · dual-5agent-review · per-round-live-qa · review-posting-and-zero-skip · pm-auto-continuous · temp-multimodel-workflow · tm-led-agent-discussion · pr-qa-screenshots · early-pr-docker-qa · pr-ci-monitoring · post-each-review-round-distinctly · rereview-converge-after-fix · tm-pr-comment-pre-merge-gate · user-merge-authority 등)는 **전부 본 파일로 통합·폐기**했다. 다른 워크플로우와 헷갈리지 말 것 — **이 순서를 토씨까지 따른다.**
+🚨 **2026-07-15 개발책임자 지시로 전면 개편.** 본 파일이 슬라이스/PR 워크플로우의 **유일한 진실원**이다. 종전 워크플로우는 **전부 삭제·폐기**되었다 — 구 캐논(Opus 기획+리뷰 ↔ Codex 구현+리뷰), Sonnet 5 대체 모드, 구 9-게이트 명세, Codex 모델 자동전환(spark/gpt-5.5) 포함. 삭제 파일 4종(`feedback_review_5agent_no_shortcut_strict`·`feedback_workflow_discipline_root_cause`·`feedback_sonnet_substitution_when_codex_unavailable`·`feedback_codex_model_auto_switch`)의 유효 규율은 본 파일에 흡수했다. **집PC·회사PC 어느 세션에서 진행하더라도 본 워크플로우를 엄수한다. 단축 금지.**
 
-## 🚨 라운드 PREFLIGHT (반복 위반 박제 — 2026-06-29 개발책임자 "매 세션 지적해야 하나" 다회 지적 종식용)
-매 슬라이스/라운드 진입 전 본 게이트 1~6 을 명시 자각·통과하지 않으면 진행 금지. (과거 세션서 아래가 반복 위반됨)
-1. **조기 PR 먼저** — 브랜치 + PR 을 **Codex 구현 디스패치 이전**에 개설(빈 seed 커밋 허용). 🚫 PR 없이 구현 디스패치 = 위반.
-2. **양쪽 다 5-agent** — Opus 라운드 = FE/BE/Design/DevOps/QA 5인. **Codex 라운드도 동일 5인 전원.** 🚫 단일 Codex 리뷰 = 위반.
-3. **라운드마다 라이브 QA + 스샷 인라인** — 각 라운드(Opus·Codex)는 fix 후 라이브 실 QA + 단계별 스샷을 그 라운드 코멘트에 **이미지 임베드**. 🚫 Codex 라운드 QA 누락 = 위반. 🚫 **Codex 라운드도 'N passed' 텍스트만 적고 스샷 미인라인 = 위반** — Codex 라이브 QA(Playwright shots/실 캡처) 산출물을 PM 이 그 라운드 코멘트에 이미지 URL 임베드 게시(#673 2026-06-30 FE Codex 라운드 스샷 누락 지적 → 소급 보완·박제).
-4. **fix 주체 = 그 라운드 주체 직접** — **Opus 라운드 fix = Opus 직접 Edit**(Codex 위임 금지). **Codex 라운드 fix = Codex.** 🚫 'OPUS 구현 금지'는 **2단계 초기구현 한정**(=Codex 구현)이며 **리뷰 라운드 fix 에는 적용 안 됨**. 🚫 Opus 라운드 fix 를 Codex 에 위임 = 위반.
-5. **라운드 완결 후 다음** — review→fix→**QA 완료까지** 끝낸 뒤에야 다음 라운드. 🚫 QA 전 다음 라운드 진입 = 위반.
-6. **즉시 독립 게시(수렴 재검 라운드 포함) · 듀얼리뷰 순차 · 0수렴까지 · 단축금지 · 매 단계 ScheduleWakeup 재자각.** 🚫 라운드를 **실행만 하고 미게시**(PM 종합/머지에 흡수) = 위반. 머지 직전 **'실행 라운드 수 = PR 게시 라운드 수' 1:1 대조** 의무. 🔴 **게시 트리거(2026-06-30 S2b·S2c 2연속 재발 박제 — 개발책임자 "리뷰 게시가 계속 안되고 있음" 지적): 라운드(리뷰·재검·수렴) 완료 직후 = 다음 행동(fix dispatch·다음 라운드 디스패치·채팅 보고) 그 무엇보다 _먼저_ `gh pr comment` 로 그 라운드를 PR 게시한다. 채팅 상태보고 ≠ PR 게시 — 채팅에 적었다고 게시한 게 아니다.**
-→ 세션 시작 + 매 라운드 진입 시 본 1~6 자각. 개발책임자 동일 지적 반복 종식이 본 절의 목적. (#670 2026-06-29: Opus 2차·Codex 2차·Opus 재확인 중 Codex 2차+Opus 재확인을 **실행 후 미게시**한 채 머지 → 소급 보완 + 본 점검 박제.)
+🚨 **2026-07-16 개발책임자 지시 — 1차 적대검증 모델 교체: FABLE5 → OPUS 4.8.** 사유 = **FABLE5 토큰 소모량 극심**. 이로써 **OPUS 4.8 이 기획(1단계)과 1차 적대검증(4단계)을 겸한다.** fix 주체도 "그 라운드 진행 모델" 규칙에 따라 **4단계 fix = OPUS 4.8**. 2·3·5단계(CODEX SOL 5.6 기획검수 / CODEX LUNA 5.6 구현 / CODEX SOL 5.6 2차 적대검증)는 **변경 없음**. 두 적대검증 스테이지가 **OPUS 4.8 ↔ CODEX SOL 5.6** 로 여전히 이종(異種) 모델이라 적대 검증의 교차 가치는 유지된다.
 
-## 표준 순서 (슬라이스/PR 1건)
-1. **Claude(Opus) 기획 + PR 개설** — 스펙/플랜 수립, 브랜치, **조기 PR**(구현 누적 전 PR 먼저).
-2. **Codex 개발 + 개발사항 리뷰 게시** — Codex 가 구현(**Claude 가 commit 대행, Codex git 금지**), 자기 개발사항 리뷰를 PR 에 게시.
-3. **Claude(Opus) 5-agent 리뷰 + Opus 직접 fix → TM 통합리뷰 게시(스크린샷 인라인)** — FE/BE/Design/DevOps/QA 5인. **QA=Docker 라이브 QA + 단계별 스크린샷.** fix=**Opus 직접**. fix 이후 라이브 QA + 스크린샷 인라인 포함해 TM 통합리뷰 게시.
-4. **Codex 5-agent 리뷰 + Codex fix → TM 통합리뷰 게시(스크린샷 인라인)** — 동일 구조. fix=**Codex**.
-5. **반복** — 3 ↔ 4 사이클을 리뷰의 **error / skip / backlog 등 잔여가 0 으로 수렴**할 때까지 계속(test.skip·false-green·미실행·백로그 이월 = 통과 아님).
-6. **PM 종합 리뷰 게시 (머지 전)** — 0수렴 확인 후, PM 이 전 라운드를 종합한 **최종 종합 리뷰를 PR 에 게시**(개발책임자 2026-06-24 명시). 라운드 코멘트와 별개의 종합이며 머지 전 의무.
-7. **PM 최종 확인 + CI 모니터링** — `gh pr checks --watch` 로 CI green 확인.
-8. **PM 머지** — 아래 머지 게이트 충족 시 PM 자율 머지.
+> **구 기록 독해 매핑**: 다른 메모리/dev-report/PR의 "Opus 라운드"→**1차 적대검증 라운드**, "Codex 라운드/적대검증"→**CODEX SOL 5.6 라운드**, "Codex 개발/구현"→**CODEX LUNA 5.6 구현**, "Opus 기획"→**OPUS 4.8 기획**으로 읽는다. **2026-07-15~16 사이 PR(#820 R4·R6 등)의 "FABLE5 라운드" = 현 1차 적대검증 라운드**(그 시기엔 FABLE5 가 담당). 역할 배정이 상충하면 항상 본 파일이 이긴다.
 
-## 5 agents (3·4단계 공통)
-- **FE / BE / Design / DevOps / QA** 5인.
-- **QA 에이전트는 FE/BE/Design/DevOps 4인 리뷰 + fix 이후** 진행(순차) — **Docker 라이브 QA**(실 게이트웨이:8080 / 실 서비스 / 실 시드, mock OFF) + 실사용자 화면 **단계별 스크린샷** 캡처.
+## 표준 파이프라인 (슬라이스/PR 1건 · 순차 · **모든 단계 산출물을 그 즉시 PR에 리뷰 게시**)
+
+1. **기획 = OPUS 4.8** — 슬라이스 spec/plan 수립(기존 결정 교차검증 [[feedback_spec_cross_check_prior_decisions]] 포함). **기획 단계에서 브랜치 + PR 즉시 개설**(OPEN, draft 금지 [[feedback_pr_open_not_draft]]) 후 **기획(spec) 리뷰를 PR에 게시**. 🚫 PR 없이 다음 단계 진행 = 위반.
+2. **기획검수 = CODEX SOL 5.6** — spec을 적대 관점으로 검수(기존 결정 상충·경계·마이그레이션·권한·계약·무결성). **검수 리뷰 PR 게시** → 지적사항을 기획에 반영(중대 지적은 반영 후 재검수)한 뒤에만 구현 진입.
+3. **구현 = CODEX LUNA 5.6** — 구현 전담(파일 수정만, git 금지 — PM commit 대행 [[feedback_codex_sandbox_git]]). PM(세션) 직접 구현 금지 유지([[feedback_pm_no_direct_implementation]]). 완료 시 **구현/개발사항 리뷰를 PR 게시**.
+4. **1차 적대검증 = OPUS 4.8 5-agents(또는 그 이상)** — FE/BE/Design/DevOps/QA **최소 5차원 전부**(Design "N/A" 대체 금지·focused 축소 금지·수렴/재검 라운드도 full) + 필요 시 증원(보안/성능/마이그레이션/회계정합 등). **적대 리뷰 + 라이브QA**(Docker 실서버·mock OFF [[feedback_qa_docker_real_test]]) 수행. **라이브QA 스크린샷 다수 필수 첨부** — 사용자 플로우 단계별 여러 장(요약 1컷 금지), SendUserFile + PR SHA-pinned 인라인 둘 다([[feedback_live_qa_every_round_screenshots]] [[feedback_pr_screenshot_sha_pinned_urls]] [[feedback_qa_screenshots_inline_to_user]]). 발견 전건 명시 disposition → **FIX = OPUS 4.8 직접** → fix 후 검증(변경모듈 전체 스위트 genuine [[feedback_changed_module_full_test_before_push]] [[feedback_gradle_test_cache_false_green]]) → **라운드 리뷰(5차원 취합 표 + 스샷) PR 게시**.
+5. **2차 적대검증 = CODEX SOL 5.6 5-agents(또는 그 이상)** — 4단계와 동일 구조(5차원 이상·적대·라이브QA·스샷 다수·fix 후 검증). 실행 = `mcp__codex__codex` **차원별 직접 호출**(codex-rescue 금지 [[feedback_codex_rescue_unreliable_use_mcp]]·sandbox danger-full-access [[feedback_codex_review_sandbox_danger_access]]·approval-policy never·git 금지·PM commit 대행). **FIX = CODEX SOL 5.6** → 검증 → **라운드 리뷰 PR 게시**.
+6. **0수렴 반복** — 4↔5를 **error/skip/backlog 잔여 0**(test.skip·false-green·미실행·백로그 이월 = 통과 아님)이 될 때까지 반복. **어느 라운드든 1건이라도 지적되면 — false-positive 의심이어도 — ①명시 disposition(fix 또는 검증된 무결 근거) ②full 재수렴(양측 새 지적 0) ③PM 종합 후에만 머지.** PM 독단 dismissal + 즉시 머지 절대 금지.
+7. **PM 종합 → 머지** — PM(오케스트레이션 세션)이 전 단계·전 라운드를 종합한 **PM 종합 리뷰를 PR 게시**, dev-report/docs 동기화([[feedback_continuous_docs_sync]]) 확인, CI green(exact SHA) 확인 후 아래 머지 게이트 전부 충족 시 자율 머지([[feedback_pm_auto_merge_authority]]).
+
+## 모델 디스패치 매핑 (2026-07-15 집PC 실측 · 2026-07-16 갱신)
+- **OPUS 4.8** = Agent 도구 `model: "opus"` 서브에이전트 **명시**(에이전트 정의 frontmatter 기본값 의존 금지). 세션 모델이 Opus 4.8이면 오케스트레이션·fix 직접 수행 가능. **1단계 기획 + 4단계 1차 적대검증 겸임**(2026-07-16~).
+- ~~**FABLE5**~~ = **2026-07-16 폐지**(토큰 소모량 극심 · 개발책임자 지시). `model: "fable"` 디스패치 금지. 구 기록의 FABLE5 라운드 = 현 1차 적대검증 라운드로 읽는다.
+- **CODEX SOL 5.6** = `mcp__codex__codex`/`codex exec` **`model: "gpt-5.6-sol"`** — 2026-07-15 codex CLI 실측 정상 응답.
+- **CODEX LUNA 5.6** = 동일 경로 **`model: "gpt-5.6-luna"`** — 실측 정상 응답. `~/.codex/config.toml`의 기본 model(gpt-5.5)은 폴백일 뿐 — **디스패치마다 스테이지 모델 명시 의무**. effort 기본 high(보안/마이그레이션/race/인시던트 xhigh).
+- 🚫 **모델 대체 금지** — 스테이지 지정 모델 사용 불가(한도/장애/미지원) 시 임의 대체(타 모델·서브에이전트 갈음) 금지, **개발책임자 선확인 후에만 진행**(구 Sonnet 대체 모드 폐기). 부재 단정 전 실제 호출 시도부터(미검증 단정 금지 — 2026-07-13 #813 박제).
 
 ## 절대 규칙
-- 🚫 **리뷰마다 fix 후 라이브 QA + 스크린샷 인라인 게시 필수** — 모든 라운드(Opus·Codex)는 fix 이후 Docker 라이브 실 QA + 스크린샷을 그 라운드 코멘트에 인라인. code-read PASS·가짜 캡처(PIL 합성/mock 화면) 금지([[feedback_no_fake_data_ever]]). 실연동 불가 시 사유 정직 보고([[feedback_overnight_live_capture]]).
-- 🚫 **스크린샷 = 과정 단계별 여러 장(한 장 금지)** — 요약 1컷 금지. 사용자 플로우 각 단계(진입→입력→실행→결과→상태변화)를 단계별 별도 캡처로 인라인. 리뷰어/개발책임자가 스크린샷만으로 흐름 전체를 판정 가능하게(개발책임자 2026-06-24).
-- 🚫 **각 라운드 즉시 독립 게시** — Opus/Codex/수렴 재검증 각 라운드를 개별 `gh pr comment` 로 그 라운드 완료 즉시 게시. 다른 라운드·최종 종합에 합치기·batch 보류 금지(개발책임자 PR #585 2연속 지적). "라운드 실행"과 "라운드 게시"는 별개이며 둘 다 의무.
-- 🚫 **fix 후 0수렴 재리뷰(CI-green 만으로 머지 금지)** — 어떤 fix든(Opus 라운드·Codex 라운드·CI 실패 fix·임의 fix) 그 fix 포함 최종 상태를 순차 듀얼리뷰 재실행 → **양쪽이 새 fix 없이 0 반환**할 때까지 반복 후에만 머지. CI 통과는 리뷰 차원(설계·회귀·계약)을 대체 못함(슬3 #562 회귀 박제).
-- 🚫 **듀얼리뷰 병렬 금지(순차)** — Opus 라운드 완료·게시 후에야 Codex 라운드. 한 PR 의 Opus·Codex 동시 실행 금지.
-- 🚫 **단축 금지** — 트리비얼/기계적/sweep/1줄 PR 도 동일 워크플로우. 단일모델 머지 금지.
-- 🔁 **미준수 PR 소급 보완** — 세션 종료 전(또는 과거) 본 워크플로우를 준수하지 않은 채 진행/머지된 PR 은 발견 시 누락 단계(듀얼리뷰·라이브QA·단계별 스샷·0수렴 재리뷰·PM 종합 게시)를 소급 보완(개발책임자 2026-06-24 ④).
-- 🧭 **매 단계 ScheduleWakeup 재자각** — 각 단계(또는 1~2단계 묶음) 완료 후 다음 단계를 ScheduleWakeup 으로 예약·재자각하고 턴 종료(연속 mega-턴 금지, 사용자 활성 중에도 적용). → [[feedback_autonomous_loop_schedulewakeup]]
-- ✅ **무중단 자율** — 슬라이스 끝마다 묻지 말고 PM 연속 진행. 한국어 커밋/PR(prefix·trailer 예외), `[FEAT]`/`[FIX]` 대괄호 prefix, Role 풀네임, 개발책임자 결정은 진행 중 PR 에 누적 게시([[feedback_post_devlead_decisions_to_pr]]).
+- 🚫 **순차** — 단계·라운드 병렬 금지. OPUS 4.8 라운드 **완료+게시** 후에만 CODEX SOL 라운드. 한 PR의 두 검증 스테이지 동시 실행 금지. 병렬 다중 PR이어도 각 슬라이스는 전 단계 순차 완주(PM이 매번 전 슬라이스 점검).
+- 🚫 **단축 금지** — 트리비얼/기계적/1줄/인프라/chore PR도 동일 워크플로우([[feedback_infra_chore_not_canon_exempt]]). 범위 점증 시 리뷰 재가동([[feedback_expanded_scope_reinstate_review]]). 단일모델 머지 금지.
+- 🚫 **실행 = 게시 1:1** — 모든 단계·라운드(기획·기획검수·구현·각 검증·재수렴·PM 종합)는 완료 즉시, **다음 행동(fix 디스패치·다음 라운드·채팅 보고)보다 먼저** `gh pr comment`(UTF-8 body-file [[feedback_gh_comment_utf8_pipe_mojibake]])로 게시. 채팅 보고 ≠ PR 게시. 머지 직전 "실행 라운드 수 = 게시 라운드 수" 1:1 대조 의무.
+- 🚫 **fix = 그 라운드 진행 모델**(4단계=OPUS 4.8·5단계=CODEX SOL 5.6·구현 결함 재작업=CODEX LUNA 5.6). fix는 현재 PR 내 처리([[feedback_fix_in_current_pr_no_split]]). 어떤 fix든(1줄이라도) 후에 full 재수렴 없이 머지 금지.
+- 🚫 **라이브QA 스샷 다수 매 라운드** — 실캡처만([[feedback_no_fake_data_ever]]), CI IT/SSE·API 텍스트로 GUI 스샷 대체 금지, 실연동 불가 시 사유 정직 보고([[feedback_overnight_live_capture]]).
+- 🧭 **매 단계 ScheduleWakeup 재자각·mega턴 금지**([[feedback_autonomous_loop_schedulewakeup]]). 도구 호출은 실 invocation([[feedback_emit_real_tool_calls]]). Codex 진행 검증·10분 보고([[feedback_pm_codex_progress_verification]]).
+- 🔁 **미준수 소급 보완** — 본 워크플로우 미준수로 진행/머지된 PR 발견 시 누락 단계를 소급 실행·게시.
+- ✅ 무중단 자율(슬라이스 끝마다 묻지 않고 연속 진행), 한국어 커밋/PR([[feedback_korean_commits]]), `[FEAT]`/`[FIX]` 대괄호 prefix, Role 풀네임, 개발책임자 결정은 PR에 누적 기록([[feedback_post_devlead_decisions_to_pr]]), Issue 자동 close([[feedback_issue_close_after_pr]]).
 
-## fix 주체 (라운드별)
-- **Opus 라운드 fix = Opus 가 직접 Edit**(Codex 디스패치 금지). **Codex 라운드 fix = Codex.** "Claude 직접 코드 작성 금지"는 2단계 초기 구현 한정 — **리뷰 라운드 fix 에는 적용 안 됨.**
+## 근본원인 자각 (구 discipline 파일 승계 — 반복위반 방지 장치)
+① 속도(처리량·병렬 완주 압박)가 충실도를 이기게 두지 말 것 — **속도 < 충실도 절대**. ② 워크플로우는 "결과 맞추는 가이드"가 아니라 **내 판단이 틀릴 때를 잡는 장치** — 물음은 "결과가 맞나"가 아니라 "**모든 단계를 밟았나**". ③ 행동 전 결정 시점마다 본 파일 재대조(관성 금지). ④ 긴 세션·병렬 부하가 규율을 침식하면 짧게 끊고 ScheduleWakeup 재자각. 실증(2026-07-07): 단축 라운드를 full로 소급 재검하자 단축이 놓친 🔴CRITICAL(soft-delete 거래처 5소비처 노출)이 발굴됨 — **단축은 "결과 맞음"이 아니라 실 버그를 숨긴다**.
 
-## 머지 게이트 (PM 머지 직전 체크리스트 — 모두 ✓ 후에만 `gh pr merge`)
-- □ **실행한 모든 라운드 = PR 게시된 라운드 (1:1 대조)** — `gh pr view N --comments` 로 Opus 각 차수 · Codex 각 차수 · **수렴 재검(Codex 2차·Opus 재확인 등) 전부** 게시 확인. 🚫 실행했으나 미게시 라운드 1건이라도 있으면 **머지 금지 → 소급 게시 먼저**(#670 위반 박제).
-- □ fix 후 0수렴 재리뷰로 양쪽 **0-blocking / 0-skip / 0-backlog** 확인
-- □ **PM 종합 리뷰 게시(6단계)** 확인
-- □ 라이브 QA **단계별 스크린샷** 인라인 게시 확인
-- □ CI 100% green(`gh pr checks`)
-- □ 메모리 가드(한국어·UUID 비노출·풀네임 Role·docs 동기화 등) 위반 0
-→ 충족 시 **PM 자율 머지**(squash). **멈춤(개발책임자 확인 대기)** = 신규 업무규칙/정책 결정 / 데이터손실·보안·운영중단급 P0 결함뿐. 그 외(트리비얼 결정·라이브QA 실연동 불가 등)는 자율 판단·정직 기록 후 진행. `--admin` 강행 머지는 개발책임자 명시 시만.
+## 머지 게이트 (PM 머지 직전 — 응답에 체크리스트 명시, 전부 ✓ 후에만 merge)
+① 기획 리뷰 게시(기획 단계 조기 PR 존재) ② CODEX SOL 기획검수 게시+반영 ③ CODEX LUNA 구현 리뷰 게시 ④ OPUS 4.8 1차 적대검증 라운드 전부 게시+전건 disposition ⑤ CODEX SOL 라운드 전부 게시 ⑥ fix=라운드 모델 준수 ⑦ 0수렴(양측 terminal 0·재수렴 포함) ⑧ 라이브QA 스샷 다수(SendUserFile+PR SHA-pinned) 매 라운드 ⑨ PM 종합 게시+dev-report/docs 동기화 ⑩ CI 100% green + 실행=게시 1:1 대조 + 메모리 가드(한국어·UUID 비노출·풀네임 Role) 위반 0.
+→ **멈춤(개발책임자 확인 대기)** = 신규 업무규칙/정책 결정 · 데이터손실/보안/운영중단급 P0 · 무결성도메인 편집정책([[feedback_integrity_domain_policy_preconfirm]]) · 스테이지 모델 부재 시 대체 여부뿐. 그 외는 자율 판단·정직 기록 후 진행. `--admin` 강행 머지는 개발책임자 명시 시만.
 
 ## 기술 참조
-- Codex 호출 = `mcp__codex__codex`(approval-policy:never, sandbox workspace-write 또는 danger-full-access, model `gpt-5.5`, config:{model_reasoning_effort:"high"}). Claude 가 commit 대행(Codex git 금지). → [[feedback_codex_plugin_setup]] [[feedback_codex_sandbox_git]]
-- 라이브 QA 실행법(렌더러 mock off·standalone 부팅·캡처) → [[feedback_qa_docker_real_test]] [[feedback_realqa_run_and_false_red]] [[feedback_no_fake_data_ever]]
-- Codex MCP 세션 한계 시 새 세션/codex exec 우회 → [[feedback_codex_mcp_session_limit]]
-- Codex 진행 검증·상태 보고 → [[feedback_pm_codex_progress_verification]]
+- Codex 호출 표준: `mcp__codex__codex`(sandbox danger-full-access·approval-policy never·git 금지·PM commit 대행) 또는 `codex exec`(백그라운드 `</dev/null` [[feedback_codex_exec_stdin_hang]]). → [[feedback_codex_plugin_setup]] [[feedback_codex_sandbox_git]] [[feedback_codex_mcp_session_limit]]
+- 라이브 QA 실행법(렌더러 mock off·standalone 부팅·캡처) → [[feedback_realqa_run_and_false_red]] [[feedback_real_server_check_screenshot]]
+- 검증 genuine 강제(캐시 false-green 방지) → [[feedback_gradle_test_cache_false_green]] · CI 권위=exact SHA([[feedback_parallel_agent_gradle_shared_tree_contention]])

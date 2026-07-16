@@ -123,7 +123,10 @@ public class EstimateController {
     }
 
     /** 견적서 수정 — DRAFT/SENT 단계만. */
-    @Operation(summary = "견적서 수정", description = "DRAFT/SENT 단계만. lines 가 있으면 기존 라인 replace")
+    @Operation(summary = "견적서 수정",
+            description = "DRAFT/SENT 단계만. lines 가 있으면 기존 라인 replace. "
+                    + "[D-R8-9] 요청에 lineId 계약 마커(lineIdContract=true)가 없으면 구 클라이언트로 판정해 400 으로 거부합니다 — "
+                    + "lines 가 null 인 헤더 전용 수정도 마커를 요구합니다(전표 미러).")
     @PutMapping("/{id}")
     @RequirePermission(page = "estimates.list", action = com.samhanair.logis.security.permission.PermissionAction.UPDATE)
     public ApiResponse<EstimateDetailResponse> update(

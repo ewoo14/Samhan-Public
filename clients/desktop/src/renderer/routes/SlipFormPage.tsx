@@ -22,7 +22,7 @@
  *
  * 본 컴포넌트는 `mode` prop 으로 OUTBOUND / INBOUND 양쪽 화면에서 재사용.
  */
-import { useMemo, useState, type ReactNode } from 'react'
+import { useMemo, useRef, useState, type ReactNode } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -68,6 +68,7 @@ import {
 } from '../api/inventory'
 import {
   createSlip,
+  getPriceMemory,
   lookupPartnerForAutoFill,
   emptyBundleSetOptions,
   toApiBundleSetOptions,
@@ -80,6 +81,11 @@ import {
   scheduleLabel,
 } from '../utils/deliverySchedule'
 import { toLocalDateISO } from '../utils/dateUtils'
+import { isAutoPriceSource, shouldAutoFillPrice } from '../utils/priceSourceRules'
+import {
+  usePartnerPriceRefresh,
+  type PartnerRepriceCandidate,
+} from '../utils/usePartnerPriceRefresh'
 import { searchProducts as searchProductsApi } from '../api/productApi'
 import { searchPartners as searchPartnersApi } from '../api/partnerApi'
 import { useIsMobile } from '../hooks/useIsMobile'
@@ -113,6 +119,9 @@ const emptyLine = (): LineDraft => ({
   specification: '', // Slice A 신규 (피드백 #4)
   quantity: '1',
   unitPrice: '0',
+  priceSource: null,
+  catalogUnitPrice: null,
+  priceMemoryUpdatedAt: null,
   lookupError: null,
   lookupLoading: false,
   productType: null,
@@ -134,11 +143,24 @@ const calcVatInclusiveLine = (
   return { incl, supply, vat: incl - supply }
 }
 
+function PriceChangeIndicator({ id }: { id: string }) {
+  return (
+    <span id={id} className="price-change-indicator">
+      <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+        <path d="M3 2v7m0 0L1.5 7.5M3 9l1.5-1.5M9 10V3m0 0L7.5 4.5M9 3l1.5 1.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+      단가 변경
+    </span>
+  )
+}
+
 function SlipMobileLineCard(props: {
   line: LineDraft
   lineNumber: number
   selected: boolean
   canDelete: boolean
+  /** 거래처 선택 여부 (R4-D4) — 미선택 시 CATALOG 카피 분기 + REMEMBERED 마커 해제(D-R4-4). */
+  partnerSelected: boolean
   onSelect: (selected: boolean) => void
   onSpecificationChange: (value: string) => void
   onQuantityChange: (value: string) => void
@@ -151,9 +173,31 @@ function SlipMobileLineCard(props: {
     props.line.quantity,
     props.line.unitPrice,
   )
+  const priceStatusId = `slip-mobile-price-status-${props.line.id}`
+  const priceChangedStatusId = `slip-mobile-price-changed-${props.line.id}`
+  // D-R4-1: 자동채움 실체 = 제품 등록 화면 '판매가'(sellingPrice) — '정가' 라벨 금지(출고가 별칭 오도).
+  // D-R4-4: 거래처 해제 시 단가값은 유지하고 마커(저장일 포함)만 해제 — LineRow(데스크탑)와 동일 분기.
+  const priceStatus = props.line.priceSource === 'REMEMBERED'
+    ? (props.partnerSelected ? '거래처 최근단가' : null)
+    : props.line.priceSource === 'CATALOG'
+      ? '판매가'
+      : null
+  const priceStatusDescription = props.line.priceSource === 'REMEMBERED'
+    ? (props.partnerSelected
+        ? `이 거래처에 마지막으로 저장된 단가${props.line.priceMemoryUpdatedAt ? ` · ${props.line.priceMemoryUpdatedAt.slice(0, 10)} 저장` : ''}`
+        : null)
+    : props.line.priceSource === 'CATALOG'
+      ? (props.partnerSelected
+          ? '이 거래처에 저장된 최근단가가 없어 판매가를 적용했습니다'
+          : '판매가를 적용했습니다')
+      : null
 
   return (
-    <div className="mobile-line-card" data-line-index={props.lineNumber}>
+    <div
+      className={`mobile-line-card${props.line.priceRefreshChanged ? ' price-memory-refreshed-row' : ''}`}
+      aria-describedby={props.line.priceRefreshChanged ? priceChangedStatusId : undefined}
+      data-line-index={props.lineNumber}
+    >
       <div className="mobile-line-card-header">
         <label className="mobile-line-check">
           <input
@@ -164,6 +208,7 @@ function SlipMobileLineCard(props: {
           />
           <span className="mobile-line-card-index">{props.lineNumber}</span>
         </label>
+        {props.line.priceRefreshChanged ? <PriceChangeIndicator id={priceChangedStatusId} /> : null}
         <button
           type="button"
           className="mobile-line-remove-button"
@@ -227,7 +272,21 @@ function SlipMobileLineCard(props: {
             props.onUnitPriceChange(numeric)
           }}
           aria-label={`라인 ${props.lineNumber} 단가`}
+          aria-describedby={priceStatusDescription ? priceStatusId : undefined}
         />
+        {/* R4-D2: 라인별 aria-live 제거 — 전역 고지는 배너(role="status") 1곳, 포커스 시 전달은
+            aria-describedby 체인이 담당. */}
+        {priceStatus && priceStatusDescription ? (
+          <span
+            id={priceStatusId}
+            role="note"
+            aria-label={priceStatusDescription}
+            title={priceStatusDescription}
+            className="price-source-note"
+          >
+            {priceStatus}
+          </span>
+        ) : null}
       </div>
 
       <div className="mobile-line-field">
@@ -259,6 +318,8 @@ function SortableLineRow(props: {
   lineNumber: number
   selected: boolean
   canDelete: boolean
+  /** 거래처 선택 여부 (R4-D4) — LineRow 마커 카피 분기/해제에 전달. */
+  partnerSelected: boolean
   onSelect: (s: boolean) => void
   onModelNameChange: (v: string) => void
   onModelNameBlur: (v: string) => void
@@ -299,6 +360,7 @@ function SortableLineRow(props: {
         line={props.line}
         selected={props.selected}
         canDelete={props.canDelete}
+        partnerSelected={props.partnerSelected}
         onSelect={props.onSelect}
         onModelNameChange={props.onModelNameChange}
         onModelNameBlur={props.onModelNameBlur}
@@ -352,6 +414,17 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
 
   // AC-3: 거래처 자동완성 선택 상태 (PartnerAutocomplete controlled value)
   const [selectedPartner, setSelectedPartner] = useState<PartnerOption | null>(null)
+  const [priceLookupAnnouncement, setPriceLookupAnnouncement] = useState('')
+  const selectedPartnerIdRef = useRef<string | null>(null)
+  selectedPartnerIdRef.current = selectedPartner?.id ?? null
+  // R8-FE-3: 안내 낭독을 실제 적용 여부와 같은 조건으로 묶기 위한 최신 라인 스냅샷
+  // (견적 EstimateFormPage.linesRef 와 동일 패턴 — 비대칭 해소).
+  const linesRef = useRef(lines)
+  linesRef.current = lines
+
+  // D-R8-10: 거래처 변경 bulk 재조회는 전표 수정 모달(SlipDetailPage)과 공용 훅을 쓴다 —
+  // 복붙 대신 단일 진실원(수명주기·조회·해석). LineDraft 적용은 아래 refreshAutoPricesForPartner.
+  const partnerReprice = usePartnerPriceRefresh()
 
   // 거래처 snapshot — 자동완성 선택 시 채워짐(폼 미표시, 전표 기록/주소복사용).
   // eCount 12필드 입력 카드는 출고전표 폼 정비로 제거(ioType/timeDate/검수지/결제·할인·약정 등).
@@ -413,6 +486,149 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
 
   const updateLine = (id: string, patch: Partial<LineDraft>) =>
     setLines((ls) => ls.map((l) => (l.id === id ? { ...l, ...patch } : l)))
+
+  const applyProductSelection = async (line: LineDraft, product: ProductOption | null) => {
+    setPriceLookupAnnouncement('')
+    const lineNumber = Math.max(1, lines.findIndex((candidate) => candidate.id === line.id) + 1)
+    const productId = product?.id ?? null
+    const fallbackUnitPrice =
+      product?.sellingPrice != null ? String(product.sellingPrice) : line.unitPrice
+    // 자동채움 판정은 견적과 공용 헬퍼(shouldAutoFillPrice) — 비대칭 재발 구조 차단(R4-F1).
+    const shouldAutoFill = shouldAutoFillPrice(line.priceSource, line.unitPrice)
+    const nextUnitPrice = shouldAutoFill ? fallbackUnitPrice : line.unitPrice
+    const partnerId = selectedPartner?.id
+    updateLine(line.id, {
+      productId,
+      modelName: product?.modelName ?? '',
+      productName: product?.productName ?? '',
+      unitPrice: nextUnitPrice,
+      priceSource: shouldAutoFill ? 'CATALOG' : line.priceSource,
+      catalogUnitPrice: product?.sellingPrice != null ? String(product.sellingPrice) : line.catalogUnitPrice ?? null,
+      priceMemoryUpdatedAt: null,
+      priceRefreshChanged: false,
+      productType: product?.productType ?? null,
+      modelCode: product?.modelCode ?? null,
+      lookupError: null,
+      lookupLoading: Boolean(partnerId && productId && shouldAutoFill),
+    })
+    if (!partnerId || !productId || !shouldAutoFill) {
+      if (productId && shouldAutoFill) {
+        setPriceLookupAnnouncement(`라인 ${lineNumber} 판매가 적용`)
+      }
+      return
+    }
+    /**
+     * R8-FE-3: 응답 도착 시점에 이 라인에 단가를 실제로 쓸 수 있는가.
+     *
+     * <p>종전에는 안내가 setLines 의 stale guard <b>밖</b>에서 무조건 발화해, 응답이 늦게 오는
+     * 사이 사용자가 거래처를 바꾸거나 단가를 직접 입력해 write 가 skip 돼도 aria-live 가
+     * "적용" 이라 낭독했다(거짓 고지). 견적(EstimateFormPage)은 `if (applyPrice)` guard 안에서
+     * 발화하고 있었으므로 이건 또 하나의 slip/estimate 비대칭이었다 — 여기서 정렬한다.
+     *
+     * <p>write guard(아래 setLines 내부)는 그대로 둔다 — 이 판정은 낭독 여부만 좁히며,
+     * 어긋나더라도 "안내 누락"(무해)이지 "잘못된 write"가 되지 않는 방향으로만 틀린다.
+     */
+    const canStillApply = () => {
+      const current = linesRef.current.find((candidate) => candidate.id === line.id)
+      if (!current) return false
+      if (current.productId !== productId) return false
+      if (selectedPartnerIdRef.current !== partnerId) return false
+      if (current.priceSource === 'USER') return false
+      return true
+    }
+    try {
+      const memory = await getPriceMemory(partnerId, productId)
+      const remembered = memory?.unitPrice
+      const resolvedUnitPrice = remembered == null ? fallbackUnitPrice : String(remembered)
+      const applied = canStillApply()
+      setLines((currentLines) =>
+        currentLines.map((current) => {
+          if (current.id !== line.id) return current
+          if (current.productId !== productId) return current
+          if (selectedPartnerIdRef.current !== partnerId) return current
+          if (current.priceSource === 'USER') return current
+          return {
+            ...current,
+            unitPrice: resolvedUnitPrice,
+            priceSource: remembered == null ? 'CATALOG' : 'REMEMBERED',
+            priceMemoryUpdatedAt: memory?.updatedAt ?? null,
+            priceRefreshChanged: false,
+            lookupLoading: false,
+          }
+        }),
+      )
+      if (applied) {
+        setPriceLookupAnnouncement(
+          `라인 ${lineNumber} ${remembered == null ? '판매가' : '거래처 최근단가'} 적용`,
+        )
+      }
+    } catch {
+      // 가격기억 조회 실패는 품목 선택 자체를 막지 않는다. miss/오류 모두 판매가(catalog) fallback 유지.
+      const applied = canStillApply()
+      setLines((currentLines) =>
+        currentLines.map((current) =>
+          current.id === line.id
+            && current.productId === productId
+            && selectedPartnerIdRef.current === partnerId
+            ? { ...current, lookupLoading: false }
+            : current,
+        ),
+      )
+      if (applied) setPriceLookupAnnouncement(`라인 ${lineNumber} 판매가 적용`)
+    }
+  }
+
+  /**
+   * 거래처 변경 bulk 재조회 — 공용 훅(usePartnerPriceRefresh)이 수명주기·조회·해석을 맡고,
+   * 여기서는 LineDraft(priceSource/catalog 규약) 로 후보를 뽑아 로컬 state 에 적용한다(D-R8-10).
+   */
+  const refreshAutoPricesForPartner = async (partnerId: string) => {
+    // R6-M5: 재조회 시작 시 stale 단건 안내를 클리어(미클리어 시 배너 비활성 폴백이 aria-live 거짓 고지).
+    setPriceLookupAnnouncement('')
+    const candidates: PartnerRepriceCandidate[] = linesRef.current
+      .filter((line) => line.productId && isAutoPriceSource(line.priceSource))
+      .map((line) => ({
+        key: line.id,
+        productId: line.productId!,
+        currentUnitPrice: line.unitPrice,
+        // 카탈로그 미확보 시 옛 거래처 단가 fallback 금지 — 공용 훅이 UNAVAILABLE로 비운다.
+        catalogFallback: line.catalogUnitPrice ?? null,
+      }))
+    if (candidates.length === 0) return
+    const candidateIds = new Set(candidates.map((candidate) => candidate.key))
+    setLines((current) =>
+      current.map((line) =>
+        candidateIds.has(line.id)
+          ? { ...line, lookupLoading: true, priceRefreshChanged: false }
+          : line,
+      ),
+    )
+    const { outcomes, isCurrent } = await partnerReprice.run(partnerId, candidates)
+    if (!isCurrent()) return
+    const outcomeById = new Map(outcomes.map((outcome) => [outcome.key, outcome]))
+    setLines((current) =>
+      current.map((candidate) => {
+        const outcome = outcomeById.get(candidate.id)
+        // 후보 build 이후 품목이 교체됐으면 스킵(계보 오귀속 방지).
+        if (!outcome || candidate.productId !== outcome.productId) return candidate
+        // build 이후 사용자 직접입력(USER)으로 전환됐으면 재조회 대상 아님.
+        if (!isAutoPriceSource(candidate.priceSource)) {
+          return { ...candidate, lookupLoading: false, priceRefreshChanged: false }
+        }
+        return {
+          ...candidate,
+          unitPrice: outcome.source === 'UNAVAILABLE' ? '' : outcome.unitPrice,
+          priceSource: outcome.source === 'UNAVAILABLE' ? null : outcome.source,
+          priceMemoryUpdatedAt: outcome.updatedAt,
+          priceRefreshChanged: (outcome.source === 'UNAVAILABLE' ? '' : outcome.unitPrice) !== candidate.unitPrice,
+          lookupError: outcome.source === 'UNAVAILABLE'
+            ? '카탈로그 판매가를 확인할 수 없습니다. 단가를 직접 입력해 주세요.'
+            : null,
+          lookupLoading: false,
+        }
+      }),
+    )
+  }
 
   const updateSetOption = (id: string, patch: Partial<BundleSetOptions>) =>
     setLines((ls) =>
@@ -476,8 +692,21 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
     partner: PartnerOption | null,
   ) => {
     setSelectedPartner(partner)
+    selectedPartnerIdRef.current = partner?.id ?? null
 
     if (!partner) {
+      partnerReprice.invalidate()
+      setLines((current) => current.map((line) => ({
+        ...line,
+        lookupLoading: false,
+        priceRefreshChanged: false,
+      })))
+      // R8-FE-6(=R8-DESIGN-2·R7-FE-3): 해제 시 stale 단건 안내를 비운다 — 미클리어 시 배너
+      // 비활성 폴백이 "라인 N 거래처 최근단가 적용" 을 계속 낭독한다(aria-live 거짓 고지).
+      // R6-M5 는 재선택 refresh 시작에서만 비웠고 해제 분기엔 setter 가 없었다.
+      // ⚠️ R7 은 이걸 "slip/estimate 비대칭" 이라 했으나 실측 결과 두 폼 모두 동일 결함이다 —
+      // 양쪽 동시 수정(EstimateFormPage.handlePartnerOptionChange 미러).
+      setPriceLookupAnnouncement('')
       // 선택 해제 — 관련 필드 클리어
       setPartnerName('')
       setCustomerTel('')
@@ -485,6 +714,9 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
       setCustomerRepresentative('')
       setAutoFillError(null)
       return
+    }
+    if (partner.id) {
+      void refreshAutoPricesForPartner(partner.id)
     }
 
     // 1단계: search summary 즉시 fill
@@ -582,6 +814,7 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
         slipDate: today,
         sourceWarehouseId: sourceWh ?? undefined,
         destinationWarehouseId: destWh ?? undefined,
+        partnerId: selectedPartner?.id || undefined,
         partnerName: partnerName.trim() || undefined,
         deliveryTag: isOutbound ? tag ?? undefined : undefined,
         memo: memo.trim() || undefined,
@@ -636,7 +869,16 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
     (l) => l.productId && Number(l.quantity) > 0,
   ).length
   const requiredWh = isOutbound ? sourceWh : destWh
-  const canSubmit = !!requiredWh && validLineCount > 0 && !mutation.isPending
+  // 거래처 변경 최근단가 재조회/가격기억 조회가 in-flight 인 동안 저장하면 이전 거래처
+  // 단가가 새 거래처(partnerId)로 전송되어 가격기억이 교차 오염된다 — 저장 차단(R4-F4).
+  const priceResolutionBusy = partnerReprice.isPending || lines.some((l) => l.lookupLoading)
+  const hasUnresolvedCatalogPrice = lines.some((line) => line.lookupError && !line.unitPrice.trim())
+  // R4-D4: 마커 카피 분기/해제 기준 — 가격기억 조회가 실제 가능한 상태(UUID 보유 거래처 선택)와 일치.
+  const partnerSelected = Boolean(selectedPartner?.id)
+  // R4-D9: 배너 live region 은 상시 마운트 — 내용과 함께 조건부 마운트하면 일부 SR 이 미낭독.
+  const priceRefreshNoticeActive = lines.some((line) => line.priceRefreshChanged)
+  const canSubmit =
+    !!requiredWh && validLineCount > 0 && !mutation.isPending && !priceResolutionBusy && !hasUnresolvedCatalogPrice
 
   // ── Header 체크박스 상태 ────────────────────────────────
 
@@ -715,6 +957,23 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
           ) : (
             <span aria-hidden="true" />
           )}
+        </div>
+
+        {/* R4-D9: live region 은 빈 컨테이너로 상시 렌더하고 텍스트만 토글 — ARIA 관행상
+            live region 이 선존재해야 SR 낭독이 신뢰된다. 비활성 시 class 미부여로 시각 0px. */}
+        <div
+          className={priceRefreshNoticeActive
+            ? 'price-memory-refresh-banner'
+            : priceLookupAnnouncement
+              ? 'price-lookup-status'
+              : undefined}
+          role="status"
+          aria-live="polite"
+          data-testid="slip-price-refresh-banner"
+        >
+          {priceRefreshNoticeActive
+            ? '거래처 변경으로 최근단가 재적용 · 변경된 행을 확인해 주세요.'
+            : priceLookupAnnouncement || null}
         </div>
 
         {/*
@@ -1037,29 +1296,23 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
                   lineNumber={idx + 1}
                   selected={selectedIds.has(line.id)}
                   canDelete={lines.length > 1}
+                  partnerSelected={partnerSelected}
                   onSelect={(s) => toggleSelect(line.id, s)}
                   onSpecificationChange={(v) => updateLine(line.id, { specification: v })}
                   onQuantityChange={(v) => updateLine(line.id, { quantity: v })}
-                  onUnitPriceChange={(v) => updateLine(line.id, { unitPrice: v })}
+                  onUnitPriceChange={(v) => updateLine(line.id, {
+                    unitPrice: v,
+                    priceSource: 'USER',
+                    priceMemoryUpdatedAt: null,
+                    priceRefreshChanged: false,
+                    lookupError: null,
+                    lookupLoading: false,
+                  })}
                   onDelete={() => removeLine(line.id)}
                   modelCell={
                     <ProductAutocomplete
                       value={lineProductValue}
-                      onChange={(p) =>
-                        updateLine(line.id, {
-                          productId: p?.id ?? null,
-                          modelName: p?.modelName ?? '',
-                          productName: p?.productName ?? '',
-                          unitPrice:
-                            p?.sellingPrice != null
-                              ? String(p.sellingPrice)
-                              : line.unitPrice,
-                          productType: p?.productType ?? null,
-                          modelCode: p?.modelCode ?? null,
-                          lookupError: null,
-                          lookupLoading: false,
-                        })
-                      }
+                      onChange={(p) => void applyProductSelection(line, p)}
                       searchProducts={(q) => searchProductsApi(q, { usageScope: 'PARTNER_ORDER' })}
                       label=""
                       ariaLabel={`라인 ${idx + 1} 품목`}
@@ -1122,31 +1375,25 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
                       lineNumber={idx + 1}
                       selected={selectedIds.has(line.id)}
                       canDelete={lines.length > 1}
+                      partnerSelected={partnerSelected}
                       onSelect={(s) => toggleSelect(line.id, s)}
                       onModelNameChange={(v) => updateLine(line.id, { modelName: v })}
                       onModelNameBlur={(v) => void handleModelNameBlur(line.id, v)}
                       onSpecificationChange={(v) => updateLine(line.id, { specification: v })}
                       onQuantityChange={(v) => updateLine(line.id, { quantity: v })}
-                      onUnitPriceChange={(v) => updateLine(line.id, { unitPrice: v })}
+                      onUnitPriceChange={(v) => updateLine(line.id, {
+                        unitPrice: v,
+                        priceSource: 'USER',
+                        priceMemoryUpdatedAt: null,
+                        priceRefreshChanged: false,
+                        lookupError: null,
+                        lookupLoading: false,
+                      })}
                       onDelete={() => removeLine(line.id)}
                       modelCell={
                         <ProductAutocomplete
                           value={lineProductValue}
-                          onChange={(p) =>
-                            updateLine(line.id, {
-                              productId: p?.id ?? null,
-                              modelName: p?.modelName ?? '',
-                              productName: p?.productName ?? '',
-                              unitPrice:
-                                p?.sellingPrice != null
-                                  ? String(p.sellingPrice)
-                                  : line.unitPrice,
-                              productType: p?.productType ?? null,
-                              modelCode: p?.modelCode ?? null,
-                              lookupError: null,
-                              lookupLoading: false,
-                            })
-                          }
+                          onChange={(p) => void applyProductSelection(line, p)}
                           searchProducts={(q) => searchProductsApi(q, { usageScope: 'PARTNER_ORDER' })}
                           label=""
                           ariaLabel={`라인 ${idx + 1} 품목`}
@@ -1211,6 +1458,23 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
         ) : null}
 
         <div className="sfp-submit-bar">
+          {/* 재조회 in-flight busy 단서 — 견적 폼과 대칭 문구(R4-F4).
+              R4-D9 계열 sweep: live region 은 빈 span 으로 상시 렌더하고 텍스트만 토글 —
+              ARIA 관행상 live region 이 선존재해야 SR 낭독이 신뢰된다. 비활성 시 스타일
+              미부여 빈 인라인 span = 시각 0px (flex-end 정렬이라 gap 슬롯도 우측 그룹에
+              가시 영향 없음). */}
+          <span
+            role="status"
+            aria-live="polite"
+            data-testid="slip-form-price-refresh-busy"
+            style={
+              priceResolutionBusy
+                ? { fontSize: 12, color: 'var(--ink-secondary, #5C6773)', alignSelf: 'center' }
+                : undefined
+            }
+          >
+            {priceResolutionBusy ? '최근단가 확인 중…' : null}
+          </span>
           <Button variant="ghost" onClick={() => navigate(listPath)}>
             취소
           </Button>

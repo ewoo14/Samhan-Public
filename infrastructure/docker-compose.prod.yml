@@ -352,6 +352,26 @@ services:
     container_name: samhan-slip-service
     restart: unless-stopped
     <<: *service-memory
+    # #809 R6-H5: 가격기억 alarm 2건(monitoring.tf metric filter)의 로그 원천 보장.
+    # CloudWatch Agent 의 json 와일드카드 tail 은 AWS 문서상 "최신 수정 파일만 push"
+    # 라 17개 컨테이너 동시 기록에서 slip WARN 라인이 유실될 수 있어, slip-service 만
+    # awslogs driver 로 CloudWatch Logs 에 직접 전달한다 (파일 tail 경합 자체가 없음).
+    # - 인증: dockerd 가 EC2 instance role 사용 (iam.tf logs:CreateLogStream/PutLogEvents)
+    # - log group 은 Terraform(aws_cloudwatch_log_group.docker) 선생성 — create-group 불필요
+    # - 시작 결합: awslogs 는 컨테이너 시작 시 CreateLogStream 호출 — 실패 시 기동 실패
+    #   (CUTOVER.md M-19 ⓪ 선행 조건 참조). 로컬 실행 금지 파일이므로 로컬 영향 없음.
+    # - mode=non-blocking: CloudWatch 지연이 앱 stdout 을 블록하지 않음 (극단 burst 시
+    #   드롭 허용 — alarm 은 반복 WARN 감지 목적이라 수용).
+    # - docker logs 는 Docker 20.10+ dual logging 기본값으로 계속 동작.
+    logging:
+      driver: awslogs
+      options:
+        awslogs-region: ap-northeast-2
+        awslogs-group: /samhanlogis/production/docker
+        awslogs-stream: slip-service
+        awslogs-create-group: "false"
+        mode: non-blocking
+        max-buffer-size: 4m
     environment:
       <<: *spring-prod
       SERVER_PORT: "8086"
@@ -363,6 +383,25 @@ services:
       SAMHAN_AROLOGIS_DISPATCH_URL: http://arologis-service:8097
       SAMHAN_REALTIME_BROKER: in-memory
       SAMHAN_REALTIME_HEARTBEAT_SECONDS: "30"
+      # #809 운영 노브: user_data.sh 가 생성한 .env.production 값을 컨테이너에 명시 전달.
+      SAMHAN_AUTH_CONNECT_TIMEOUT_MS: ${SAMHAN_AUTH_CONNECT_TIMEOUT_MS:-2000}
+      SAMHAN_AUTH_READ_TIMEOUT_MS: ${SAMHAN_AUTH_READ_TIMEOUT_MS:-3000}
+      SAMHAN_PRICE_MEMORY_LOCK_TIMEOUT_MS: ${SAMHAN_PRICE_MEMORY_LOCK_TIMEOUT_MS:-1000}
+      SAMHAN_PRICE_MEMORY_STATEMENT_TIMEOUT_MS: ${SAMHAN_PRICE_MEMORY_STATEMENT_TIMEOUT_MS:-3000}
+      SAMHAN_PRICE_MEMORY_TRANSACTION_TIMEOUT_SECONDS: ${SAMHAN_PRICE_MEMORY_TRANSACTION_TIMEOUT_SECONDS:-4}
+      SAMHAN_PRICE_MEMORY_ASYNC_CORE_POOL_SIZE: ${SAMHAN_PRICE_MEMORY_ASYNC_CORE_POOL_SIZE:-2}
+      SAMHAN_PRICE_MEMORY_ASYNC_MAX_POOL_SIZE: ${SAMHAN_PRICE_MEMORY_ASYNC_MAX_POOL_SIZE:-4}
+      SAMHAN_PRICE_MEMORY_ASYNC_QUEUE_CAPACITY: ${SAMHAN_PRICE_MEMORY_ASYNC_QUEUE_CAPACITY:-100}
+      SAMHAN_PRICE_MEMORY_ASYNC_SHUTDOWN_AWAIT_SECONDS: ${SAMHAN_PRICE_MEMORY_ASYNC_SHUTDOWN_AWAIT_SECONDS:-5}
+      # R6-M2 + D-R8-2: Hikari 커넥션 획득 대기 상한(ms).
+      # DB_CONNECTION_TIMEOUT_MS = slip-service 메인 DataSource 전역 — fleet 표준 30000 복원.
+      # 종전 4000 전역화는 pool 포화 시 사용자 요청을 4초 만에 500 으로 끊었다(R6-M1 blast radius).
+      # 가격기억의 4초 fail-soft 정책은 전용 pool(SAMHAN_PRICE_MEMORY_DB_*)로 격리했다.
+      DB_CONNECTION_TIMEOUT_MS: ${DB_CONNECTION_TIMEOUT_MS:-30000}
+      # 가격기억 전용 pool (app.slip.price-memory.datasource.hikari) — 메인과 별개.
+      SAMHAN_PRICE_MEMORY_DB_CONNECTION_TIMEOUT_MS: ${SAMHAN_PRICE_MEMORY_DB_CONNECTION_TIMEOUT_MS:-4000}
+      SAMHAN_PRICE_MEMORY_DB_POOL_MAX: ${SAMHAN_PRICE_MEMORY_DB_POOL_MAX:-4}
+      SAMHAN_PRICE_MEMORY_DB_POOL_MIN_IDLE: ${SAMHAN_PRICE_MEMORY_DB_POOL_MIN_IDLE:-0}
       # Phase 11 운영: slip attachment 는 AWS S3 endpoint + Secrets Manager 주입 키 사용
       SAMHAN_SLIP_MINIO_ENABLED: "true"
       SAMHAN_SLIP_MINIO_ENDPOINT: ${SAMHAN_S3_ENDPOINT:-https://s3.ap-northeast-2.amazonaws.com}

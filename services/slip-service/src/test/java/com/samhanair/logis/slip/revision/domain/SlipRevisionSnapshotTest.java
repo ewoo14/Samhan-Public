@@ -23,6 +23,52 @@ class SlipRevisionSnapshotTest {
 
     private final ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
 
+    /**
+     * [R8-BE-5] 기사/하차 3필드 round-trip — {@code SlipService.editDriver} 는 기사 변경을 EDIT
+     * 스냅샷으로 캡처하며 그 주석이 <i>"driverName/driverPhone 은 toSnapshot 필드"</i> 라고 명시했으나
+     * record 에 실제로는 없어, 기사 변경이 스냅샷에 담기지 않고 복원이 현재 값을 남겼다.
+     */
+    @Test
+    @DisplayName("SlipSnapshot 은 기사명/기사연락처/하차일을 무손실 직렬화한다 (R8-BE-5)")
+    void snapshotRoundTripsDriverAndUnloadDate() throws Exception {
+        SlipSnapshot original = new SlipSnapshot(
+                "2026/07/16-1", LocalDate.of(2026, 7, 16), UUID.randomUUID(), "삼한물산",
+                "P-2026-0001", "123-45-67890", "메모", "REGION",
+                null, null, null, null, null, UUID.randomUUID(), "본사창고",
+                // 기사/하차 3필드
+                "김기사", "010-5555-6666", LocalDate.of(2026, 7, 18),
+                null, null, null, null, null, null, null, null, null, null,
+                List.of());
+
+        SlipSnapshot restored = objectMapper.readValue(
+                objectMapper.writeValueAsString(original), SlipSnapshot.class);
+
+        assertThat(restored.driverName()).isEqualTo("김기사");
+        assertThat(restored.driverPhone()).isEqualTo("010-5555-6666");
+        assertThat(restored.unloadDate()).isEqualTo(LocalDate.of(2026, 7, 18));
+    }
+
+    /**
+     * [R8-BE-5 하위호환] 기사/하차 키가 <b>없는</b> 구 JSONB 스냅샷도 깨지지 않고 null 로
+     * 역직렬화되어야 한다 — 기존 revision 행은 그 키를 갖고 있지 않다.
+     */
+    @Test
+    @DisplayName("기사/하차 키가 없는 구 스냅샷 JSON 도 null 로 안전하게 역직렬화된다 (R8-BE-5 하위호환)")
+    void legacySnapshotJsonWithoutDriverKeys_deserializesWithNulls() throws Exception {
+        String legacyJson = """
+                {"slipNo":"2026/05/29-3","slipDate":"2026-05-29","partnerName":"삼한물산",
+                 "partnerCode":"P-2026-0001","memo":"긴급 출고","deliveryTag":"OUTBOUND_DELIVERY",
+                 "lines":[]}
+                """;
+
+        SlipSnapshot snapshot = objectMapper.readValue(legacyJson, SlipSnapshot.class);
+
+        assertThat(snapshot.slipNo()).isEqualTo("2026/05/29-3");
+        assertThat(snapshot.driverName()).isNull();
+        assertThat(snapshot.driverPhone()).isNull();
+        assertThat(snapshot.unloadDate()).isNull();
+    }
+
     @Test
     @DisplayName("SlipSnapshot 은 헤더+라인 배열을 Jackson round-trip 무손실 직렬화한다")
     void snapshotJacksonRoundTrip() throws Exception {
@@ -65,6 +111,29 @@ class SlipRevisionSnapshotTest {
         assertThat(restored.slipDate()).isEqualTo(LocalDate.of(2026, 5, 29));
         assertThat(restored.partnerId()).isEqualTo(partnerId);
         assertThat(restored.lines().get(0).lineTotal()).isEqualByComparingTo("30000.00");
+    }
+
+    @Test
+    @DisplayName("[R6-H3] 세트 계보 필드는 round-trip 보존되고, 계보 없는 구 JSON 은 null 로 역직렬화된다")
+    void snapshotLineLineageRoundTripAndLegacyJsonBackwardCompat() throws Exception {
+        UUID productId = UUID.randomUUID();
+        SlipSnapshot.Line headLine = new SlipSnapshot.Line(productId, "실내기", "COMP-1", "220V", 1,
+                new BigDecimal("300000.00"), new BigDecimal("300000.00"), null,
+                new BigDecimal("330000.00"), new BigDecimal("30000.00"), new BigDecimal("300000.00"),
+                Boolean.TRUE, "SET-809");
+
+        String json = objectMapper.writeValueAsString(headLine);
+        SlipSnapshot.Line restored = objectMapper.readValue(json, SlipSnapshot.Line.class);
+        assertThat(restored.setHead()).isTrue();
+        assertThat(restored.parentSetModel()).isEqualTo("SET-809");
+
+        // 구 스냅샷 JSON(계보 필드 자체가 없음) — V58 이전 slip_revisions 행 하위호환
+        String legacyJson = """
+                {"productId":"%s","productName":"펌프","quantity":2,"unitPrice":15000.00}
+                """.formatted(productId);
+        SlipSnapshot.Line legacy = objectMapper.readValue(legacyJson, SlipSnapshot.Line.class);
+        assertThat(legacy.setHead()).isNull();
+        assertThat(legacy.parentSetModel()).isNull();
     }
 
     @Test

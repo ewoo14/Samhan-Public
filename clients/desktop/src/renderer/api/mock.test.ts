@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AxiosRequestConfig } from 'axios'
-import { getMockResponse } from './mock'
+import { getMockResponse, MOCK_AUTH } from './mock'
 import type { MonthlyIncomeStatementResponse } from './accounting'
 import { querySlips } from './slip'
 import {
@@ -77,6 +77,285 @@ afterEach(() => {
   vi.unstubAllEnvs()
 })
 
+describe('mock price memory contract', () => {
+  it('POST /api/products/lookup 은 운영 BE 와 동일하게 products.list 조회 권한을 요구한다', () => {
+    const originalRole = MOCK_AUTH.role
+    try {
+      MOCK_AUTH.role = 'DISPATCH'
+      const denied = mockRequest({
+        method: 'POST',
+        url: '/api/products/lookup',
+        data: { ids: ['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaa040'] },
+      }) as { __mockStatus: number; body: { code: string } }
+
+      expect(denied.__mockStatus).toBe(403)
+      expect(denied.body.code).toBe('FORBIDDEN')
+    } finally {
+      MOCK_AUTH.role = originalRole
+    }
+  })
+
+  it('lookupProductByModelName mock mirrors the BE id/name wire shape', () => {
+    const response = mockRequest({
+      method: 'GET',
+      url: '/slips/lookup-product',
+      params: { modelName: 'AJ040RXH4BC1' },
+    }) as MockEnvelope<Record<string, unknown>>
+
+    expect(response.data).toMatchObject({
+      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaa040',
+      name: '시스템에어컨 4Way 4HP',
+      modelName: 'AJ040RXH4BC1',
+    })
+    expect(response.data).not.toHaveProperty('productId')
+    expect(response.data).not.toHaveProperty('productName')
+  })
+
+  it('single/bulk price memory handlers preserve hit-only partial response semantics', () => {
+    const partnerA = '11111111-1111-4111-8111-111111111111'
+    const partnerB = '22222222-2222-4222-8222-222222222222'
+    const productA = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaa040'
+    const productB = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb010'
+    const single = mockRequest({
+      method: 'GET',
+      url: '/slips/price-memory',
+      params: {
+        partnerId: partnerA,
+        productId: productA,
+      },
+    }) as MockEnvelope<{ unitPrice: number; updatedAt: string }>
+    // R6-M3: updatedAt 은 실 wire(LocalDateTime, 오프셋 없음) 형식 — mock 값 형식도 BE parity.
+    expect(single.data).toMatchObject({ unitPrice: 2035000, updatedAt: '2026-05-04T10:30:00' })
+    expect(single.data.updatedAt).not.toMatch(/[+Z]/)
+
+    const bulk = mockRequest({
+      method: 'POST',
+      url: '/slips/price-memory/bulk',
+      data: {
+        partnerId: partnerA,
+        productIds: [productA, productB],
+      },
+    }) as MockEnvelope<Array<{ productId: string; unitPrice: number }>>
+    expect(bulk.data).toEqual([
+      expect.objectContaining({ productId: productA, unitPrice: 2035000 }),
+    ])
+
+    const isolatedMiss = mockRequest({
+      method: 'GET',
+      url: '/slips/price-memory',
+      params: { partnerId: partnerB, productId: productA },
+    }) as { __mockStatus: number; body: null }
+    expect(isolatedMiss).toEqual({ __mockStatus: 204, body: null })
+  })
+
+  it.each([
+    ['single missing partnerId', { method: 'GET', url: '/slips/price-memory', params: { productId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaa040' } }],
+    ['single invalid product UUID', { method: 'GET', url: '/slips/price-memory', params: { partnerId: '11111111-1111-4111-8111-111111111111', productId: 'not-uuid' } }],
+    ['bulk empty products', { method: 'POST', url: '/slips/price-memory/bulk', data: { partnerId: '11111111-1111-4111-8111-111111111111', productIds: [] } }],
+    ['bulk over 100 products', { method: 'POST', url: '/slips/price-memory/bulk', data: { partnerId: '11111111-1111-4111-8111-111111111111', productIds: Array.from({ length: 101 }, (_, index) => `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`) } }],
+  ])('%s mirrors the real wire validation', (_name, config) => {
+    const response = mockRequest(config) as { __mockStatus: number; body: { code: string } }
+    expect(response.__mockStatus).toBe(400)
+    expect(response.body.code).toBe('INVALID_INPUT')
+  })
+
+  it('version-less admin partner ids pass lenient UUID validation and reach the memory row', () => {
+    // R6-M3: 실 BE 는 UUID 타입 바인딩(version/variant 미검증)이라 MOCK_ADMIN_PARTNERS 의
+    // version-less id 도 200/204 다 — RFC-4122 version 강제는 mock 전용 400 을 만들어
+    // 폼이 조용히 CATALOG 폴백하는 mock 회귀(false-green)를 낳았다. 거래처 검색 경로
+    // (엘에이시스템에어 id)로 기억행이 도달하는지까지 함께 가드한다.
+    const adminPartnerId = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+    const productA = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaa040'
+
+    const single = mockRequest({
+      method: 'GET',
+      url: '/slips/price-memory',
+      params: { partnerId: adminPartnerId, productId: productA },
+    }) as MockEnvelope<{ unitPrice: number; updatedAt: string }>
+    expect(single.data).toMatchObject({ unitPrice: 2035000, updatedAt: '2026-05-04T10:30:00' })
+
+    const bulk = mockRequest({
+      method: 'POST',
+      url: '/slips/price-memory/bulk',
+      data: { partnerId: adminPartnerId, productIds: [productA] },
+    }) as MockEnvelope<Array<{ productId: string; unitPrice: number }>>
+    expect(bulk.data).toEqual([
+      expect.objectContaining({ productId: productA, unitPrice: 2035000 }),
+    ])
+
+    // version-less 여도 대시 5그룹 형태가 아니면 여전히 400 (형태 자체 오류).
+    const malformed = mockRequest({
+      method: 'GET',
+      url: '/slips/price-memory',
+      params: { partnerId: 'aaaaaaaa-aaaa-aaaa-aaaa', productId: productA },
+    }) as { __mockStatus: number; body: { code: string } }
+    expect(malformed.__mockStatus).toBe(400)
+    expect(malformed.body.code).toBe('INVALID_INPUT')
+  })
+
+  // [R8-FE-7] GET 과 POST 는 바인딩 경로가 달라 관대함이 다르다 — 하나의 regex 로 兼用하면
+  // GET 이 실 wire 보다 엄격해진다. 라이브 실측: `partnerId=1-1-1-1-1` → 실 API 204 / mock 400.
+  it('mock UUID validation matches each binding path: GET lenient (UUID.fromString) vs POST strict (Jackson)', () => {
+    const shorthand = '1-1-1-1-1'
+    const productA = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaa040'
+
+    // GET `@RequestParam UUID` → Spring 이 UUID.fromString 호출 = 관대. 축약형을
+    // 00000001-0001-0001-0001-000000000001 로 받아들이므로 400 이 아니라 **204(miss)** 여야 한다.
+    const lenientGet = mockRequest({
+      method: 'GET',
+      url: '/slips/price-memory',
+      params: { partnerId: shorthand, productId: productA },
+    }) as { __mockStatus: number; body: null }
+    expect(lenientGet.__mockStatus).toBe(204)
+
+    // POST `@RequestBody` → Jackson UUIDDeserializer = 엄격(canonical 36자만). 400 이 정답이다.
+    const strictPost = mockRequest({
+      method: 'POST',
+      url: '/slips/price-memory/bulk',
+      data: { partnerId: shorthand, productIds: [productA] },
+    }) as { __mockStatus: number; body: { code: string } }
+    expect(strictPost.__mockStatus).toBe(400)
+    expect(strictPost.body.code).toBe('INVALID_INPUT')
+
+    // 축약형 productId 도 같은 비대칭을 따른다.
+    const lenientGetProduct = mockRequest({
+      method: 'GET',
+      url: '/slips/price-memory',
+      params: { partnerId: '11111111-1111-4111-8111-111111111111', productId: shorthand },
+    }) as { __mockStatus: number }
+    expect(lenientGetProduct.__mockStatus).toBe(204)
+    const strictPostProduct = mockRequest({
+      method: 'POST',
+      url: '/slips/price-memory/bulk',
+      data: { partnerId: '11111111-1111-4111-8111-111111111111', productIds: [shorthand] },
+    }) as { __mockStatus: number }
+    expect(strictPostProduct.__mockStatus).toBe(400)
+  })
+
+  // R6-H2: 전표 복사 서버 endpoint(POST /slips/{id}/duplicate) mock 이 새 계약을 미러하는지 가드.
+  it('slip duplicate mock mirrors the server-copy contract (new DRAFT + today + verbatim lines)', () => {
+    const now = new Date()
+    const [yyyy, mm, dd] = [
+      String(now.getFullYear()),
+      String(now.getMonth() + 1).padStart(2, '0'),
+      String(now.getDate()).padStart(2, '0'),
+    ]
+    const raw = mockRequest({
+      method: 'POST',
+      url: '/slips/slip-001/duplicate',
+    }) as { __mockStatus: number; body: MockEnvelope<{
+      id: string
+      slipNo: string
+      slipDate: string
+      status: string
+      lines: Array<{
+        id: string
+        productId: string
+        quantity: number
+        unitPrice: string
+        setHead: boolean
+        parentSetModel: string | null
+      }>
+    }> }
+
+    // [R8-FE-5] BE 는 @ResponseStatus(HttpStatus.CREATED) — envelope() 기본 200 은 계약 위반이었다.
+    expect(raw.__mockStatus).toBe(201)
+    const response = raw.body
+    expect(response.data.id).not.toBe('slip-001')
+    expect(response.data.status).toBe('DRAFT')
+    expect(response.data.slipDate).toBe(`${yyyy}-${mm}-${dd}`)
+    // 전표번호 슬래시 yyyy/MM/dd-N 신규 채번 (feedback_slip_order_number_format)
+    expect(response.data.slipNo).toBe(`${yyyy}/${mm}/${dd}-99`)
+
+    // [R8-FE-5] 🔴 종전 단언은 `lines.length > 0` 한 줄이었다 — 테스트명이 "verbatim lines" 라고
+    // 주장하면서 실제로는 세트 계보를 전혀 보지 않아, 계보를 파괴하는 복사도 통과시켰다
+    // (H2 원결함이 mock gate 통과).
+    //
+    // ⚠️ 정직 고지: 현재 duplicate mock 과 GET 상세는 같은 SAMPLE_LINES 참조를 반환하므로
+    // 아래 toEqual 은 지금은 자명하게 참이다. 이 단언의 값은 "미래 회귀 차단" 에 있다 —
+    // duplicate mock 이 라인을 재조립하는 순간(R4-F2 의 /1.1 재분리 패턴, H2 의 FE 재조립 패턴)
+    // 즉시 RED 가 된다. 계보를 실제로 검증하는 건 그 아래 단언들이다.
+    const source = mockRequest({
+      method: 'GET',
+      url: '/slips/slip-001',
+    }) as MockEnvelope<{ lines: Array<Record<string, unknown>> }>
+    expect(response.data.lines).toEqual(source.data.lines)
+
+    // 계보가 fixture 에 실제로 존재하는지 — 이 단언이 없으면 위 toEqual 이 "둘 다 계보 없음" 으로
+    // 공허하게 참이 된다(R8-FE-5 의 원인 그 자체).
+    const head = response.data.lines.find((line) => line.setHead)
+    expect(head).toBeDefined()
+    expect(head!.parentSetModel).toBeTruthy()
+    const component = response.data.lines.find(
+      (line) => !line.setHead && line.parentSetModel === head!.parentSetModel,
+    )
+    expect(component).toBeDefined()
+    expect(response.data.lines.some((line) => line.parentSetModel === null)).toBe(true)
+  })
+
+  // [R8-FE-4] duplicate mock 이 권한을 검사하는지 — 종전엔 mockRequirePermission() 이 존재함에도
+  // duplicate 분기에서 호출되지 않아, 생성 권한 없는 역할도 복사에 성공(200)하고 실 BE 만 403 이었다.
+  it('slip duplicate mock enforces create permission like the real backend (R8-FE-4)', () => {
+    const originalRole = MOCK_AUTH.role
+    try {
+      // WAREHOUSE 는 sales.slip.create 미보유 → BE checkCreatePermission 이 403.
+      MOCK_AUTH.role = 'WAREHOUSE'
+      const denied = mockRequest({
+        method: 'POST',
+        url: '/slips/slip-001/duplicate',
+      }) as { __mockStatus: number; body: { code: string } }
+      expect(denied.__mockStatus).toBe(403)
+      expect(denied.body.code).toBe('FORBIDDEN')
+
+      // 404 는 403 보다 우선한다 — BE 가 resolveSlipType(id) 를 먼저 호출하므로,
+      // 권한 없는 역할이 타 전표의 존재 여부를 403/404 차이로 탐지할 수 없다.
+      const missing = mockRequest({
+        method: 'POST',
+        url: '/slips/no-such-slip/duplicate',
+      }) as { __mockStatus: number; body: { code: string } }
+      expect(missing.__mockStatus).toBe(404)
+
+      // 생성 권한 보유 역할은 통과.
+      MOCK_AUTH.role = 'SALES'
+      const allowed = mockRequest({
+        method: 'POST',
+        url: '/slips/slip-001/duplicate',
+      }) as { __mockStatus: number }
+      expect(allowed.__mockStatus).toBe(201)
+    } finally {
+      MOCK_AUTH.role = originalRole
+    }
+  })
+
+  it('slip duplicate mock returns 404 for a missing source', () => {
+    const response = mockRequest({
+      method: 'POST',
+      url: '/slips/no-such-slip/duplicate',
+    }) as { __mockStatus: number; body: { code: string } }
+
+    expect(response.__mockStatus).toBe(404)
+    expect(response.body.code).toBe('NOT_FOUND')
+  })
+
+  it('mockEstimateDetail_partnerIdIsUuidAndEnablesPriceMemoryLookup', () => {
+    const list = mockRequest({
+      method: 'GET',
+      url: '/api/v1/slips/estimates?page=0&size=20',
+    }) as MockEnvelope<{ content: Array<{ id: string; partnerId: string }> }>
+    const detail = mockRequest({
+      method: 'GET',
+      url: '/api/v1/slips/estimates/est-001',
+    }) as MockEnvelope<{ partnerId: string }>
+    const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+
+    expect(list.data.content.find((row) => row.id === 'est-001')?.partnerId).toMatch(uuid)
+    expect(detail.data.partnerId).toMatch(uuid)
+    expect(detail.data.partnerId).toBe(
+      list.data.content.find((row) => row.id === 'est-001')?.partnerId,
+    )
+  })
+})
+
 describe('mock journal cash receipt contract', () => {
   it('입금보고서 자동 분개는 post mock 은 허용하고 reverse mock 만 409로 차단한다', () => {
     const posted = mockRequest({
@@ -149,7 +428,7 @@ describe('mock 주문 목록 soft-delete parity (#757 STEP4 FE)', () => {
 })
 
 describe('mock manual journal contract', () => {
-  it('GET /admin/partners/search 는 공유 admin 응답에 partnerId 를 노출하지 않는다', () => {
+  it('GET /admin/partners/search exposes partnerId as payload-only UUID', () => {
     const adminSearch = mockRequest({
       method: 'GET',
       url: '/admin/partners/search',
@@ -161,7 +440,11 @@ describe('mock manual journal contract', () => {
       partnerCode: '1234567890',
       name: '엘에이시스템에어',
     })
-    expect(adminSearch.data.items[0]).not.toHaveProperty('partnerId')
+    // partnerId 는 화면 표시 금지, hidden state/API payload 전용 UUID 다.
+    expect(adminSearch.data.items[0]).toHaveProperty('partnerId')
+    expect(adminSearch.data.items[0]?.partnerId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+    )
   })
 
   it('POST /accounting/journals 는 BE DTO 필드명으로 라인을 저장하고 partnerId 는 partnerName 으로 enrich 한다', () => {

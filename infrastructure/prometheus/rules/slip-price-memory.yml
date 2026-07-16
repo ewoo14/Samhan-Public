@@ -1,0 +1,12 @@
+groups:
+  - name: slip-price-memory
+    rules:
+      - alert: SlipPriceMemoryUpsertFailure
+        expr: sum(increase(slip_price_memory_upsert_failed_total{job="slip-service"}[5m])) > 0
+        labels:
+          severity: warning
+          service: slip-service
+        annotations:
+          summary: "slip-service 가격기억 저장 실패"
+          description: "최근 5분 동안 전표/견적 가격기억 upsert 또는 queue 수락이 1건 이상 실패했습니다. 원 전표/견적 저장은 fail-soft 정책으로 성공했을 수 있습니다."
+          runbook: "docs/runbooks/slip-price-memory-upsert-failure.md"

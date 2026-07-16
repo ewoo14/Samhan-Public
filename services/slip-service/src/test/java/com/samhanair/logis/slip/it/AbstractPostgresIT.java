@@ -89,6 +89,13 @@ public abstract class AbstractPostgresIT {
         // ----------------------------------------------------------------
         registry.add("spring.datasource.hikari.maximum-pool-size", () -> "3");
         registry.add("spring.datasource.hikari.minimum-idle", () -> "1");
+        // ----------------------------------------------------------------
+        // #809 D-R8-2 — 가격기억 전용 pool 도 같은 이유로 축소한다. 운영 기본 4 를 그대로 두면
+        // 캐시된 컨텍스트 N 개 × (메인 3 + 전용 4) 가 컨테이너 max_connections 를 압박한다.
+        // minimum-idle 0 = 유휴 컨텍스트가 커넥션을 점유하지 않음 (IT 는 sequential 실행).
+        // ----------------------------------------------------------------
+        registry.add("app.slip.price-memory.datasource.hikari.maximum-pool-size", () -> "2");
+        registry.add("app.slip.price-memory.datasource.hikari.minimum-idle", () -> "0");
     }
 
     /** Docker 데몬 미접근 시 테스트를 build fail 대신 skip 처리. */

@@ -36,7 +36,8 @@ public record MobileQuotationRequest(
         @Size(max = 1000) String memo,
 
         /** 견적 라인 (1건 이상 필수). */
-        @NotEmpty @Valid List<MobileQuotationLineRequest> lines) {
+        @NotEmpty @Size(max = 100, message = "견적 라인은 최대 100건까지 저장할 수 있습니다")
+        @Valid List<MobileQuotationLineRequest> lines) {
 
     /**
      * 모바일 견적 라인 — 최소 필드.

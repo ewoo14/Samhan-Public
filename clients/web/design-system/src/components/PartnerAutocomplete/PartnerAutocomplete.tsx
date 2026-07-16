@@ -10,9 +10,12 @@ import styles from '../AsyncAutocomplete/AsyncAutocomplete.module.css'
 
 /**
  * 거래처 선택 옵션 — design-system 공개 타입.
- * UUID 비공개 가드: partnerCode 가 사용자 표시 식별자 (UUID 없음).
+ * UUID 비공개 가드: id 는 hidden state/API payload 전용이며 화면에 표시하지 않는다.
+ * 사용자 표시 식별자는 partnerCode 다.
  */
 export interface PartnerOption {
+  /** 내부 partnerId UUID — 화면 표시 금지, API payload 전용. */
+  id?: string
   /** 거래처 코드 (사용자 표시 식별자). 예: P-2026-0001 */
   partnerCode: string
   /** 거래처 상호. */
@@ -49,6 +52,8 @@ export interface PartnerAutocompleteProps {
   minChars?: number
   /** 입력 후 서버 검색까지 debounce 시간 ms (default: 250). */
   debounceMs?: number
+  /** 내부 input 의 data-testid (예: 협업 필드 식별자). */
+  inputTestId?: string
 }
 
 export const PartnerAutocomplete = forwardRef<

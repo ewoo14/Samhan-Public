@@ -458,6 +458,9 @@ class SlipInspectionCtaRegressionIT extends AbstractPostgresIT {
         body.put("partnerName", partnerName);
         body.put("memo", "SP-08-5-4 수정 시도");
         body.put("lines", List.of(line));
+        // [D-R8-9] 이 IT 가 잠그는 것은 <b>단계 가드(409)</b>다. 마커를 싣지 않으면 계약 게이트가
+        // 먼저 400 을 내 단계 가드에 도달조차 못 하므로, 정상 최신 클라이언트로 재현한다.
+        body.put("lineIdContract", true);
         return body;
     }
 

@@ -36,6 +36,7 @@ import com.samhanair.logis.slip.editrequest.web.SlipEditRequestController;
 import com.samhanair.logis.slip.estimate.service.EstimateService;
 import com.samhanair.logis.slip.estimate.web.EstimateController;
 import com.samhanair.logis.slip.estimate.web.EstimatePermissionGuard;
+import com.samhanair.logis.slip.price.service.PartnerProductPriceMemoryService;
 import com.samhanair.logis.slip.publish.PublishSlipResponse;
 import com.samhanair.logis.slip.publish.SlipPublishService;
 import com.samhanair.logis.slip.realtime.SlipRealtimeBroker;
@@ -47,6 +48,7 @@ import com.samhanair.logis.slip.repository.SlipRepository;
 import com.samhanair.logis.slip.service.NextDaySlipImageService;
 import com.samhanair.logis.slip.service.SlipCleanupService;
 import com.samhanair.logis.slip.service.SlipCleanupSaveHistoryService;
+import com.samhanair.logis.slip.service.SlipDuplicateService;
 import com.samhanair.logis.slip.service.SlipExcelExportService;
 import com.samhanair.logis.slip.service.SlipService;
 import com.samhanair.logis.slip.service.SlipSignatureService;
@@ -128,10 +130,12 @@ class SlipPermissionControllerIT {
 
     @MockBean private DynamicPermissionClient dynamicPermissionClient;
     @MockBean private SlipService slipService;
+    @MockBean private SlipDuplicateService slipDuplicateService;
     @MockBean private NextDaySlipImageService nextDaySlipImageService;
     @MockBean private SlipCleanupService slipCleanupService;
     @MockBean private SlipCleanupSaveHistoryService slipCleanupSaveHistoryService;
     @MockBean private SlipExcelExportService slipExcelExportService;
+    @MockBean private PartnerProductPriceMemoryService priceMemoryService;
     @MockBean private ProductClient productClient;
     @MockBean private SlipSignatureService signatureService;
     @MockBean private SlipAttachmentService attachmentService;
@@ -196,6 +200,17 @@ class SlipPermissionControllerIT {
     @MethodSource("endpoints")
     void migratedEndpoint_withoutGrant_returns403AndIncrementsCounter(EndpointCase endpoint) throws Exception {
         when(dynamicPermissionClient.check(eq(ID), eq(endpoint.page()), eq(endpoint.action()))).thenReturn(false);
+        if (endpoint.secondaryPermission() != null) {
+            when(dynamicPermissionClient.check(
+                    eq(ID), eq(endpoint.secondaryPermission().page()), eq(endpoint.secondaryPermission().action())))
+                    .thenReturn(false);
+        }
+        if (endpoint.name().startsWith("price memory")) {
+            when(dynamicPermissionClient.check(eq(ID), eq("estimates.list"), eq(PermissionAction.CREATE)))
+                    .thenReturn(false);
+            when(dynamicPermissionClient.check(eq(ID), eq("estimates.list"), eq(PermissionAction.UPDATE)))
+                    .thenReturn(false);
+        }
         double before = deniedCount(endpoint.page(), endpoint.role(), endpoint.action());
 
         mockMvc.perform(withActor(endpoint.request().get(), endpoint.role()))
@@ -246,6 +261,16 @@ class SlipPermissionControllerIT {
                         () -> get("/slips/list-realtime")),
                 endpoint("slip list restore", "sales.slip.list", PermissionAction.RESTORE, "SALES",
                         () -> post("/slips/{id}/restore", ID)),
+                programmaticEndpoint("price memory", "sales.slip.create", PermissionAction.CREATE,
+                        new PermissionKey("purchases.slip.edit", PermissionAction.UPDATE), "SALES",
+                        () -> get("/slips/price-memory")
+                                .param("partnerId", ID.toString())
+                                .param("productId", ID.toString())),
+                programmaticEndpoint("price memory bulk", "sales.slip.create", PermissionAction.CREATE,
+                        new PermissionKey("purchases.slip.edit", PermissionAction.UPDATE), "SALES",
+                        () -> post("/slips/price-memory/bulk")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("{\"partnerId\":\"" + ID + "\",\"productIds\":[\"" + ID + "\"]}")),
                 endpoint("next day print data", "slip.print.next-day", PermissionAction.PRINT, "SALES",
                         () -> get("/slips/next-day-image-data")),
                 endpoint("cleanup report", "slip.cleanup", PermissionAction.VIEW, "SALES",
@@ -266,7 +291,13 @@ class SlipPermissionControllerIT {
     private static EndpointCase endpoint(
             String name, String page, PermissionAction action, String role,
             Supplier<MockHttpServletRequestBuilder> request) {
-        return new EndpointCase(name, page, action, role, request);
+        return new EndpointCase(name, page, action, null, role, request);
+    }
+
+    private static EndpointCase programmaticEndpoint(
+            String name, String page, PermissionAction action, PermissionKey secondaryPermission, String role,
+            Supplier<MockHttpServletRequestBuilder> request) {
+        return new EndpointCase(name, page, action, secondaryPermission, role, request);
     }
 
     private static MockHttpServletRequestBuilder withActor(MockHttpServletRequestBuilder request, String role) {
@@ -290,6 +321,7 @@ class SlipPermissionControllerIT {
             String name,
             String page,
             PermissionAction action,
+            PermissionKey secondaryPermission,
             String role,
             Supplier<MockHttpServletRequestBuilder> request) {
 
@@ -297,6 +329,9 @@ class SlipPermissionControllerIT {
         public String toString() {
             return name;
         }
+    }
+
+    record PermissionKey(String page, PermissionAction action) {
     }
 
     @TestConfiguration

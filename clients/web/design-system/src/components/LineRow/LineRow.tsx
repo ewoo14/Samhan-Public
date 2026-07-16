@@ -73,6 +73,26 @@ export interface LineDraft {
   quantity: string
   /** 단가 (string — PriceField 호환). */
   unitPrice: string
+  /**
+   * 단가 출처 — 마커 라벨/설명 분기 기준.
+   *
+   * <p>- {@code REMEMBERED}: (거래처+품목) 최근단가 자동채움 → 마커 **`거래처 최근단가`**.
+   *   단 {@code partnerSelected=false} 면 마커를 **해제**한다(D-R4-4) — 귀속시킬 거래처가 없는데
+   *   "이 거래처에 마지막으로 저장된 단가" 라고 말할 수 없기 때문이다. 단가 **값과 priceSource 는
+   *   호출자가 유지**해 재선택 시 재조회 자격을 보존한다.
+   * <p>- {@code CATALOG}: 품목 판매가 폴백 → 마커 **`판매가`**.
+   * <p>- {@code USER}: 사용자 확정값 → 마커 없음. 거래처 변경 자동재조회에서 보호된다.
+   *
+   * <p>⚠️ 라벨은 **`판매가`/`거래처 최근단가`** 다 — 구 `'정가'`(D-R4-1 에서 폐기: 출고가
+   * releasePrice 계열 별칭이라 오도) 와 구 `'최근가'` 는 사용 금지.
+   */
+  priceSource?: 'REMEMBERED' | 'CATALOG' | 'USER' | null
+  /** 판매가(catalog) fallback 값 — 거래처 변경 재조회 miss 시 사용. */
+  catalogUnitPrice?: string | null
+  /** 최근 단가 저장 시각 — tooltip 전용. */
+  priceMemoryUpdatedAt?: string | null
+  /** 거래처 변경으로 자동 단가가 실제 변경된 행 — 시각적 강조/고지용. */
+  priceRefreshChanged?: boolean
   /** lookup 실패 메시지. */
   lookupError: string | null
   /** lookup 진행 중 — 우측 spinner 표시. */
@@ -132,6 +152,15 @@ export interface LineRowProps {
    * 미지정(기본) 시 기존 동작(합계=수량×단가, VAT 미분해) — 견적 등 비전환 화면 호환.
    */
   vatInclusive?: boolean
+  /**
+   * 거래처 선택 여부 (#809 R4 D-R4-1·D-R4-4).
+   *
+   * - `false` 시 CATALOG 마커 설명이 거래처를 단정하지 않는다("판매가를 적용했습니다").
+   * - `false` 시 REMEMBERED 마커는 렌더하지 않는다 — 거래처 해제 시 단가값은 유지하되
+   *   마커(저장일 포함)만 해제(D-R4-4). 상태(priceSource)는 호출자가 유지해 재선택 시 재조회 가능.
+   * - 미지정(기본 `true`) 시 기존 동작 유지 (backward compatible).
+   */
+  partnerSelected?: boolean
 }
 
 /**
@@ -182,6 +211,7 @@ export const LineRow = forwardRef<HTMLDivElement, LineRowProps>(function LineRow
     style,
     modelCell,
     vatInclusive = false,
+    partnerSelected = true,
   },
   ref,
 ) {
@@ -191,17 +221,38 @@ export const LineRow = forwardRef<HTMLDivElement, LineRowProps>(function LineRow
   const specId = `lr-spec-${reactId}`
   const qtyId = `lr-qty-${reactId}`
   const priceId = `lr-price-${reactId}`
+  const priceStatusId = `${priceId}-status`
+  const priceChangedStatusId = `${priceId}-changed`
 
   const hasError = !!line.lookupError
   const sumDisplay = computeLineSum(line.quantity, line.unitPrice)
   const vatBreakdown = vatInclusive ? computeVatBreakdown(line.quantity, line.unitPrice) : null
   const priceDisplay = line.unitPrice ? Number(line.unitPrice).toLocaleString() : '0'
+  // D-R4-1: 자동채움 값의 실체는 제품 등록 화면의 '판매가'(sellingPrice) — '정가' 라벨은
+  // 기존 용어체계에서 출고가(releasePrice) 계열 별칭이라 오도되므로 사용 금지.
+  // D-R4-4: 거래처 미선택(partnerSelected=false) 시 REMEMBERED 마커는 해제(단가값은 호출자가 유지),
+  // CATALOG 설명은 거래처를 단정하지 않는 카피로 분기.
+  const priceStatus = line.priceSource === 'REMEMBERED'
+    ? (partnerSelected ? '거래처 최근단가' : null)
+    : line.priceSource === 'CATALOG'
+      ? '판매가'
+      : null
+  const priceStatusDescription = line.priceSource === 'REMEMBERED'
+    ? (partnerSelected
+        ? `이 거래처에 마지막으로 저장된 단가${line.priceMemoryUpdatedAt ? ` · ${line.priceMemoryUpdatedAt.slice(0, 10)} 저장` : ''}`
+        : null)
+    : line.priceSource === 'CATALOG'
+      ? (partnerSelected
+          ? '이 거래처에 저장된 최근단가가 없어 판매가를 적용했습니다'
+          : '판매가를 적용했습니다')
+      : null
 
   const rowClass = [
     styles['lineRow'],
     selected ? styles['selected'] : null,
     isDragging ? styles['dragging'] : null,
     hasError ? styles['error'] : null,
+    line.priceRefreshChanged ? styles['priceRefreshed'] : null,
   ]
     .filter(Boolean)
     .join(' ')
@@ -212,6 +263,7 @@ export const LineRow = forwardRef<HTMLDivElement, LineRowProps>(function LineRow
         ref={ref}
         role="row"
         aria-selected={selected}
+        aria-describedby={line.priceRefreshChanged ? priceChangedStatusId : undefined}
         className={rowClass}
         style={style}
         data-line-number={lineNumber}
@@ -279,12 +331,20 @@ export const LineRow = forwardRef<HTMLDivElement, LineRowProps>(function LineRow
         {/* 5. 품목명 (read-only display) */}
         <div className={`${styles['cell']} ${styles['cellProduct']}`}>
           {line.productName ? (
-            <span title={line.productName}>{line.productName}</span>
+            <span className={styles['productName']} title={line.productName}>{line.productName}</span>
           ) : (
             <span className={styles['productPlaceholder']}>
               {line.lookupLoading ? '조회중...' : '모델명 조회 후 자동입력'}
             </span>
           )}
+          {line.priceRefreshChanged ? (
+            <span id={priceChangedStatusId} className={styles['priceChangedStatus']}>
+              <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+                <path d="M3 2v7m0 0L1.5 7.5M3 9l1.5-1.5M9 10V3m0 0L7.5 4.5M9 3l1.5 1.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              단가 변경
+            </span>
+          ) : null}
         </div>
 
         {/* 6. 규격 (Slice A 신규 — 피드백 #4) */}
@@ -318,18 +378,35 @@ export const LineRow = forwardRef<HTMLDivElement, LineRowProps>(function LineRow
 
         {/* 8. 단가 */}
         <div className={`${styles['cell']} ${styles['cellPrice']}`}>
-          <input
-            id={priceId}
-            type="text"
-            inputMode="numeric"
-            className={`${styles['input']} ${styles['numInput']}`}
-            value={priceDisplay}
-            onChange={(e) => {
-              const numeric = e.target.value.replace(/[^0-9]/g, '')
-              onUnitPriceChange(numeric)
-            }}
-            aria-label={`라인 ${lineNumber} 단가`}
-          />
+          <span className={styles['priceInputWrap']}>
+            <input
+              id={priceId}
+              type="text"
+              inputMode="numeric"
+              className={`${styles['input']} ${styles['numInput']}`}
+              value={priceDisplay}
+              onChange={(e) => {
+                const numeric = e.target.value.replace(/[^0-9]/g, '')
+                onUnitPriceChange(numeric)
+              }}
+              aria-label={`라인 ${lineNumber} 단가`}
+              aria-describedby={priceStatusDescription ? priceStatusId : undefined}
+            />
+            {/* R4-D2: 라인별 aria-live 금지 — 라인 N개 flip 시 N회 낭독 폭주. 비동기 재적용의
+                전역 고지는 페이지 배너(role="status") 1곳이 담당하고, 포커스 시 전달은
+                aria-describedby 체인으로 충분하다(spec 40행). */}
+            {priceStatus && priceStatusDescription ? (
+              <span
+                id={priceStatusId}
+                role="note"
+                aria-label={priceStatusDescription}
+                className={styles['priceMemoryNote']}
+                title={priceStatusDescription}
+              >
+                {priceStatus}
+              </span>
+            ) : null}
+          </span>
         </div>
 
         {/* 9. 합계 (read-only computed) — vatInclusive 면 합계(VAT포함)+공급/부가세 분해 */}

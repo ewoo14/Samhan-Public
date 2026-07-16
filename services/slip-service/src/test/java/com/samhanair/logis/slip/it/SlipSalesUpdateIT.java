@@ -439,6 +439,8 @@ class SlipSalesUpdateIT extends AbstractPostgresIT {
         body.put("recipientPhone", "010-6666-6262");
         body.put("paymentDueDate", TODAY.plusDays(30).toString());
         body.put("lines", List.of(line));
+        // [D-R8-9] 정상 최신 클라이언트 재현 — 계약 마커 (매입 IT 미러).
+        body.put("lineIdContract", true);
         return body;
     }
 }

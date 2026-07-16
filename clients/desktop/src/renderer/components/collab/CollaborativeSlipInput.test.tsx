@@ -109,6 +109,24 @@ function providerStub(): TestDocCoeditProvider {
 }
 
 describe('CollaborativeSlipInput', () => {
+  it('forwards aria-describedby to the actual input', () => {
+    render(
+      <>
+        <CollaborativeSlipInput
+          provider={null}
+          fieldPath="items.0.unitPrice"
+          value="100000"
+          onValueChange={() => undefined}
+          aria-label="단가 1"
+          aria-describedby="price-source-1"
+        />
+        <span id="price-source-1">거래처 최근단가</span>
+      </>,
+    )
+
+    expect(screen.getByLabelText('단가 1').getAttribute('aria-describedby')).toBe('price-source-1')
+  })
+
   it('입력값을 Yjs fieldPath 에 쓰고 원격 awareness 라벨은 이름만 표시한다', () => {
     const provider = providerStub()
     const onValueChange = vi.fn()
@@ -150,6 +168,38 @@ describe('CollaborativeSlipInput', () => {
     act(() => provider.setHeaderValue('memo', '원격 적요'))
 
     expect(onValueChange).toHaveBeenCalledWith('원격 적요')
+  })
+
+  it('doc-sync 유래 변경은 onDocSyncValueChange 로만 전달하고 실입력은 onValueChange 로 남긴다 (R4-F6)', () => {
+    const provider = providerStub()
+    // 초기 mount sync 가 콜백을 쏘지 않게 문서값을 controlled 값과 일치시켜 둔다.
+    provider.setItemValue(0, 'unitPrice', '0')
+    const onValueChange = vi.fn()
+    const onDocSyncValueChange = vi.fn()
+
+    render(
+      <CollaborativeSlipInput
+        provider={provider}
+        fieldPath="items.0.unitPrice"
+        value="0"
+        onValueChange={onValueChange}
+        onDocSyncValueChange={onDocSyncValueChange}
+        aria-label="단가 1"
+      />,
+    )
+
+    // 자동채움(가격기억) 등 provider write 유래 doc-sync — 분류 부수효과(priceSource=USER)가
+    // 있는 onValueChange 를 우회해 전용 콜백으로만 전달돼야 pending 마커가 소멸하지 않는다.
+    act(() => provider.setItemValue(0, 'unitPrice', '88000'))
+
+    expect(onDocSyncValueChange).toHaveBeenCalledWith('88000')
+    expect(onValueChange).not.toHaveBeenCalled()
+
+    // 실사용자 타이핑은 여전히 onValueChange 경로(USER 재분류 부수효과 유지).
+    fireEvent.change(screen.getByLabelText('단가 1'), { target: { value: '7777' } })
+
+    expect(onValueChange).toHaveBeenCalledTimes(1)
+    expect(onValueChange).toHaveBeenCalledWith('7777')
   })
 
   it('원격 편집 lastEdit 수신 시 펄스와 수정 배지를 표시하고 2.5초 후 소멸한다', () => {

@@ -62,6 +62,55 @@ Extensions `uuid-ossp` and `pgcrypto` are enabled in each DB
   `grafana/provisioning/dashboards/`. None are bundled yet — service teams
   add their dashboards as services come online.
 
+### Alerting rules
+
+Alert rules live in `prometheus/rules/*.yml` and are picked up by the
+`rule_files: [/etc/prometheus/rules/*.yml]` glob in `prometheus/prometheus.yml`.
+
+> 🔴 **Trap — a rules mount added later does NOT reach an existing container.**
+>
+> `./prometheus/rules:/etc/prometheus/rules:ro` is a **directory bind, applied at container
+> *create* time**. `prometheus.yml` is a bind-mounted *file*, so editing it and running
+> `docker restart` works — but **adding the `rules` mount to `docker-compose.yml` does nothing
+> for a container that already exists.**
+>
+> Worse: **Prometheus does not error when the `rule_files` glob matches zero files.** There is
+> no signal in the logs, the healthcheck, or startup. The rule file sits in git, `promtool`
+> passes, code review passes — and the alert simply **does not exist at runtime**.
+>
+> This actually happened: a container created `2026-07-02` never saw the rules mount added on
+> `2026-07-15`, so `GET /api/v1/rules` returned `{"groups":[]}` for 13 days and **seven review
+> rounds missed it** (#809 R8-DEVOPS-1).
+
+**When you add or first introduce a rule file, recreate the container — `restart` is not enough:**
+
+```bash
+docker compose -p infrastructure --project-directory <repo>/infrastructure \
+  -f docker-compose.yml -f docker-compose.local-all.yml \
+  up -d --force-recreate --no-deps prometheus
+```
+
+**Always verify the rule is actually loaded — never assume:**
+
+```powershell
+.\scripts\verify-prometheus-rules.ps1     # exit 0 = every rule in git is live at runtime
+```
+
+The script diffs the rule files in git against the runtime `/api/v1/rules` list, checks each
+rule's `health`, and runs `promtool`. It applies to **every** rule file added from now on, not
+just the one that exposed the trap. Run it in each live-QA round — this class of defect is
+invisible to static review by construction.
+
+Manual equivalent:
+
+```bash
+curl -s http://localhost:9090/api/v1/rules   # {"groups":[]} == the alert does not exist
+```
+
+⚠️ A loaded rule is still not a firing rule — its selector must match a real scrape job. Check
+that the metric exists with the expected `job` label:
+`curl -s 'http://localhost:9090/api/v1/query?query=<metric_name>'`.
+
 ## Nginx reverse proxy
 
 The Nginx container is **a stub today**. It serves only:
@@ -86,6 +135,8 @@ infrastructure/
       02-extensions.sql
   prometheus/
     prometheus.yml
+    rules/                       # alert rules (see "Alerting rules" above)
+      slip-price-memory.yml
   grafana/
     provisioning/
       datasources/prometheus.yml
@@ -93,4 +144,6 @@ infrastructure/
   nginx/
     nginx.conf
     conf.d/.gitkeep
+  scripts/
+    verify-prometheus-rules.ps1  # asserts every rule in git is loaded at runtime
 ```

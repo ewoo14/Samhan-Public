@@ -1,14 +1,12 @@
 ﻿# 🚨 워크플로우 규율 (매 작업 최우선 — 상세는 각 토픽파일)
-- [🚨 표준 워크플로우 유일 진실원](feedback_canonical_workflow.md) — Opus 기획+조기PR → Codex 개발+게시 → (Opus 5-agent[FE/BE/Design/DevOps/QA·QA=Docker라이브QA+단계별스샷]+fix+게시 ↔ Codex 5-agent+fix+게시) 0수렴까지 → PM 종합(머지전) → CI green → 머지. 🚫순차(병렬금지)·단축금지·라운드 즉시게시·fix후 재리뷰·미준수 소급보완·매단계 ScheduleWakeup
-- [🚨 리뷰 5-agent 필수·단축금지·순차](feedback_review_5agent_no_shortcut_strict.md) — 매 리뷰=5차원 전부(Design N/A금지)·수렴/재검도 full·Opus 완료+게시 후에만 Codex(병렬금지)·실행=게시 1:1·**Codex도 5-agent**·**Codex 지적=false-positive 의심도 독단머지 금지(재수렴+PM종합 후)**·**fix=그 라운드 진행모델** (2026-07-02 #699·2026-07-05 #741)
-- [🚨 Codex 5-agent=mcp 직접(codex-rescue unreliable)](feedback_codex_rescue_unreliable_use_mcp.md) — codex-rescue는 이 환경서 bg태스크화·샌드박스 차단(gradlew/gh/npm)로 findings 미전달 → Codex 5-agent 재수렴=`mcp__codex__codex` 직접 호출로 genuine 확보. 미전달="substance 커버"로 무마 금지=위반 (2026-07-06 #31·#752)
-- [🔧 Codex 부재 시 Sonnet 5 대체 모드](feedback_sonnet_substitution_when_codex_unavailable.md) — Codex 한도+토큰절약 시 구현/5-agent 리뷰/QA = Sonnet 5 서브에이전트, Opus = PM + STEP4 독립 적대검증 + 점검 + commit대행 + 머지. 구현 Opus 직접금지·STEP4 = 변경모듈 전체 스위트(slice-IT만은 P0 누락). Codex 복구 후 표준 복귀 (2026-07-08 #729·#771·#17 S4a)
-- [🚨 워크플로우 반복위반 근본원인+머지전 9-게이트](feedback_workflow_discipline_root_cause.md) — 처리량>충실도 역전·결과맞추기 오해·규칙 미대조·부하. 머지전 9-게이트 응답 명시(Opus5+게시·전지적disposition·fix=라운드모델·재수렴0·Codex5+게시·0수렴·PM종합·dev-report·CI). 속도<충실도 (2026-07-05)
+- [🚨 표준 워크플로우 유일 진실원 (2026-07-15 전면 개편 · 07-16 FABLE5→OPUS 4.8)](feedback_canonical_workflow.md) — **OPUS 4.8 기획**(조기 PR 개설+기획 리뷰 게시) → **CODEX SOL 5.6 기획검수**(게시) → **CODEX LUNA 5.6 구현**(게시) → (**OPUS 4.8 5+agent 적대리뷰·라이브QA·fix·검증**+게시 → **CODEX SOL 5.6 5+agent 동일**+게시) **0수렴까지 반복** → PM 종합(게시) → CI green → PM 머지. 🚫엄수·단축금지·순차(병렬금지)·**모든 단계 리뷰 게시(실행=게시 1:1)**·**라이브QA 스샷 다수 필수**·fix=라운드모델·false-positive 의심도 재수렴+PM종합 후·모델 대체 금지(부재 시 개발책임자 선확인)·10-게이트·근본원인 자각(속도<충실도)·매단계 ScheduleWakeup. 모델 ID 실측: `gpt-5.6-sol`/`gpt-5.6-luna`. **🚨2026-07-16 FABLE5 폐지(토큰 소모 극심)→1차 적대검증=OPUS 4.8**(기획+1차검증 겸임·`model:"opus"` 명시). **구 워크플로우(Opus기획+리뷰↔Codex구현+리뷰·Sonnet대체모드·9-게이트·모델자동전환) 전부 폐기·4파일 삭제**
+- [🚨 Codex 5-agent=mcp 직접(codex-rescue unreliable)](feedback_codex_rescue_unreliable_use_mcp.md) — codex-rescue는 이 환경서 bg태스크화·샌드박스 차단(gradlew/gh/npm)로 findings 미전달 → CODEX SOL 5-agent 라운드=`mcp__codex__codex` 직접 호출로 genuine 확보. 미전달="substance 커버"로 무마 금지=위반 (2026-07-06 #31·#752)
+- [🚨 PM 슬라이스 effort 조절·엣지 바운드](feedback_pm_regulate_slice_effort.md) — 한 슬라이스 하루종일 iterate 금지. 3라운드+ "fix가 새 결함" 시 개발책임자께 바운드옵션 제시(현 견고상태 게시+엣지 후속분리/스코프 재논의). 한 코너씩 PM-QA 순차발견 지양→적대라운드(OPUS/CODEX) 종합발견+BATCH disposition+재수렴 1회. 0수렴 유지하되 "언제 멈추나"도 PM 판단 (2026-07-16 #809 R8)
 - [기획 spec 기존 결정 교차검증](feedback_spec_cross_check_prior_decisions.md) — 새 slice spec 각 결정을 에픽 dev-report/메모리와 grep 대조(편집가부·상태전이·계정·권한). 리뷰에 "spec 자체가 기존 결정과 상충?" 항목. 기확정(D-E3-04 류) 준수=새 결정 아님 (2026-07-05 #730)
 - [🚨 범위 점증 시 리뷰 재가동](feedback_expanded_scope_reinstate_review.md) — mechanical fix→BE/마이그/다서비스로 커지면 자체 검증(grep/probe/CI)으로 갈음 말고 정식 5-agent+Codex 리뷰+게시 재가동. 미준수=소급 리뷰 (2026-07-04 #727 지적)
 - [🚨 인프라/chore PR도 캐논 예외 아님](feedback_infra_chore_not_canon_exempt.md) — CI/인프라/chore도 기본 캐논. 긴급·자명해도 축약은 착수 전 개발책임자 선확인+PR 기록. PM 임의 단축=위반 (2026-07-06 #751·#750)
 - [🚨 라이브QA 매 라운드 GUI 스샷](feedback_live_qa_every_round_screenshots.md) — Docker 실서버+실 GUI 스크린샷(단계별) 매 리뷰 라운드마다. 끝1회·SSE/API 텍스트로 GUI스샷 대체 금지. dev_master=dev_p05_pass! (2026-07-02)
-- [🚨 PM 직접구현 금지](feedback_pm_no_direct_implementation.md) — 구현=Codex, PM=기획·리뷰·commit대행·머지만. infra오류도 PM직접구현 대체 금지 (2026-07-02)
+- [🚨 PM 직접구현 금지](feedback_pm_no_direct_implementation.md) — 구현=CODEX LUNA 5.6, PM=오케스트레이션·commit대행·머지만(검증 라운드 fix는 라운드 모델). infra오류도 PM직접구현 대체 금지 (2026-07-02·2026-07-15 개편 반영)
 - [🚨 가짜 데이터·목업 영구 배제](feedback_no_fake_data_ever.md) — 실데이터·실서버·실화면·실측정만. QA스샷=실캡처만(합성/fixture 금지). 불가 시 정직 보고
 - [🚨 도구 호출은 실제 invocation](feedback_emit_real_tool_calls.md) — 도구 호출을 텍스트로 적으면 미실행. 진짜 함수 호출+결과 확인. ScheduleWakeup 단독발행 시 실수 잦음
 - [야간/장시간 ScheduleWakeup 재자각](feedback_autonomous_loop_schedulewakeup.md) — 매 단계(1~2묶음) 완료 후 다음 단계 예약·재자각·턴종료(연속 mega턴 금지). 부재/활성 무관
@@ -17,8 +15,8 @@
 - [PM 권한코드 전권 자율](feedback_pm_permission_autonomy.md) — 권한 코드는 PM 머지까지 자율. 워크플로우 엄격+자가지적. 신규 업무규칙/정책만 개발책임자 확인
 - [무결성도메인 정책 선확인](feedback_integrity_domain_policy_preconfirm.md) — 회계원장·감사·권한 편집가부 정책은 착수 전 개발책임자 확인 (2026-07-02)
 - [개발책임자 결정은 PR에 누적 기록](feedback_post_devlead_decisions_to_pr.md) — 결정·지시·정정을 그때그때 "📌 개발책임자 결정 기록" 코멘트로. 채팅에만 두지말것
-- [PM-Codex 진행 검증·10분 보고](feedback_pm_codex_progress_verification.md)
-- [🚨 리뷰 fix=현재 PR 내 처리](feedback_fix_in_current_pr_no_split.md) — 별도 PR/후속 이슈 분리 금지, 분리=타 서비스/타 슬라이스 범위만 (2026-07-04 #724) — Codex 디스패치마다 산출물 즉시검증+주기 상태보고, 침묵금지 ([[feedback_pm_10min_status_report]])
+- [PM-Codex 진행 검증·10분 보고](feedback_pm_codex_progress_verification.md) — Codex 디스패치마다 산출물 즉시검증+주기 상태보고, 침묵금지
+- [🚨 리뷰 fix=현재 PR 내 처리](feedback_fix_in_current_pr_no_split.md) — 별도 PR/후속 이슈 분리 금지, 분리=타 서비스/타 슬라이스 범위만 (2026-07-04 #724). **범위 외 결함=PM 자율 이슈 등록 후 보고**(은폐방지·실측근거 필수·처분은 개발책임자·"같이 fix"면 범위점증→리뷰 재가동) (2026-07-15 #820 R4·#821)
 
 # 커밋/PR/문서 규약
 - [한국어 의무 — 커밋/PR/Issue/보고](feedback_korean_commits.md) — git commit·PR·Issue+대면 보고/대화/설명 한국어(prefix·trailer만 예외)
@@ -60,7 +58,7 @@
 - [변경 모듈 전체 test 후 push](feedback_changed_module_full_test_before_push.md) — 타깃만 실행 push 금지
 - [CI 테스트 필터 allowlist false-green](feedback_ci_test_filter_false_green.md) — ci.yml `--tests` allowlist 누락 패키지 미실행. 신규 패키지 등재 필수
 - [gradle test 캐시 false-green](feedback_gradle_test_cache_false_green.md) — UP-TO-DATE/FROM-CACHE=미실행, 검증은 --rerun-tasks --no-build-cache 로 genuine 강제
-- [병렬 에이전트 gradle 공유트리 경합](feedback_parallel_agent_gradle_shared_tree_contention.md) — 동시 리뷰/QA 에이전트가 같은 트리서 gradle 실행 시 build 경합→transient false-fail(DI/XML소실)·PR결함 아님. 권위=CI on exact SHA·직렬 or 격리 worktree (2026-07-09 #688 R2)
+- [🚨 병렬 에이전트 공유자원 경합 3변종](feedback_parallel_agent_gradle_shared_tree_contention.md) — ①gradle 트리(build 경합→transient false-fail·권위=CI on exact SHA) ②git checkout(잘못된 SHA 산출물→QA 결론 오염) ③**공유 라이브 DB 쓰기**(타 차원 프로브가 QA 단언 오염→false-RED, 반대로 진짜 결함 무마 위험도 대칭). **라이브 쓰기 차원은 직렬화·읽기만 병렬**·차원별 전용 거래처/품목·스펙 단언은 자기 창구간 diff(전역 카운트 금지)·라이브 FAIL 은 단독 재실행 재현 후 확정 (2026-07-09 #688 · 2026-07-12 #796 · **2026-07-16 #809 R6**)
 - [stacked PR CI false-green](feedback_stacked_pr_ci_false_green.md) — base=feat/… BE 미트리거, base 머지 후 base=main 재생성
 - [RestClient 계약테스트 false-green](feedback_restclient_contract_test_false_green.md) — 다운스트림 선검증, @MockBean 우회 금지, 4체크
 - [권한 enforcement 실HTTP 회귀](feedback_enforcement_real_http_test.md) — @MockBean mock 시 false-green, MockRestServiceServer/실HTTP
@@ -83,16 +81,18 @@
 - [정찰 grep false-negative](feedback_recon_grep_false_negative.md) — grep 0매치≠기능부재, 실 파일/라우트로 검증
 
 # Codex
-- [Codex MCP 서버 사용](feedback_codex_plugin_setup.md) — mcp__codex__codex, sandbox workspace-write, 5 agents 병렬
-- [Codex 디스패치=Claude commit 대행+approval never](feedback_codex_sandbox_git.md) — Codex git 금지(파일만), approval-policy never, model 생략+effort high. 집PC codex exec: rev-parse 차단(git show 로 검증)·workspace-write 쓰기차단→fix=danger-full-access+사후 git diff 대조(2026-07-03)
+- [Codex MCP 서버 사용](feedback_codex_plugin_setup.md) — mcp__codex__codex, sandbox danger-full-access(모든 호출 명시), 5 agents 병렬
+- [Codex 디스패치=Claude commit 대행+approval never](feedback_codex_sandbox_git.md) — Codex git 금지(파일만), approval-policy never, **model 스테이지별 명시(기획검수/적대리뷰=`gpt-5.6-sol`·구현=`gpt-5.6-luna`)**+effort high. 집PC codex exec: rev-parse 차단(git show 로 검증)·workspace-write 쓰기차단→fix=danger-full-access+사후 git diff 대조(2026-07-03)
 - [Codex 리뷰도 danger-full-access](feedback_codex_review_sandbox_danger_access.md) — read-only는 이 PC서 테스트 실행(캐시 쓰기)까지 차단→정적분석만. genuine 실QA 리뷰=danger-full-access(git 금지 유지·PM 커밋). 2026-07-06 #31 개발책임자 지적
-- [Codex 모델 자동 전환](feedback_codex_model_auto_switch.md) — 기본 spark+medium, 보안/migration/race 등 gpt-5.5 high
+- [🚨 codex CLI 이중설치=모델 400 + abort 복구](feedback_codex_cli_version_model_mismatch.md) — config.toml 모델 상향 시 `400 requires a newer version` = MCP가 쓰는 **PATH npm codex**(≠데스크톱 앱 번들)가 구버전. `npm i -g @openai/codex@latest` 후 **세션 재시작**해야 반영(kill 금지). **MCP idle timeout 1800s abort≠미수행·Codex는 계속 돔** — 🚨**diff 해시 2회=false-STABLE**(검증 중엔 안 씀), 진짜 신호=**rollout 로그 LastWriteTime 90s 무변동+codex PID**. **threadId·최종보고는 rollout jsonl 파일명/본문에서 회수→`codex-reply` 로 이어받기**(UTF-8 명시 읽기) (2026-07-15 #809)
 - [Codex 권한 새 세션부터](feedback_codex_permission_new_session.md) — allow 추가는 새 세션부터, 진행중 무리한 재시도 금지
 - [Codex MCP 세션 한정 한계](feedback_codex_mcp_session_limit.md) — -32000 후 새 세션·codex exec·Agent 대체
+- [codex exec kill이 MCP vendor 공유 종료](feedback_codex_kill_shares_mcp_vendor.md) — Name=codex.exe 일괄 kill이 MCP 서버 vendor 바이너리까지 종료→세션 MCP 이탈(인세션 /mcp 재연결 불가·재시작만 확실). exec 특정 PID트리만 종료·mcp-server 제외
 - [codex config.toml NUL 손상](feedback_codex_config_nul_corruption.md) — 최소 config+model="gpt-5.5"
 - [codex exec 백그라운드 stdin hang](feedback_codex_exec_stdin_hang.md) — </dev/null 필수
 - [detached codex 안정화 후 판단](feedback_codex_detached_write_settle.md) — git status 빈것≠미수행, 폴링+diff
 - [agent origin/main 동기화](feedback_agent_origin_main_sync.md) — background agent 시작직후 git fetch+log 검증
+- [타 PC 재개=미완 WIP 브랜치 격리](feedback_incomplete_work_wip_branch_cross_pc.md) — 집↔회사 재개 시 미완·미검증 산출물은 stash 금지(원격 안 넘어감)·원격 WIP 브랜치로 격리·feature 청결 유지·핸드오프에 "완료착각 금지·fresh 재디스패치·WIP diff 참조만" 박제·다음 세션 git pull+sync 먼저(stale 핸드오프 물림 방지) (2026-07-16 #809 R8)
 
 # 프로젝트 컨텍스트
 - [User Role](user_role.md) · [사용자 호칭](feedback_user_title.md) — 개발책임자, "대표"=김미선만

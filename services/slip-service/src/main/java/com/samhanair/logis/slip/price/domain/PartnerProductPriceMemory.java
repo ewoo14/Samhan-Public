@@ -1,0 +1,81 @@
+package com.samhanair.logis.slip.price.domain;
+
+import com.samhanair.logis.common.entity.BaseEntity;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.UUID;
+import lombok.AccessLevel;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import org.hibernate.annotations.SQLRestriction;
+import org.hibernate.annotations.UuidGenerator;
+
+/**
+ * 거래처+품목 최근 수동단가 기억.
+ *
+ * <p>partnerId/productId UUID 는 화면 표시 식별자가 아니라 hidden state/API payload 전용 내부 키다.
+ * 사용자 화면에는 거래처명, 거래처코드, 품목명 같은 비즈니스 식별자만 표시해야 한다.
+ *
+ * <p>저장 단가는 전표/견적 입력 필드와 동일한 VAT 포함 단가다. 사용자가 마지막으로 저장한 라인
+ * 단가를 그대로 재조회해 라운드트립 왜곡을 만들지 않는다.
+ */
+@Entity
+@Getter
+@Table(name = "partner_product_price_memory",
+        uniqueConstraints = @UniqueConstraint(name = "ux_partner_product_price_memory_pair",
+                columnNames = {"partner_id", "product_id"}))
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@SQLRestriction("is_deleted = false")
+public class PartnerProductPriceMemory extends BaseEntity {
+
+    @Id
+    @GeneratedValue
+    @UuidGenerator
+    @Column(name = "id", updatable = false, nullable = false)
+    private UUID id;
+
+    @Column(name = "partner_id", nullable = false)
+    private UUID partnerId;
+
+    @Column(name = "product_id", nullable = false)
+    private UUID productId;
+
+    @Column(name = "unit_price", nullable = false, precision = 15, scale = 2)
+    private BigDecimal unitPrice;
+
+    @Column(name = "source", nullable = false, length = 30)
+    private String source;
+
+    /**
+     * 원 전표/견적 트랜잭션에서 라인 단가가 저장된 논리 시각.
+     *
+     * <p>{@code modified_at} 은 실제 DB 변경 감사 시각으로 유지하고 최신성 판정에는 사용하지 않는다.
+     */
+    @Column(name = "remembered_at", nullable = false)
+    private LocalDateTime rememberedAt;
+
+    /** 최근 라인 저장 출처. */
+    public static final String SOURCE_LINE_SAVE = "LINE_SAVE";
+
+    /** 세트(BUNDLE) 부모 품목 저장 출처. 구성품 납품가는 기억하지 않는다. */
+    public static final String SOURCE_BUNDLE_SET = "BUNDLE_SET";
+
+    /** 신규 가격기억 엔티티를 만든다. */
+    public static PartnerProductPriceMemory create(
+            UUID partnerId, UUID productId, BigDecimal unitPrice, String source,
+            LocalDateTime rememberedAt) {
+        PartnerProductPriceMemory memory = new PartnerProductPriceMemory();
+        memory.partnerId = partnerId;
+        memory.productId = productId;
+        memory.unitPrice = unitPrice;
+        memory.source = source;
+        memory.rememberedAt = rememberedAt;
+        return memory;
+    }
+}

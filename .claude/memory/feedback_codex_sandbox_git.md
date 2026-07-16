@@ -8,7 +8,7 @@
 1. **`approval-policy: "never"`** 로 호출 → Codex 가 승인 팝업을 절대 띄우지 않음.
 2. Codex 프롬프트에 **"git add/commit/branch 등 git 명령 실행 금지 — 파일 수정만 하고 commit 은 Claude 가 대행"** 명시.
 3. Codex 완료 후 Claude 가 `git status` 로 변경 확인 → targeted compile/test 로 검증([[verification-before-completion]]) → plan task 기준 logical commit 으로 Claude 가 commit ([[korean-commits]], Co-Authored-By Codex 명시).
-4. model: **`gpt-5.5` 최고 버전 상시 사용** (2026-05-28 사용자 directive [[codex-model-auto-switch]]) + `config:{model_reasoning_effort:"high"}` (보안/migration 은 `"xhigh"`). 주의: `gpt-5.2-codex` 는 본 ChatGPT 계정 미지원(400 error).
+4. model: **스테이지별 명시 의무** (2026-07-15 워크플로우 전면 개편 [[feedback_canonical_workflow]]) — 기획검수/적대리뷰 = **`gpt-5.6-sol`**, 구현 = **`gpt-5.6-luna`** (2026-07-15 집PC codex CLI 실측 OK) + `config:{model_reasoning_effort:"high"}` (보안/migration 은 `"xhigh"`). 주의: `*-codex` 접미 모델은 본 ChatGPT 계정 미지원(400 error) — 접미 없는 모델만.
 
 **⚠️ codex exec 집PC(Windows) 샌드박스 실측 (2026-07-03, codex-cli 0.130.0)**:
 - `--sandbox read-only`: 파일 읽기/`git show·log·diff·status` 는 통과하나 **`git rev-parse` 실행이 정책 차단**("rejected: blocked by policy" 0ms) — HEAD 검증은 `git show -s --format=%H HEAD` 또는 `.git` ref 파일 직접 판독으로 지시할 것(rev-parse 지시 시 엄격한 에이전트는 중단 보고).

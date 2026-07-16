@@ -76,6 +76,17 @@ function envelope<T>(data: T) {
   }
 }
 
+/**
+ * 성공 응답을 200 이외의 상태코드로 반환한다 (예: 201 CREATED).
+ *
+ * <p>{@code envelope()} 만 반환하면 client.ts 가 상태코드를 200 으로 고정하므로, BE 가
+ * {@code @ResponseStatus(HttpStatus.CREATED)} 인 endpoint 를 mock 이 200 으로 미러해
+ * 계약이 갈린다(R8-FE-5 — duplicate).
+ */
+function mockOk<T>(status: number, data: T) {
+  return { __mockStatus: status, body: envelope(data) }
+}
+
 function mockError(status: number, code: string, message: string) {
   return {
     __mockStatus: status,
@@ -489,6 +500,7 @@ function mockRequirePermission(pageCode: string, action: MockPermissionAction): 
 
 function normalizeAdminPartner(row: Record<string, unknown>) {
   return {
+    partnerId: String(row['id'] ?? row['partnerId'] ?? ''),
     partnerCode: String(row['partnerCode'] ?? ''),
     name: String(row['name'] ?? row['partnerName'] ?? ''),
     bizNo: String(row['bizNo'] ?? row['businessNumber'] ?? ''),
@@ -504,7 +516,6 @@ function normalizeAdminPartner(row: Record<string, unknown>) {
 
 function normalizeAccountingPartner(row: Record<string, unknown>) {
   return {
-    partnerId: String(row['id'] ?? row['partnerId'] ?? ''),
     ...normalizeAdminPartner(row),
   }
 }
@@ -1138,6 +1149,9 @@ const MOCK_TRANSFERS = [
  * PR-3b: `productType` 추가 — "BUNDLE" 이면 세트 옵션 picker 노출.
  * `modelCode` 미지정 시 modelName 을 그대로 사용 (BE ProductSummary 기본값).
  */
+const MOCK_PRODUCT_AJ040_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaa040'
+const MOCK_PRODUCT_MWR10_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbb010'
+
 const MOCK_PRODUCTS_BY_MODEL: Record<
   string,
   {
@@ -1155,7 +1169,7 @@ const MOCK_PRODUCTS_BY_MODEL: Record<
   }
 > = {
   AJ040RXH4BC1: {
-    productId: 'p-aj040',
+    productId: MOCK_PRODUCT_AJ040_ID,
     modelName: 'AJ040RXH4BC1',
     productName: '시스템에어컨 4Way 4HP',
     sellingPrice: '1850000',
@@ -1203,7 +1217,7 @@ const MOCK_PRODUCTS_BY_MODEL: Record<
     goods: true,
   },
   'MWR-WE10N': {
-    productId: 'p-mwr10',
+    productId: MOCK_PRODUCT_MWR10_ID,
     modelName: 'MWR-WE10N',
     productName: '유선 리모컨 (WE10N)',
     sellingPrice: '85000',
@@ -1724,6 +1738,18 @@ const MOCK_PRODUCT_CATEGORIES = [
  * 라인 시연용 — 상세 화면 라인 표시.
  * Slice A: `specification` 필드 추가 (피드백 #4 / Designer components.md § 3).
  */
+/**
+ * 전표 상세 라인 fixture — BE {@code SlipLineResponse} 미러.
+ *
+ * <p>[R8-FE-5] {@code setHead}/{@code parentSetModel} 는 R8 신규. 종전 fixture 는 이 두 필드를
+ * <b>아예 갖고 있지 않아</b> mock 이 세트 계보를 표현조차 못 했고, 그 결과 "라인 verbatim 승계"
+ * 를 검증한다는 duplicate 테스트가 실제로는 계보를 전혀 보지 못한 채 통과했다(H2 원결함이
+ * mock gate 통과). duplicate mock 주석은 *"lines[].setHead/parentSetModel 포함"* 이라며
+ * 자기 계약을 명시하고 있었으므로, fixture 부재는 그 계약의 미이행이었다.
+ *
+ * <p>계보 구성 — line-001·line-002 = 같은 세트({@code SET-AJ040-4WAY})의 head + 구성품,
+ * line-003 = 평면 라인. 계보 승계/파괴를 모두 관측할 수 있는 최소 조합이다.
+ */
 const SAMPLE_LINES = [
   {
     id: 'line-001',
@@ -1738,6 +1764,9 @@ const SAMPLE_LINES = [
     supplyAmount: '3700000',
     vatAmount: '370000',
     note: null,
+    // 세트 전개 첫 구성품 — payload hydrate 전용, 화면 식별자로 표시하지 않는다.
+    setHead: true,
+    parentSetModel: 'SET-AJ040-4WAY',
   },
   {
     id: 'line-002',
@@ -1749,6 +1778,8 @@ const SAMPLE_LINES = [
     unitPrice: '85000',
     lineTotal: '170000',
     note: null,
+    setHead: false,
+    parentSetModel: 'SET-AJ040-4WAY',
   },
   {
     id: 'line-003',
@@ -1760,6 +1791,9 @@ const SAMPLE_LINES = [
     unitPrice: '120000',
     lineTotal: '120000',
     note: null,
+    // 평면 라인 — 세트 소속이 아니다.
+    setHead: false,
+    parentSetModel: null,
   },
 ]
 
@@ -3112,6 +3146,36 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     })
   }
 
+  // POST /api/products/lookup — productId batch 조회 (BE ProductController.lookup, ids ≤ 100).
+  // 전표 수정 거래처 변경 재조회의 카탈로그 판매가 소스(R8 잔여 1 — miss fallback).
+  if (method === 'POST' && url.endsWith('/api/products/lookup')) {
+    // R9 #15: 운영 ProductController와 동일한 products.list 조회 권한 계약.
+    const denied = mockRequirePermission('products.list', 'view')
+    if (denied) return denied
+    const body = parseMockBody(config)
+    const ids = body['ids']
+    if (!Array.isArray(ids) || ids.length < 1 || ids.length > 100) {
+      return mockError(400, 'INVALID_INPUT', 'ids는 1~100개여야 합니다.')
+    }
+    const idSet = new Set(ids.map((id) => String(id)))
+    return envelope(
+      Object.values(MOCK_PRODUCTS_BY_MODEL)
+        .filter((p) => idSet.has(p.productId))
+        .map((p) => ({
+          id: p.productId,
+          name: p.productName,
+          modelName: p.modelName,
+          productCode: null,
+          categoryId: p.categoryId ?? 'cat-home',
+          sellingPrice: p.sellingPrice,
+          status: 'ACTIVE',
+          goods: p.goods ?? true,
+          modelCode: p.modelCode ?? p.modelName,
+          productType: p.productType ?? 'SINGLE',
+        })),
+    )
+  }
+
   // GET /api/products?q=... — AC-2 품목 자동완성 검색 (product-service `/products?q=` 프록시)
   if (method === 'GET' && (url.endsWith('/api/products') || url.includes('/api/products?'))) {
     const q = String(config.params?.['q'] ?? '').toLowerCase()
@@ -3193,7 +3257,10 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       ?? MOCK_PRODUCTS_BY_MODEL[modelName]
     if (found) {
       return envelope({
-        ...found,
+        id: found.productId,
+        modelName: found.modelName,
+        name: found.productName,
+        sellingPrice: found.sellingPrice,
         modelCode: found.modelCode ?? found.modelName,
         productType: found.productType ?? 'SINGLE',
       })
@@ -3203,11 +3270,82 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     // 호출자에서 에러 처리하도록 빈 객체 + status 200 으로 진행 (mock 한계).
     // → 화면 동작 확인용으로는 sample 1건 항상 반환:
     return envelope({
-      productId: 'p-fallback',
+      id: 'p-fallback',
       modelName,
-      productName: `(샘플) ${modelName}`,
+      name: `(샘플) ${modelName}`,
       sellingPrice: '1000000',
     })
+  }
+
+  // 거래처+품목 최근단가 — generic GET /slips/{id} matcher 보다 먼저 처리한다.
+  // updatedAt 은 audit flush 시각이 아니라 원 전표/견적 저장 시각(remembered_at)이며,
+  // 실 wire 는 LocalDateTime(오프셋 없음) 직렬화다 — mock 값 형식도 BE parity(R6-M3).
+  const priceMemoryKey = (partnerId: string, productId: string) => `${partnerId}:${productId}`
+  // R6-M3 도달성: 같은 사업체(엘에이시스템에어)가 mock 표면별로 다른 UUID 를 쓴다 —
+  // 견적 상세(est-001 partnerId)와 거래처 검색(MOCK_ADMIN_PARTNERS id, 전표/신규견적 폼의
+  // PartnerAutocomplete 경로) 양쪽에서 기억행이 도달 가능해야 폼 시연이 성립한다.
+  const PRICE_MEMORY_PARTNER_IDS = [
+    '11111111-1111-4111-8111-111111111111', // est-001/buildMockEstimateDetail partnerId
+    'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', // MOCK_ADMIN_PARTNERS 엘에이시스템에어 id
+  ]
+  const priceMemoryRows = new Map(PRICE_MEMORY_PARTNER_IDS.map((partnerId) => [
+    priceMemoryKey(partnerId, MOCK_PRODUCT_AJ040_ID),
+    {
+      productId: MOCK_PRODUCT_AJ040_ID,
+      unitPrice: 2035000,
+      source: 'LINE_SAVE',
+      updatedAt: '2026-05-04T10:30:00',
+    },
+  ]))
+  // R6-M3: 실 BE 는 UUID 타입 바인딩(Jackson/Spring UUID.fromString)이라 version/variant 를
+  // 검증하지 않는다 — RFC-4122 version 강제([1-5]/[89ab])는 실 wire 가 200/204 로 받는
+  // version-less id(MOCK_ADMIN_PARTNERS 전원)를 mock 만 400 으로 거절해 조용한 CATALOG
+  // 폴백을 만든다.
+  //
+  // [R8-FE-7] 🔴 GET 과 POST 는 **바인딩 경로가 달라 관대함이 다르다** — 하나의 regex 로
+  // 兼用하면 GET 이 실 wire 보다 엄격해진다(라이브 실측: `partnerId=1-1-1-1-1` → 실 API **204**
+  // / mock **400**). 경로별로 분리한다:
+  //
+  //  - GET  `@RequestParam UUID` → Spring 이 `UUID.fromString` 호출 = **관대**.
+  //         JDK17 구현은 "대시 4개 + 각 세그먼트가 hex 파싱 가능" 만 보므로 축약형
+  //         `1-1-1-1-1` 을 `00000001-0001-0001-0001-000000000001` 로 받아들인다.
+  //  - POST `@RequestBody` → Jackson UUIDDeserializer = **엄격**. canonical 36자만 수용하고
+  //         그 외 길이는 base64 시도 후 실패 → 400. 즉 기존 canonical regex 가 정확하다.
+  //
+  // ※ JDK 의 세그먼트 masking(9~16자 hex 를 잘라 담는 동작)까지는 재현하지 않는다 —
+  //   mock 이 실 wire 보다 **관대한** 쪽 오차는 false-RED 를 만들지 않는다.
+  const lenientUuidPattern = /^[0-9a-f]{1,8}-[0-9a-f]{1,4}-[0-9a-f]{1,4}-[0-9a-f]{1,4}-[0-9a-f]{1,12}$/i
+  const canonicalUuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  if (method === 'POST' && /\/slips\/price-memory\/bulk$/.test(url)) {
+    const body = parseMockBody(config)
+    const partnerId = body['partnerId']
+    const productIds = body['productIds']
+    if (
+      typeof partnerId !== 'string'
+      || !canonicalUuidPattern.test(partnerId)
+      || !Array.isArray(productIds)
+      || productIds.length < 1
+      || productIds.length > 100
+      || productIds.some((id) => typeof id !== 'string' || !canonicalUuidPattern.test(id))
+    ) {
+      return mockError(400, 'INVALID_INPUT', 'partnerId UUID와 productIds UUID 1~100개가 필요합니다.')
+    }
+    return envelope(productIds.flatMap((productId) => {
+      const row = priceMemoryRows.get(priceMemoryKey(partnerId, productId))
+      return row ? [row] : []
+    }))
+  }
+  if (method === 'GET' && /\/slips\/price-memory(?:\?.*)?$/.test(url)) {
+    const urlObj = new URL(url.startsWith('http') ? url : `http://mock${url}`)
+    const partnerId = String(config.params?.['partnerId'] ?? urlObj.searchParams.get('partnerId') ?? '')
+    const productId = String(config.params?.['productId'] ?? urlObj.searchParams.get('productId') ?? '')
+    if (!lenientUuidPattern.test(partnerId) || !lenientUuidPattern.test(productId)) {
+      return mockError(400, 'INVALID_INPUT', 'partnerId와 productId는 UUID여야 합니다.')
+    }
+    const row = priceMemoryRows.get(priceMemoryKey(partnerId, productId))
+    return row
+      ? envelope({ unitPrice: row.unitPrice, source: row.source, updatedAt: row.updatedAt })
+      : { __mockStatus: 204, body: null }
   }
 
   // ==========================================================================
@@ -4637,6 +4775,63 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       dispatcherFullName: null,
       inspectorFullName: null,
       acceptedByFullName: null,
+      lines: SAMPLE_LINES,
+    })
+  }
+
+  // POST /slips/{id}/duplicate — R6-H2 전표 복사 서버 endpoint mock.
+  // BE 계약: body 없음, 201 + ApiResponse<SlipDetailResponse>(POST /slips 응답과 동일 스키마,
+  // lines[].setHead/parentSetModel 포함). 서버 semantics 미러 — 헤더 승계 + 전표일자=오늘 +
+  // 신규 채번 + DRAFT, 라인은 원본 상세(GET /slips/{id} mock 과 동일 소스)를 verbatim 승계.
+  //
+  // [R8-FE-4] 권한 미러 — 종전 주석은 "403/409 는 시간 의존 비결정성" 이라 묶어 적었으나 이는
+  // 범주 오류였다. 403 은 시간에 의존하지 않는다(역할→pageCode 매트릭스의 순수함수) —
+  // 시간에 의존하는 건 409(OUTBOUND 당일 마감 초과)뿐이다. 그 오분류 때문에 mock 이 권한을
+  // 아예 검사하지 않아, 생성 권한이 없는 역할(dev_master 는 sales.slip.create 미보유)로도
+  // 복사가 200 으로 성공해 실 BE 403 과 갈렸다. 403 은 미러하고 409 만 실 BE 검증에 남긴다.
+  //
+  // BE SlipController.duplicate: resolveSlipType(id) → checkCreatePermission 순서라
+  // **404 가 403 보다 우선**한다(타 전표 존재여부 oracle 노출 회피). 그 순서까지 미러한다.
+  const slipDuplicateMatch = url.match(/\/slips\/([^/?]+)\/duplicate$/)
+  if (method === 'POST' && slipDuplicateMatch) {
+    const sourceId = decodeURIComponent(slipDuplicateMatch[1]!)
+    const source = MOCK_SLIPS.find((s) => s.id === sourceId) as Record<string, unknown> | undefined
+    if (!source || source['isDeleted'] === true) {
+      return mockError(404, 'NOT_FOUND', '원본 전표를 찾을 수 없습니다.')
+    }
+    // BE checkCreatePermission: INBOUND → purchases.slip.edit/update, OUTBOUND → sales.slip.create/create.
+    const duplicateDenied = source['slipType'] === 'INBOUND'
+      ? mockRequirePermission('purchases.slip.edit', 'update')
+      : mockRequirePermission('sales.slip.create', 'create')
+    if (duplicateDenied) return duplicateDenied
+    const now = new Date()
+    const yyyy = now.getFullYear()
+    const mm = String(now.getMonth() + 1).padStart(2, '0')
+    const dd = String(now.getDate()).padStart(2, '0')
+    // [R8-FE-5] BE 는 @ResponseStatus(HttpStatus.CREATED) — envelope() 기본 200 은 계약 위반.
+    return mockOk(201, {
+      ...source,
+      id: `dup-slip-${Date.now()}`,
+      // 전표번호 슬래시 형식 yyyy/MM/dd-N (feedback_slip_order_number_format) — 신규 채번.
+      slipNo: `${yyyy}/${mm}/${dd}-99`,
+      slipDate: `${yyyy}-${mm}-${dd}`,
+      seqNo: 99,
+      status: 'DRAFT',
+      acceptedBy: null,
+      acceptedAt: null,
+      completedAt: null,
+      confirmedAt: null,
+      updatedAt: now.toISOString(),
+      version: 0,
+      printed: false,
+      dispatcher: null,
+      inspector: null,
+      dispatcherFullName: null,
+      inspectorFullName: null,
+      acceptedByFullName: null,
+      isDeleted: false,
+      deletedAt: null,
+      deletedByName: null,
       lines: SAMPLE_LINES,
     })
   }
@@ -15297,6 +15492,7 @@ const MOCK_DISPATCHES = [
 const MOCK_ESTIMATES = [
   {
     id: 'est-001',
+    partnerId: '11111111-1111-4111-8111-111111111111',
     estimateNumber: '2026/05/04-1',
     estimateDate: '2026-05-04',
     expirationDate: '2026-05-31',
@@ -15310,6 +15506,7 @@ const MOCK_ESTIMATES = [
   },
   {
     id: 'est-002',
+    partnerId: '22222222-2222-4222-8222-222222222222',
     estimateNumber: '2026/05/06-2',
     estimateDate: '2026-05-06',
     expirationDate: '2026-06-06',
@@ -15323,6 +15520,7 @@ const MOCK_ESTIMATES = [
   },
   {
     id: 'est-003',
+    partnerId: '33333333-3333-4333-8333-333333333333',
     estimateNumber: '2026/04/28-99',
     estimateDate: '2026-04-28',
     expirationDate: '2026-05-28',
@@ -15339,6 +15537,7 @@ const MOCK_ESTIMATES = [
   // Record<string, unknown> 캐스팅으로 읽으므로 기본 shape 밖 추가 필드로 부여한다.
   {
     id: 'est-004',
+    partnerId: '44444444-4444-4444-8444-444444444444',
     estimateNumber: '2026/05/20-3',
     estimateDate: '2026-05-20',
     expirationDate: '2026-06-19',
@@ -15376,7 +15575,7 @@ function mockEstimateSummary(row: (typeof MOCK_ESTIMATES)[number]) {
     estimateDate: row.estimateDate,
     seqNo: Number.isFinite(seqNo) ? seqNo : 1,
     status,
-    partnerId: `partner-${row.partnerCode}`,
+    partnerId: row.partnerId,
     partnerName: row.partnerName,
     partnerBusinessNo: row.partnerCode,
     validUntil: row.expirationDate,
@@ -15450,7 +15649,9 @@ function buildMockEstimateDetail(id: string) {
     estimateDate: isAccepted ? '2026-04-28' : '2026-05-04',
     seqNo: 1,
     status,
-    partnerId: 'pt-mock-001',
+    partnerId: isAccepted
+      ? '33333333-3333-4333-8333-333333333333'
+      : '11111111-1111-4111-8111-111111111111',
     partnerName: isAccepted ? '대박종합건설' : '엘에이시스템에어',
     partnerBusinessNo: isAccepted ? '5678901234' : '1234567890',
     partnerAddress: '서울시 강남구 테헤란로 1',

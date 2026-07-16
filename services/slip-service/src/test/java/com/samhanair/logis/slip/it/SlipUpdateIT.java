@@ -407,6 +407,7 @@ class SlipUpdateIT extends AbstractPostgresIT {
         body.put("recipientPhone", data.path("recipientPhone").asText(null));
         body.put("paymentDueDate", data.path("paymentDueDate").asText(null));
         body.put("lines", List.of(line));
+        body.put("lineIdContract", true); // [D-R8-9] 정상 최신 클라이언트 재현
 
         mockMvc.perform(put(SLIPS_PATH + "/" + id)
                         .header(USER_ID_HEADER, TEST_USER_ID.toString())
@@ -533,6 +534,9 @@ class SlipUpdateIT extends AbstractPostgresIT {
         body.put("recipientPhone", "010-5555-5252");
         body.put("paymentDueDate", TODAY.plusDays(30).toString());
         body.put("lines", List.of(line));
+        // [D-R8-9] 이 IT 들은 <b>정상 최신 클라이언트</b>를 흉내내므로 계약 마커를 싣는다.
+        // 마커 없는 구 클라이언트의 거부는 SlipUpdateLineIdContractTest 가 전담한다.
+        body.put("lineIdContract", true);
         return body;
     }
 
@@ -559,6 +563,7 @@ class SlipUpdateIT extends AbstractPostgresIT {
         body.put("recipientPhone", data.path("recipientPhone").asText(null));
         body.put("paymentDueDate", data.path("paymentDueDate").asText(null));
         body.put("lines", List.of(line));
+        body.put("lineIdContract", true); // [D-R8-9] 정상 최신 클라이언트 재현
         return body;
     }
 }

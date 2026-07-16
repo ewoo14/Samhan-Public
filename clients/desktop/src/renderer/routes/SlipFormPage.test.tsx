@@ -1,0 +1,722 @@
+// @vitest-environment jsdom
+import React from 'react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { MemoryRouter } from 'react-router-dom'
+
+const harness = vi.hoisted(() => ({
+  getPriceMemory: vi.fn(),
+  getPriceMemories: vi.fn(),
+  lookupPartnerForAutoFill: vi.fn(),
+  createSlip: vi.fn(),
+  listWarehouses: vi.fn(),
+  searchProducts: vi.fn(),
+  searchPartners: vi.fn(),
+  usePageTitle: vi.fn(),
+  partnerA: {
+    id: '11111111-1111-1111-1111-111111111111',
+    partnerCode: 'P-A',
+    name: 'Partner A',
+    phone: '010-1111-1111',
+  },
+  partnerB: {
+    id: '22222222-2222-2222-2222-222222222222',
+    partnerCode: 'P-B',
+    name: 'Partner B',
+    phone: '010-2222-2222',
+  },
+  productA: {
+    id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+    modelName: 'MODEL-A',
+    productName: 'Product A',
+    productType: 'SINGLE',
+    sellingPrice: '1000',
+    modelCode: 'A',
+  },
+  productB: {
+    id: 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',
+    modelName: 'MODEL-B',
+    productName: 'Product B',
+    productType: 'SINGLE',
+    sellingPrice: '2000',
+    modelCode: 'B',
+  },
+  productC: {
+    id: 'cccccccc-cccc-cccc-cccc-cccccccccccc',
+    modelName: 'MODEL-C',
+    productName: 'Product C',
+    productType: 'SINGLE',
+    sellingPrice: '3000',
+    modelCode: 'C',
+  },
+}))
+
+vi.mock('@samhan/design-system', () => ({
+  Button: ({ children, variant: _variant, size: _size, loading: _loading, ...props }: any) => {
+    const text = Array.isArray(children) ? children.join('') : String(children ?? '')
+    const testId = props['data-testid'] ?? (text.includes('+') ? 'add-line-button' : undefined)
+    return (
+      <button {...props} data-testid={testId} type="button">
+        {children}
+      </button>
+    )
+  },
+  Card: ({ children }: { children: React.ReactNode }) => <section>{children}</section>,
+  DeliveryTagSelector: () => <div data-testid="delivery-tag-selector" />,
+  FormField: ({ label, render }: { label: string; render: (args: { id: string }) => React.ReactNode }) => (
+    <label>
+      <span>{label}</span>
+      {render({ id: `field-${label}` })}
+    </label>
+  ),
+  Input: React.forwardRef<HTMLInputElement, any>(function Input(props, ref) {
+    return <input ref={ref} {...props} />
+  }),
+  KOREAN_MOBILE_PHONE_PATTERN: /^010-/,
+  LineRow: (props: any) => {
+    const lineNo = props.lineNumber
+    return (
+      <div
+        data-testid={`line-${lineNo}`}
+        data-product-id={props.line.productId ?? ''}
+        data-price-source={props.line.priceSource ?? ''}
+        data-partner-selected={String(props.partnerSelected ?? '')}
+      >
+        {props.modelCell}
+        <span data-testid={`product-name-${lineNo}`}>{props.line.productName}</span>
+        <input
+          aria-label={`line-${lineNo}-unit-price`}
+          value={props.line.unitPrice}
+          onChange={(event) => props.onUnitPriceChange(event.target.value)}
+        />
+        <button
+          type="button"
+          data-testid={`delete-line-${lineNo}`}
+          disabled={!props.canDelete}
+          onClick={props.onDelete}
+        >
+          delete
+        </button>
+      </div>
+    )
+  },
+  LineTableHeader: () => <div data-testid="line-table-header" />,
+  PartnerAutocomplete: ({ onChange, disabled }: any) => (
+    <div>
+      <button type="button" data-testid="select-partner-a" disabled={disabled} onClick={() => onChange(harness.partnerA)}>
+        partner-a
+      </button>
+      <button type="button" data-testid="select-partner-b" disabled={disabled} onClick={() => onChange(harness.partnerB)}>
+        partner-b
+      </button>
+      <button type="button" data-testid="clear-partner" disabled={disabled} onClick={() => onChange(null)}>
+        clear-partner
+      </button>
+    </div>
+  ),
+  PhoneInput: ({ helperText: _helperText, ...props }: any) => <input {...props} />,
+  ProductAutocomplete: ({ ariaLabel, onChange }: any) => {
+    const lineNo = /(\d+)/.exec(String(ariaLabel ?? ''))?.[1] ?? '1'
+    return (
+      <div data-testid={`product-autocomplete-${lineNo}`}>
+        <button type="button" data-testid={`select-product-a-${lineNo}`} onClick={() => onChange(harness.productA)}>
+          product-a
+        </button>
+        <button type="button" data-testid={`select-product-b-${lineNo}`} onClick={() => onChange(harness.productB)}>
+          product-b
+        </button>
+        <button type="button" data-testid={`select-product-c-${lineNo}`} onClick={() => onChange(harness.productC)}>
+          product-c
+        </button>
+      </div>
+    )
+  },
+  WarehouseAutocomplete: ({ onChange }: any) => (
+    <button type="button" data-testid="select-warehouse" onClick={() => onChange('warehouse-1')}>
+      warehouse
+    </button>
+  ),
+}))
+
+vi.mock('@dnd-kit/core', () => ({
+  DndContext: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  KeyboardSensor: vi.fn(),
+  PointerSensor: vi.fn(),
+  closestCenter: vi.fn(),
+  useSensor: vi.fn(() => ({})),
+  useSensors: vi.fn(() => []),
+}))
+
+vi.mock('@dnd-kit/sortable', () => ({
+  SortableContext: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  arrayMove: (items: unknown[]) => items,
+  sortableKeyboardCoordinates: vi.fn(),
+  useSortable: () => ({
+    attributes: {},
+    listeners: {},
+    setNodeRef: vi.fn(),
+    setActivatorNodeRef: vi.fn(),
+    transform: null,
+    transition: undefined,
+    isDragging: false,
+  }),
+  verticalListSortingStrategy: {},
+}))
+
+vi.mock('@dnd-kit/utilities', () => ({
+  CSS: { Transform: { toString: () => undefined } },
+}))
+
+vi.mock('../api/slip', () => ({
+  createSlip: harness.createSlip,
+  getPriceMemories: harness.getPriceMemories,
+  getPriceMemory: harness.getPriceMemory,
+  lookupPartnerForAutoFill: harness.lookupPartnerForAutoFill,
+  emptyBundleSetOptions: () => ({
+    outdoorUnits: 1,
+    indoorUnits: 1,
+    installationHours: 0,
+    commissioningHours: 0,
+  }),
+  toApiBundleSetOptions: () => undefined,
+}))
+
+vi.mock('../api/inventory', () => ({
+  listWarehouses: harness.listWarehouses,
+}))
+
+vi.mock('../api/productApi', () => ({
+  searchProducts: harness.searchProducts,
+}))
+
+vi.mock('../api/partnerApi', () => ({
+  searchPartners: harness.searchPartners,
+}))
+
+vi.mock('../hooks/useIsMobile', () => ({ useIsMobile: () => false }))
+vi.mock('../hooks/usePageTitle', () => ({ usePageTitle: harness.usePageTitle }))
+vi.mock('./components/InventoryLookupModal', () => ({ InventoryLookupModal: () => null }))
+vi.mock('./components/BundleOptionRow', () => ({ BundleOptionRow: () => null }))
+
+import { SlipFormPage } from './SlipFormPage'
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
+function renderPage() {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter>
+        <SlipFormPage mode="OUTBOUND" />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+}
+
+async function selectPartnerA() {
+  fireEvent.click(screen.getByTestId('select-partner-a'))
+  await waitFor(() => expect(harness.lookupPartnerForAutoFill).toHaveBeenCalledWith('P-A'))
+}
+
+async function selectPartnerB() {
+  fireEvent.click(screen.getByTestId('select-partner-b'))
+  await waitFor(() => expect(harness.lookupPartnerForAutoFill).toHaveBeenCalledWith('P-B'))
+}
+
+function unitPrice(lineNo = 1) {
+  return screen.getByLabelText(`line-${lineNo}-unit-price`) as HTMLInputElement
+}
+
+afterEach(() => {
+  cleanup()
+})
+
+beforeEach(() => {
+  vi.resetAllMocks()
+  harness.listWarehouses.mockResolvedValue([])
+  harness.lookupPartnerForAutoFill.mockResolvedValue({})
+  harness.createSlip.mockResolvedValue({})
+  harness.getPriceMemory.mockResolvedValue(null)
+  harness.getPriceMemories.mockResolvedValue({ hits: [], failedProductIds: [] })
+})
+
+describe('SlipFormPage price memory autofill', () => {
+  it('uses remembered unit price when price memory exists', async () => {
+    harness.getPriceMemory.mockResolvedValueOnce({
+      unitPrice: 999000,
+      source: 'LINE_SAVE',
+      updatedAt: '2026-07-10T09:00:00',
+    })
+    renderPage()
+    const status = screen.getByTestId('slip-price-refresh-banner')
+    expect(status.textContent).toBe('')
+    await selectPartnerA()
+
+    fireEvent.click(screen.getByTestId('select-product-a-1'))
+
+    await waitFor(() =>
+      expect(harness.getPriceMemory).toHaveBeenCalledWith(
+        harness.partnerA.id,
+        harness.productA.id,
+      ),
+    )
+    await waitFor(() => expect(unitPrice().value).toBe('999000'))
+    expect(unitPrice().value).not.toBe(harness.productA.sellingPrice)
+    expect(status.textContent).toBe('라인 1 거래처 최근단가 적용')
+  })
+
+  it('falls back to catalog selling price when price memory misses', async () => {
+    harness.getPriceMemory.mockResolvedValueOnce(null)
+    renderPage()
+    await selectPartnerA()
+
+    fireEvent.click(screen.getByTestId('select-product-a-1'))
+
+    await waitFor(() =>
+      expect(harness.getPriceMemory).toHaveBeenCalledWith(
+        harness.partnerA.id,
+        harness.productA.id,
+      ),
+    )
+    await waitFor(() => expect(unitPrice().value).toBe(harness.productA.sellingPrice))
+    expect(screen.queryByRole('note')).toBeNull()
+  })
+
+  it('preserves user override and skips price memory lookup', async () => {
+    renderPage()
+    await selectPartnerA()
+    fireEvent.change(unitPrice(), { target: { value: '7777' } })
+
+    fireEvent.click(screen.getByTestId('select-product-a-1'))
+
+    await waitFor(() => expect(screen.getByTestId('product-name-1').textContent).toBe(harness.productA.productName))
+    expect(harness.getPriceMemory).not.toHaveBeenCalled()
+    expect(unitPrice().value).toBe('7777')
+    expect(screen.queryByRole('note')).toBeNull()
+  })
+
+  it('ignores a late response when partner changes during lookup', async () => {
+    const first = deferred<{ unitPrice: number; source: string; updatedAt: string } | null>()
+    const second = deferred<{ hits: Array<{ productId: string; unitPrice: number; source: string; updatedAt: string }>; failedProductIds: string[] }>()
+    harness.getPriceMemory.mockReturnValueOnce(first.promise)
+    harness.getPriceMemories.mockReturnValueOnce(second.promise)
+    renderPage()
+    await selectPartnerA()
+
+    fireEvent.click(screen.getByTestId('select-product-a-1'))
+    await waitFor(() => expect(harness.getPriceMemory).toHaveBeenCalledWith(harness.partnerA.id, harness.productA.id))
+    await waitFor(() => expect(screen.getByTestId('product-name-1').textContent).toBe(harness.productA.productName))
+    await selectPartnerB()
+    await waitFor(() => expect(harness.getPriceMemories).toHaveBeenCalledWith(harness.partnerB.id, [harness.productA.id]))
+
+    await act(async () => {
+      second.resolve({ hits: [{
+        productId: harness.productA.id,
+        unitPrice: 222000,
+        source: 'LINE_SAVE',
+        updatedAt: '2026-07-11T09:00:00',
+      }], failedProductIds: [] })
+      await second.promise
+    })
+    await waitFor(() => expect(unitPrice().value).toBe('222000'))
+
+    await act(async () => {
+      first.resolve({ unitPrice: 111000, source: 'LINE_SAVE', updatedAt: '2026-07-10T09:00:00' })
+      await first.promise
+    })
+    expect(unitPrice().value).toBe('222000')
+  })
+
+  it('ignores a late response when the same line changes to another product', async () => {
+    const first = deferred<{ unitPrice: number; source: string; updatedAt: string } | null>()
+    const second = deferred<{ unitPrice: number; source: string; updatedAt: string } | null>()
+    harness.getPriceMemory
+      .mockReturnValueOnce(first.promise)
+      .mockReturnValueOnce(second.promise)
+    renderPage()
+    await selectPartnerA()
+
+    fireEvent.click(screen.getByTestId('select-product-a-1'))
+    await waitFor(() => expect(harness.getPriceMemory).toHaveBeenCalledWith(harness.partnerA.id, harness.productA.id))
+    await waitFor(() => expect(screen.getByTestId('product-name-1').textContent).toBe(harness.productA.productName))
+    fireEvent.click(screen.getByTestId('select-product-b-1'))
+    await waitFor(() => expect(harness.getPriceMemory).toHaveBeenCalledWith(harness.partnerA.id, harness.productB.id))
+
+    await act(async () => {
+      second.resolve({ unitPrice: 202000, source: 'LINE_SAVE', updatedAt: '2026-07-12T09:00:00' })
+      await second.promise
+    })
+    await waitFor(() => expect(unitPrice().value).toBe('202000'))
+
+    await act(async () => {
+      first.resolve({ unitPrice: 101000, source: 'LINE_SAVE', updatedAt: '2026-07-10T09:00:00' })
+      await first.promise
+    })
+    expect(screen.getByTestId('product-name-1').textContent).toBe(harness.productB.productName)
+    expect(unitPrice().value).toBe('202000')
+  })
+
+  it('ignores a late response when the line is deleted during lookup', async () => {
+    const pending = deferred<{ unitPrice: number; source: string; updatedAt: string } | null>()
+    harness.getPriceMemory.mockReturnValueOnce(pending.promise)
+    renderPage()
+    await selectPartnerA()
+    fireEvent.click(screen.getByTestId('add-line-button'))
+
+    fireEvent.click(screen.getByTestId('select-product-a-2'))
+    await waitFor(() => expect(harness.getPriceMemory).toHaveBeenCalledWith(harness.partnerA.id, harness.productA.id))
+    fireEvent.click(screen.getByTestId('delete-line-2'))
+    expect(screen.queryByTestId('line-2')).toBeNull()
+
+    await act(async () => {
+      pending.resolve({ unitPrice: 999000, source: 'LINE_SAVE', updatedAt: '2026-07-10T09:00:00' })
+      await pending.promise
+    })
+    expect(screen.queryByTestId('line-2')).toBeNull()
+    expect(unitPrice(1).value).toBe('0')
+  })
+
+  it('refreshes autofilled lines on partner change and preserves user override lines', async () => {
+    harness.getPriceMemory.mockResolvedValueOnce({
+      unitPrice: 100000,
+      source: 'LINE_SAVE',
+      updatedAt: '2026-07-10T09:00:00',
+    })
+    harness.getPriceMemories.mockResolvedValueOnce({ hits: [{
+      productId: harness.productA.id,
+      unitPrice: 200000,
+      source: 'LINE_SAVE',
+      updatedAt: '2026-07-11T09:00:00',
+    }], failedProductIds: [] })
+    renderPage()
+    await selectPartnerA()
+    fireEvent.click(screen.getByTestId('select-product-a-1'))
+    await waitFor(() => expect(unitPrice(1).value).toBe('100000'))
+
+    fireEvent.click(screen.getByTestId('add-line-button'))
+    fireEvent.change(unitPrice(2), { target: { value: '7777' } })
+    fireEvent.click(screen.getByTestId('select-product-b-2'))
+    await waitFor(() => expect(screen.getByTestId('product-name-2').textContent).toBe(harness.productB.productName))
+    expect(unitPrice(2).value).toBe('7777')
+
+    await selectPartnerB()
+
+    await waitFor(() => expect(harness.getPriceMemories).toHaveBeenCalledWith(harness.partnerB.id, [harness.productA.id]))
+    expect(harness.getPriceMemories).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(unitPrice(1).value).toBe('200000'))
+    expect(unitPrice(2).value).toBe('7777')
+    // R4 수렴 fix: 상시 마운트 live region 이 2곳(재적용 배너 + busy 단서)이라 role=status
+    // 단수 조회는 모호 — 배너 testid 로 대상을 고정하되 role=status a11y 계약 단언은 유지한다.
+    const refreshBanner = screen.getByTestId('slip-price-refresh-banner')
+    expect(refreshBanner.getAttribute('role')).toBe('status')
+    expect(refreshBanner.textContent).toContain('거래처 변경으로 최근단가 재적용')
+    expect(screen.getByTestId('line-1').getAttribute('data-price-source')).toBe('REMEMBERED')
+  })
+
+  it('clears the stale single-lookup announcement when a partner switch refresh starts', async () => {
+    // R6-M5: slip 폼만 재조회 시작 시 단건 안내를 클리어하지 않아(견적 669행과 비대칭)
+    // 재적용 결과가 동일 단가(priceRefreshChanged=false → 배너 비활성)일 때 region 이
+    // "라인 1 거래처 최근단가 적용" stale 문구로 폴백 — SR 이 이제는 거짓인 문장을 재낭독했다.
+    harness.getPriceMemory.mockResolvedValueOnce({
+      unitPrice: 999000,
+      source: 'LINE_SAVE',
+      updatedAt: '2026-07-10T09:00:00',
+    })
+    harness.getPriceMemories.mockResolvedValueOnce({ hits: [{
+      productId: harness.productA.id,
+      unitPrice: 999000,
+      source: 'LINE_SAVE',
+      updatedAt: '2026-07-11T09:00:00',
+    }], failedProductIds: [] })
+    renderPage()
+    await selectPartnerA()
+    fireEvent.click(screen.getByTestId('select-product-a-1'))
+    await waitFor(() => expect(unitPrice().value).toBe('999000'))
+    const status = screen.getByTestId('slip-price-refresh-banner')
+    expect(status.textContent).toBe('라인 1 거래처 최근단가 적용')
+
+    await selectPartnerB()
+
+    await waitFor(() => expect(harness.getPriceMemories).toHaveBeenCalledWith(harness.partnerB.id, [harness.productA.id]))
+    await waitFor(() => expect(unitPrice().value).toBe('999000'))
+    expect(screen.getByTestId('line-1').getAttribute('data-price-source')).toBe('REMEMBERED')
+    // 동일 단가 재적용이라 배너는 비활성 — stale 단건 문구로 폴백하지 않고 빈 텍스트여야 한다.
+    expect(status.textContent).toBe('')
+  })
+
+  it('partner change uses one bulk call and maps omitted products to catalog miss', async () => {
+    harness.getPriceMemories.mockResolvedValueOnce({ hits: [{
+      productId: harness.productA.id,
+      unitPrice: 555000,
+      source: 'LINE_SAVE',
+      updatedAt: '2026-07-11T09:00:00',
+    }], failedProductIds: [] })
+    renderPage()
+    await selectPartnerA()
+    fireEvent.click(screen.getByTestId('select-product-a-1'))
+    await waitFor(() => expect(unitPrice(1).value).toBe(harness.productA.sellingPrice))
+    fireEvent.click(screen.getByTestId('add-line-button'))
+    fireEvent.click(screen.getByTestId('select-product-b-2'))
+    await waitFor(() => expect(unitPrice(2).value).toBe(harness.productB.sellingPrice))
+
+    await selectPartnerB()
+
+    await waitFor(() => expect(harness.getPriceMemories).toHaveBeenCalledWith(
+      harness.partnerB.id,
+      [harness.productA.id, harness.productB.id],
+    ))
+    expect(harness.getPriceMemories).toHaveBeenCalledTimes(1)
+    await waitFor(() => expect(unitPrice(1).value).toBe('555000'))
+    expect(unitPrice(2).value).toBe(harness.productB.sellingPrice)
+    expect(screen.getByTestId('line-1').getAttribute('data-price-source')).toBe('REMEMBERED')
+    expect(screen.getByTestId('line-2').getAttribute('data-price-source')).toBe('CATALOG')
+  })
+
+  it('treats zero remembered unit price as a valid hit', async () => {
+    harness.getPriceMemory.mockResolvedValueOnce({
+      unitPrice: 0,
+      source: 'LINE_SAVE',
+      updatedAt: '2026-07-10T09:00:00',
+    })
+    renderPage()
+    await selectPartnerA()
+
+    fireEvent.click(screen.getByTestId('select-product-a-1'))
+
+    await waitFor(() => expect(harness.getPriceMemory).toHaveBeenCalledWith(harness.partnerA.id, harness.productA.id))
+    await waitFor(() => expect(unitPrice().value).toBe('0'))
+    expect(screen.getByTestId('line-1').getAttribute('data-price-source')).toBe('REMEMBERED')
+  })
+
+  it('passes remembered priceSource to the real LineRow boundary', async () => {
+    harness.getPriceMemory.mockResolvedValueOnce({
+      unitPrice: 123000,
+      source: 'LINE_SAVE',
+      updatedAt: '2026-07-10T09:00:00',
+    })
+    renderPage()
+    await selectPartnerA()
+
+    fireEvent.click(screen.getByTestId('select-product-a-1'))
+
+    await waitFor(() => expect(screen.getByTestId('line-1').getAttribute('data-price-source')).toBe('REMEMBERED'))
+
+    fireEvent.click(screen.getByTestId('add-line-button'))
+    fireEvent.change(unitPrice(2), { target: { value: '7777' } })
+    fireEvent.click(screen.getByTestId('select-product-b-2'))
+    await waitFor(() => expect(screen.getByTestId('product-name-2').textContent).toBe(harness.productB.productName))
+    expect(screen.getByTestId('line-2').getAttribute('data-price-source')).toBe('USER')
+  })
+
+  it('skips price memory lookup when partnerId is not selected', async () => {
+    renderPage()
+
+    fireEvent.click(screen.getByTestId('select-product-a-1'))
+
+    await waitFor(() => expect(screen.getByTestId('product-name-1').textContent).toBe(harness.productA.productName))
+    expect(harness.getPriceMemory).not.toHaveBeenCalled()
+    expect(unitPrice().value).toBe(harness.productA.sellingPrice)
+  })
+
+  it('keeps catalog fallback when price memory lookup rejects', async () => {
+    harness.getPriceMemory.mockRejectedValueOnce(new Error('forbidden'))
+    renderPage()
+    await selectPartnerA()
+
+    fireEvent.click(screen.getByTestId('select-product-a-1'))
+
+    await waitFor(() => expect(harness.getPriceMemory).toHaveBeenCalledWith(harness.partnerA.id, harness.productA.id))
+    await waitFor(() => expect(screen.getByTestId('product-name-1').textContent).toBe(harness.productA.productName))
+    await waitFor(() => expect(unitPrice().value).toBe(harness.productA.sellingPrice))
+    expect(screen.queryByRole('note')).toBeNull()
+  })
+
+  it('bulk refresh failure does not overwrite a user edit made while the request is pending', async () => {
+    const pending = deferred<{ hits: Array<{ productId: string; unitPrice: number; source: string; updatedAt: string }>; failedProductIds: string[] }>()
+    harness.getPriceMemory.mockResolvedValueOnce({
+      unitPrice: 100000,
+      source: 'LINE_SAVE',
+      updatedAt: '2026-07-10T09:00:00',
+    })
+    harness.getPriceMemories.mockReturnValueOnce(pending.promise)
+    renderPage()
+    await selectPartnerA()
+    fireEvent.click(screen.getByTestId('select-product-a-1'))
+    await waitFor(() => expect(unitPrice().value).toBe('100000'))
+
+    await selectPartnerB()
+    await waitFor(() => expect(harness.getPriceMemories).toHaveBeenCalledTimes(1))
+    fireEvent.change(unitPrice(), { target: { value: '7777' } })
+    await act(async () => {
+      pending.reject(new Error('forbidden'))
+      await pending.promise.catch(() => undefined)
+    })
+
+    expect(unitPrice().value).toBe('7777')
+    expect(screen.getByTestId('line-1').getAttribute('data-price-source')).toBe('USER')
+    expect(screen.queryByText(/거래처 변경으로 최근단가 재적용/)).toBeNull()
+  })
+
+  // R4-F1: REMEMBERED 자동채움 라인이 다른 품목으로 교체되면 단가·마커를 새 품목 기준으로
+  // 재채움(가격기억 재조회) — 견적과 공유 헬퍼(shouldAutoFillPrice) semantics 고정.
+  it('re-fills price and marker via memory re-lookup when a remembered line switches product', async () => {
+    harness.getPriceMemory
+      .mockResolvedValueOnce({
+        unitPrice: 88000,
+        source: 'LINE_SAVE',
+        updatedAt: '2026-07-10T09:00:00',
+      })
+      .mockResolvedValueOnce(null)
+    renderPage()
+    await selectPartnerA()
+
+    fireEvent.click(screen.getByTestId('select-product-a-1'))
+    await waitFor(() => expect(unitPrice().value).toBe('88000'))
+    expect(screen.getByTestId('line-1').getAttribute('data-price-source')).toBe('REMEMBERED')
+
+    fireEvent.click(screen.getByTestId('select-product-b-1'))
+
+    await waitFor(() =>
+      expect(harness.getPriceMemory).toHaveBeenCalledWith(harness.partnerA.id, harness.productB.id),
+    )
+    await waitFor(() => expect(unitPrice().value).toBe(harness.productB.sellingPrice))
+    expect(screen.getByTestId('line-1').getAttribute('data-price-source')).toBe('CATALOG')
+  })
+
+  // R4-D4(b)·D-R4-4: 거래처 해제 시 단가값은 유지하고 마커만 해제(LineRow 에 partnerSelected=false
+  // 전달). priceSource state 는 REMEMBERED 로 유지해 거래처 재선택 시 재조회 대상 자격을 보존한다.
+  it('keeps the remembered unit price and only releases the marker when the partner is cleared', async () => {
+    harness.getPriceMemory.mockResolvedValueOnce({
+      unitPrice: 100000,
+      source: 'LINE_SAVE',
+      updatedAt: '2026-07-10T09:00:00',
+    })
+    renderPage()
+    await selectPartnerA()
+    fireEvent.click(screen.getByTestId('select-product-a-1'))
+    await waitFor(() => expect(unitPrice().value).toBe('100000'))
+    expect(screen.getByTestId('line-1').getAttribute('data-partner-selected')).toBe('true')
+
+    fireEvent.click(screen.getByTestId('clear-partner'))
+
+    // 단가값 유지(판매가로 되돌리지 않음) + 마커 해제 신호 + 상태 보존
+    await waitFor(() =>
+      expect(screen.getByTestId('line-1').getAttribute('data-partner-selected')).toBe('false'),
+    )
+    expect(unitPrice().value).toBe('100000')
+    expect(screen.getByTestId('line-1').getAttribute('data-price-source')).toBe('REMEMBERED')
+
+    // 거래처 재선택 시 자동 라인 재조회 자격 보존 — 새 거래처 기준 bulk 재조회 + miss 시 판매가 격리
+    await selectPartnerB()
+    await waitFor(() =>
+      expect(harness.getPriceMemories).toHaveBeenCalledWith(harness.partnerB.id, [harness.productA.id]),
+    )
+    await waitFor(() => expect(unitPrice().value).toBe(harness.productA.sellingPrice))
+    expect(screen.getByTestId('line-1').getAttribute('data-price-source')).toBe('CATALOG')
+  })
+
+  // R4-D9: 배너 live region 은 빈 컨테이너로 상시 마운트되고 텍스트만 토글 — 내용과 함께
+  // 조건부 마운트하면 일부 SR 이 낭독하지 않는다. 동일 DOM 노드 유지(재마운트 아님)까지 고정.
+  it('keeps the price refresh banner live region mounted before and after activation', async () => {
+    harness.getPriceMemories.mockResolvedValueOnce({ hits: [{
+      productId: harness.productA.id,
+      unitPrice: 200000,
+      source: 'LINE_SAVE',
+      updatedAt: '2026-07-11T09:00:00',
+    }], failedProductIds: [] })
+    renderPage()
+
+    const banner = screen.getByTestId('slip-price-refresh-banner')
+    expect(banner.getAttribute('role')).toBe('status')
+    expect(banner.getAttribute('aria-live')).toBe('polite')
+    expect(banner.textContent).toBe('')
+
+    await selectPartnerA()
+    fireEvent.click(screen.getByTestId('select-product-a-1'))
+    await waitFor(() => expect(unitPrice().value).toBe(harness.productA.sellingPrice))
+    await selectPartnerB()
+    await waitFor(() => expect(unitPrice().value).toBe('200000'))
+
+    expect(screen.getByTestId('slip-price-refresh-banner')).toBe(banner)
+    expect(banner.textContent).toContain('거래처 변경으로 최근단가 재적용')
+  })
+
+  // R4-F4: 거래처 변경 최근단가 재조회 in-flight 동안 저장 차단 + busy 단서 —
+  // 이전 거래처 단가가 새 partnerId 로 저장돼 가격기억이 교차 오염되는 것을 방지.
+  it('blocks submit and shows a busy note while the partner price refresh is in flight', async () => {
+    const pending = deferred<{ hits: Array<{ productId: string; unitPrice: number; source: string; updatedAt: string }>; failedProductIds: string[] }>()
+    harness.getPriceMemories.mockReturnValueOnce(pending.promise)
+    renderPage()
+    await selectPartnerA()
+    fireEvent.click(screen.getByTestId('select-warehouse'))
+    fireEvent.click(screen.getByTestId('select-product-a-1'))
+    await waitFor(() => expect(unitPrice().value).toBe(harness.productA.sellingPrice))
+    await waitFor(() =>
+      expect((screen.getByRole('button', { name: '저장' }) as HTMLButtonElement).disabled).toBe(false),
+    )
+
+    // R4-D9 계열 sweep: busy live region 도 배너와 동일하게 활성 전부터 빈 컨테이너로
+    // 선존재해야 SR 낭독이 신뢰된다(조건부 마운트 금지).
+    const busyNote = screen.getByTestId('slip-form-price-refresh-busy')
+    expect(busyNote.getAttribute('role')).toBe('status')
+    expect(busyNote.getAttribute('aria-live')).toBe('polite')
+    expect(busyNote.textContent).toBe('')
+
+    await selectPartnerB()
+    await waitFor(() => expect(harness.getPriceMemories).toHaveBeenCalledTimes(1))
+
+    // 동일 DOM 노드 유지(재마운트 아님) + 텍스트만 토글.
+    expect(screen.getByTestId('slip-form-price-refresh-busy')).toBe(busyNote)
+    expect(busyNote.textContent).toContain('최근단가 확인 중')
+    const saveButton = screen.getByRole('button', { name: '저장' }) as HTMLButtonElement
+    expect(saveButton.disabled).toBe(true)
+    fireEvent.click(saveButton)
+    expect(harness.createSlip).not.toHaveBeenCalled()
+
+    await act(async () => {
+      pending.resolve({ hits: [{
+        productId: harness.productA.id,
+        unitPrice: 222000,
+        source: 'LINE_SAVE',
+        updatedAt: '2026-07-11T09:00:00',
+      }], failedProductIds: [] })
+      await pending.promise
+    })
+
+    await waitFor(() => expect(unitPrice().value).toBe('222000'))
+    // 완료 후에도 live region 은 상시 마운트 유지 — 텍스트만 소거된다.
+    expect(screen.getByTestId('slip-form-price-refresh-busy')).toBe(busyNote)
+    expect(busyNote.textContent).toBe('')
+    expect((screen.getByRole('button', { name: '저장' }) as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('SlipFormPage_submit_sendsVatInclusivePriceExactly', async () => {
+    renderPage()
+    await selectPartnerA()
+    fireEvent.click(screen.getByTestId('select-warehouse'))
+    fireEvent.click(screen.getByTestId('select-product-a-1'))
+    await waitFor(() => expect(unitPrice().value).toBe(harness.productA.sellingPrice))
+    fireEvent.change(unitPrice(), { target: { value: '100000' } })
+
+    fireEvent.click(screen.getByRole('button', { name: '저장' }))
+
+    await waitFor(() => expect(harness.createSlip).toHaveBeenCalledTimes(1))
+    expect(harness.createSlip).toHaveBeenCalledWith(expect.objectContaining({
+      partnerId: harness.partnerA.id,
+      lines: [expect.objectContaining({
+        productId: harness.productA.id,
+        unitPrice: '100000',
+        priceVatInclusive: true,
+      })],
+    }))
+  })
+})

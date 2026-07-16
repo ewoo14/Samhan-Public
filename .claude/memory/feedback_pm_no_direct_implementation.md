@@ -1,6 +1,6 @@
 ---
 name: feedback_pm_no_direct_implementation
-description: "PM 직접 구현 금지 — 구현은 Codex, PM은 기획·리뷰·commit 대행만"
+description: "PM 직접 구현 금지 — 초기 구현은 CODEX LUNA 5.6 전담, PM은 오케스트레이션·commit 대행·머지만 (검증 라운드 fix=그 라운드 모델)"
 metadata: 
   node_type: memory
   type: feedback
@@ -14,3 +14,5 @@ metadata:
 **Why**: 표준 워크플로우([[feedback_canonical_workflow]])가 "Opus 기획+PR → Codex 개발 → 듀얼리뷰"인데, infra 제약(분류기/Codex MCP 오류) 시 PM 직접 구현으로 우회하려 하자 개발책임자가 명시 금지. Codex 구현이 듀얼리뷰 cross-check 의 전제(PM 이 구현하면 리뷰 독립성 훼손).
 
 **How to apply**: 구현 착수 시 항상 Codex 디스패치(`mcp__codex__codex` danger-full-access 또는 codex exec). Codex 불가(MCP 세션한계/config 손상) 시 새 세션·codex exec Bash 우회·회복 대기 — PM 직접 구현으로 대체 금지. Codex=파일만 수정, Claude commit 대행([[feedback_codex_sandbox_git]]). [[feedback_canonical_workflow]]
+
+🚨 **2026-07-15 워크플로우 전면 개편 반영**([[feedback_canonical_workflow]]): 초기 구현 = **CODEX LUNA 5.6**(`gpt-5.6-luna`) 전담. 검증 라운드 fix = 그 라운드 진행 모델 — **1차 적대검증(FABLE5) 라운드 fix = FABLE5(세션) 직접 Edit**, **2차 적대검증(CODEX SOL 5.6) 라운드 fix = CODEX SOL 5.6**. 위 본문의 "Opus 라운드/Codex 라운드"는 각각 FABLE5/CODEX SOL 5.6 라운드로 읽는다. 원칙(PM 초기구현 금지 · 검증 라운드 fix=라운드 모델) 불변.

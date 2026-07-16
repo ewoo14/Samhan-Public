@@ -220,6 +220,77 @@ public class SlipLine extends BaseEntity {
     }
 
     /**
+     * 전표 복사용 라인 사본 생성 — 원본 라인의 금액 권위값과 세트 계보를 그대로 승계한다 (R6-H2).
+     *
+     * <p>FE 평면 재-POST 복사는 세트 구성품이 일반 라인으로 재생성되어 배분가가 가격기억에
+     * 각인되고 세트 표시도 소실됐다. 서버 복사는:
+     * <ul>
+     *   <li>단가/합계/공급가액/부가세/VAT포함단가를 <b>원본 값 그대로</b> 복사 — 재계산으로 인한
+     *       반올림 drift 없음. 단, legacy 라인(VAT 필드 null)은 현행 생성 규칙대로 unitPrice 에서
+     *       재계산한다 (FE legacy 복사 경로와 동일 의미).</li>
+     *   <li>{@code setHead}/{@code parentSetModel} 세트 계보 승계 — 복사본에서도 세트 표시와
+     *       가격기억 구성품 제외가 유지된다.</li>
+     *   <li>{@code sourceOrderLineId} 는 승계하지 않는다 — 주문 부분전환 역참조가 복사본에
+     *       중복 연결되면 전환 추적이 왜곡된다.</li>
+     * </ul>
+     *
+     * @param slip 사본이 속할 새 전표 헤더
+     * @param source 원본 라인 (영속 상태)
+     * @return 영속화 전 사본 라인
+     */
+    public static SlipLine copyOf(Slip slip, SlipLine source) {
+        SlipLine line = new SlipLine(slip, source.productId, source.productName, source.modelName,
+                source.specification, source.quantity, source.unitPrice, source.note, null);
+        if (source.unitPriceWithVat != null) {
+            // 라인 단위 권위값 보존 (createFromVatInclusive 저장 규칙과 동일한 덮어쓰기)
+            line.lineTotal = source.lineTotal;
+            line.supplyAmount = source.supplyAmount;
+            line.vatAmount = source.vatAmount;
+            line.unitPriceWithVat = source.unitPriceWithVat;
+        }
+        line.parentSetModel = source.parentSetModel;
+        line.setHead = source.setHead;
+        return line;
+    }
+
+    /**
+     * 버전이력 스냅샷 복원용 라인 단위 권위 금액 승계 — #822 계열 sweep (전표 측).
+     *
+     * <p>{@link com.samhanair.logis.slip.domain.Slip#restoreFromSnapshot} 는 스냅샷 라인을
+     * {@link #create}(공급 단가) 로 재생성하는데, 이 경로는 {@code vatAmount = 공급가액 × 0.1},
+     * {@code unitPriceWithVat = 공급단가 × 1.1} 을 <b>재계산</b>한다. VAT 포함 단가로 입력된
+     * 라인({@link #createFromVatInclusive})은 공급가액이 원 단위 반올림된 배분값이라, 재계산
+     * 결과가 캡처 시점 권위값과 어긋난다(예: VAT 포함 87,999 × 3 → 캡처 vat 24,000 / 재계산
+     * 23,999.70 — 11의 배수가 아닌 단가에서 드리프트). 본 메서드는 {@link #copyOf} 의 덮어쓰기
+     * 규칙과 동일하게 스냅샷 캡처값을 그대로 승계해 복원을 무손실로 만든다.
+     *
+     * <p>가드: {@code unitPriceWithVat == null}(V12 이전 legacy 라인 스냅샷)이면 아무것도 하지
+     * 않는다 — 종전과 동일하게 create 재계산 결과를 유지한다(하위호환). 공급 단가로 생성된
+     * 일반 라인은 캡처값 == 재계산값이므로 덮어써도 값이 변하지 않는다.
+     *
+     * @param lineTotal 캡처 시점 라인 합계 (null 이면 재계산값 유지)
+     * @param supplyAmount 캡처 시점 공급가액 (null 이면 재계산값 유지)
+     * @param vatAmount 캡처 시점 부가세 (null 이면 재계산값 유지)
+     * @param unitPriceWithVat 캡처 시점 VAT 포함 단가 (null 이면 전체 no-op)
+     */
+    void restoreAuthoritativeAmounts(BigDecimal lineTotal, BigDecimal supplyAmount,
+                                     BigDecimal vatAmount, BigDecimal unitPriceWithVat) {
+        if (unitPriceWithVat == null) {
+            return;
+        }
+        this.unitPriceWithVat = unitPriceWithVat;
+        if (lineTotal != null) {
+            this.lineTotal = lineTotal;
+        }
+        if (supplyAmount != null) {
+            this.supplyAmount = supplyAmount;
+        }
+        if (vatAmount != null) {
+            this.vatAmount = vatAmount;
+        }
+    }
+
+    /**
      * 수량 변경 — 양수만 허용. lineTotal 재계산. 헤더 상태 가드는 서비스 레이어 책임.
      *
      * @param newQuantity 새 수량 (1 이상)

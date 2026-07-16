@@ -25,7 +25,8 @@ public record CreateEstimateRequest(
         @Size(max = 200) String partnerAddress,
         LocalDate validUntil,
         @Size(max = 1000) String memo,
-        @NotEmpty @Valid List<EstimateLineRequest> lines) {
+        @NotEmpty @Size(max = 100, message = "견적 라인은 최대 100건까지 저장할 수 있습니다")
+        @Valid List<EstimateLineRequest> lines) {
 
     /** 견적 라인 요청. {@code setOptions} 는 BUNDLE(세트) 품목일 때 전개 옵션(선택, null=기본). */
     public record EstimateLineRequest(

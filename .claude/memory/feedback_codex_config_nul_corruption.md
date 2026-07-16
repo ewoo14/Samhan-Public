@@ -17,4 +17,4 @@ metadata:
 4. 세션 내 MCP(`mcp__codex__codex`) 는 시작 시 깨진 config 로 물려 여전히 Failed → `/mcp` 재연결 또는 새 세션. 단 **codex exec 는 config 복구 즉시 작동**하므로 리뷰/구현은 exec 로 진행 가능.
 
 ## How to apply
-codex 양쪽(MCP+exec) 동시 실패 → "세션 한정" 단정 말고 config.toml NUL/파싱 먼저 점검. 관련: [[codex-mcp-session-limit]] [[codex-plugin-setup]] [[codex-sandbox-git]] [[codex-model-auto-switch]] [[temp-multimodel-workflow]].
+codex 양쪽(MCP+exec) 동시 실패 → "세션 한정" 단정 말고 config.toml NUL/파싱 먼저 점검. 관련: [[codex-mcp-session-limit]] [[codex-plugin-setup]] [[codex-sandbox-git]] [[feedback_canonical_workflow]]. (※ 2026-07-15 개편: 디스패치 모델은 스테이지별 `gpt-5.6-sol`/`gpt-5.6-luna` 명시 — config 기본 model 은 폴백.)

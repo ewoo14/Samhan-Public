@@ -55,6 +55,14 @@ export interface CollaborativeSlipInputProps {
   fieldPath: string
   value: string
   onValueChange: (value: string) => void
+  /**
+   * 문서 동기화(doc-sync) 유래 값 변경 콜백 — 지정 시 provider 문서 변경 반영에는
+   * onValueChange 대신 이 콜백을 호출한다. 단가처럼 onValueChange 에 실입력 부수효과
+   * (priceSource=USER 재분류 등)가 있는 필드에서, 자동채움 provider write 의 doc-sync 가
+   * pending 분류를 USER 로 덮어 마커를 소멸시키는 것을 차단한다(R4-F6).
+   * 미지정 시 기존대로 onValueChange 를 호출한다.
+   */
+  onDocSyncValueChange?: (value: string) => void
   type?: string
   min?: number
   maxLength?: number
@@ -75,6 +83,7 @@ export interface CollaborativeSlipInputProps {
   coeditPending?: boolean
   'data-testid'?: string
   'aria-label': string
+  'aria-describedby'?: string
 }
 
 export function CollaborativeSlipInput({
@@ -82,6 +91,7 @@ export function CollaborativeSlipInput({
   fieldPath,
   value,
   onValueChange,
+  onDocSyncValueChange,
   type,
   min,
   maxLength,
@@ -97,6 +107,7 @@ export function CollaborativeSlipInput({
   coeditPending,
   'data-testid': dataTestId,
   'aria-label': ariaLabel,
+  'aria-describedby': ariaDescribedBy,
 }: CollaborativeSlipInputProps) {
   const inputRef = useRef<HTMLInputElement | null>(null)
   const latestValueRef = useRef(value)
@@ -113,7 +124,8 @@ export function CollaborativeSlipInput({
     if (!provider) return undefined
     const syncFromDoc = () => {
       const nextValue = valueFromProvider(provider, fieldPath)
-      if (nextValue !== latestValueRef.current) onValueChange(nextValue)
+      // doc-sync 유래 반영은 실입력(onChange)과 분리 — onDocSyncValueChange 지정 시 그쪽만(R4-F6).
+      if (nextValue !== latestValueRef.current) (onDocSyncValueChange ?? onValueChange)(nextValue)
     }
     const syncAwareness = () => {
       setRemoteCursors(remoteCursorsFor(provider, fieldPath))
@@ -127,7 +139,7 @@ export function CollaborativeSlipInput({
       unsubscribeDoc()
       unsubscribeAwareness()
     }
-  }, [fieldPath, onValueChange, provider])
+  }, [fieldPath, onDocSyncValueChange, onValueChange, provider])
 
   useEffect(() => {
     const first = remoteEdits[0]
@@ -228,6 +240,7 @@ export function CollaborativeSlipInput({
         readOnly={effectiveReadOnly}
         value={value}
         aria-label={ariaLabel}
+        aria-describedby={ariaDescribedBy}
         data-testid={dataTestId}
         onFocus={updateCursor}
         onClick={updateCursor}

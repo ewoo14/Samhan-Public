@@ -8,10 +8,124 @@
 @import '@samhan/design-system/tokens.css';
 @import '@samhan/design-system/style.css';
 
+/*
+ * R9 #12: DS의 --surface-selected는 light alias만 있어 dark 본문색(#F5F5F5)과
+ * #EFF6FF 조합이 1.27:1이었다. 다크 테마에서만 선택 표면을 깊은 청남색으로
+ * 재정의해 본문색 대비 13:1 이상을 확보한다.
+ */
+html[data-theme="dark"], body[data-theme="dark"] {
+  --surface-selected: #17233B;
+  --surface-selected-hover: #1E2F4D;
+}
+
 *,
 *::before,
 *::after {
   box-sizing: border-box;
+}
+
+/* #809 거래처 최근단가 출처/재적용 고지 — 실제 토큰값 기준 AA 색상. */
+.price-source-note {
+  display: inline-flex;
+  width: fit-content;
+  margin-top: 2px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--action-brand-subtle);
+  color: var(--action-brand);
+  /* R4-D7: 11px 하드코딩 → DS 배지 sm 토큰 인용(실값 11px) — LineRow 칩과 스케일 통일. */
+  font-size: var(--badge-channel-font-size-sm, 11px);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+/*
+ * [R8-DESIGN-5] 최근단가 저장일 시각 병기 — 모바일 카드(터치 표면)는 hover 가 없어
+ * .price-source-note 의 title 이 도달하지 않는다. SR 은 단가 input 의 aria-describedby 로
+ * 이미 듣고 있으므로 이 요소는 aria-hidden(중복 낭독 방지) = 순수 시각 보강이다.
+ *
+ * 색: --ink-secondary(#5C6773) on --surface-card(#FFFFFF) = 5.765:1 → AA 충족(실토큰 재계산).
+ * --ink-tertiary 는 3.037:1 로 소형 텍스트 AA 미달이라 쓰지 않는다.
+ */
+.price-source-note-date {
+  display: block;
+  margin-top: 2px;
+  color: var(--ink-secondary);
+  /* R4-D7 선례와 동일하게 DS 배지 sm 토큰 인용 — 하드코딩 스케일 이탈 방지. */
+  font-size: var(--badge-channel-font-size-sm, 11px);
+  line-height: 1.2;
+}
+
+.price-memory-refresh-banner {
+  margin: 12px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--action-brand);
+  border-radius: var(--radius-input, 4px);
+  background: var(--action-brand-subtle);
+  color: var(--action-brand);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* 최초 단가 lookup 결과는 시각 배너를 늘리지 않고 기존 페이지 live region 한 곳에서만 고지. */
+.price-lookup-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.price-change-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  width: fit-content;
+  margin-top: 2px;
+  padding: 1px 5px;
+  border: 1px solid var(--action-brand);
+  border-radius: 999px;
+  background: var(--action-brand-subtle);
+  color: var(--action-brand);
+  font-size: var(--badge-channel-font-size-sm, 11px);
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.mobile-line-card.price-memory-refreshed-row {
+  border-color: var(--action-brand);
+  border-left-width: 4px;
+  background: var(--surface-selected);
+  /* R6-H4: --state-info-border(#BFDBFE) on --surface-selected(#EFF6FF)=1.31:1 (1.4.11 미달)
+     — LineRow.module.css .priceRefreshed 교정과 1:1 정렬(--action-brand #1E40AF, 8.02:1). */
+  box-shadow: inset 0 0 0 1px var(--action-brand);
+}
+
+/*
+ * R4-D1: 강조행 배경(--surface-selected 실값 #EFF6FF) 위 라벨 기본색
+ * --color-neutral-500(#6B7280)은 4.44:1 로 AA(4.5) 미달 — 강조행 한정
+ * --ink-secondary(실값 #5C6773, #EFF6FF 위 5.30:1 PASS)로 상향.
+ * 흰 배경 기본 카드는 4.83:1 통과라 기존 색 유지(강조행 한정 상향).
+ */
+.mobile-line-card.price-memory-refreshed-row .mobile-line-field-label {
+  color: var(--ink-secondary, #5C6773);
+}
+
+/*
+ * D-R8-10/R8-QA-11: 전표 수정 인라인 테이블의 거래처 변경 재조회 강조행.
+ * 모바일 카드(.price-memory-refreshed-row)와 동일 토큰(--action-brand 8.02:1, --surface-selected).
+ * <tr> 배경은 브라우저별 편차가 있어 셀(td) 배경 + 첫 셀 좌측 accent 로 표현한다.
+ */
+.slip-line-table tr.price-memory-refreshed-row td {
+  background: var(--surface-selected);
+}
+.slip-line-table tr.price-memory-refreshed-row td:first-child {
+  box-shadow: inset 4px 0 0 var(--action-brand);
 }
 
 .push-permission-denied-toast {

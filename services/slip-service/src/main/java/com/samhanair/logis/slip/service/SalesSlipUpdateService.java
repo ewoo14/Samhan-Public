@@ -5,6 +5,9 @@ import com.samhanair.logis.common.exception.ErrorCode;
 import com.samhanair.logis.slip.audit.service.SlipAuditLogService;
 import com.samhanair.logis.slip.domain.Slip;
 import com.samhanair.logis.slip.domain.SlipLine;
+import com.samhanair.logis.slip.price.domain.PartnerProductPriceMemory;
+import com.samhanair.logis.slip.price.service.PartnerProductPriceMemoryCommand;
+import com.samhanair.logis.slip.price.service.PartnerProductPriceMemoryService;
 import com.samhanair.logis.slip.repository.SlipRepository;
 import com.samhanair.logis.slip.revision.domain.SlipRevisionType;
 import com.samhanair.logis.slip.revision.service.SlipRevisionService;
@@ -12,11 +15,15 @@ import com.samhanair.logis.slip.web.dto.SlipDetailResponse;
 import com.samhanair.logis.slip.web.dto.SlipUpdateRequest;
 import jakarta.persistence.OptimisticLockException;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.OptimisticLockingFailureException;
@@ -39,6 +46,7 @@ public class SalesSlipUpdateService {
     private final SlipRepository slipRepository;
     private final SlipAuditLogService auditLogService;
     private final SlipRevisionService slipRevisionService;
+    private final PartnerProductPriceMemoryService priceMemoryService;
 
     /**
      * 매출 전표 헤더와 라인을 전체 교체한다.
@@ -64,14 +72,32 @@ public class SalesSlipUpdateService {
     @Transactional
     public SlipDetailResponse update(UUID id, SlipUpdateRequest request,
                                      UUID actorId, String actorName) {
+        // [D-R8-9] 매입(SlipUpdateService) 미러 — 계약 마커 검증은 어떤 상태를 읽기도 전에.
+        requireLineIdContract(request);
         Slip slip = load(id);
         verifyVersion(slip, request.updatedAt());
         // validateLines 는 BusinessException(SLIP_UPDATE_INVALID_LINE) 을 던지므로 try 외부에서 처리
         validateLines(request.lines());
+        validateLineIds(slip.getLines(), request.lines());
 
         String before = summarize(slip);
+        BundleLineageResolver bundleLineage = BundleLineageResolver.fromSlipLines(slip.getLines());
+        // [R9] 기존 계보 구성품 ID를 요청과 per-line 대조한다. 누락 구성품 + 익명 라인은
+        // 부분 재생성으로 계보를 잃을 수 있어 거부하고, 익명 라인 없는 누락은 명시 삭제로 허용한다.
+        LineIdContractGate.requireLineIdsForLineage(
+                bundleLineage.bundleComponentLineIds(),
+                request.lines().stream()
+                        .map(SlipUpdateRequest.LineRequest::lineId)
+                        .toList());
+        List<SlipLine> replacementLines = request.lines().stream()
+                .map(line -> toLine(slip, line))
+                .toList();
+        bundleLineage.restoreSlipLines(replacementLines, request.lines().stream()
+                .map(SlipUpdateRequest.LineRequest::lineId)
+                .toList());
         try {
             slip.updateSalesHeader(
+                    request.partnerId(),
                     request.partnerName(),
                     request.partnerCode(),
                     request.memo(),
@@ -81,9 +107,11 @@ public class SalesSlipUpdateService {
                     request.projectName(),
                     request.recipientPhone(),
                     request.paymentDueDate());
-            slip.replaceSalesLines(request.lines().stream()
-                    .map(line -> toLine(slip, line))
-                    .toList(), actorId == null ? null : actorId.toString());
+            // [D-R8-7] 가격기억 수집은 반드시 헤더 갱신 <b>이후</b>다 — 이전에 수집하면 거래처를
+            // 바꾼 저장의 단가가 갱신 전 partnerId(원 거래처)에 각인된다 (R8-QA-3 라이브 실증).
+            List<PartnerProductPriceMemoryCommand> priceMemoryCommands = collectPriceMemory(
+                    slip, replacementLines, actorId == null ? null : actorId.toString());
+            slip.replaceSalesLines(replacementLines, actorId == null ? null : actorId.toString());
             Slip saved = slipRepository.saveAndFlush(slip);
             // after 는 saveAndFlush 결과 기준으로 캡처하여 ordering 명확화
             String after = summarize(saved);
@@ -93,6 +121,7 @@ public class SalesSlipUpdateService {
                 auditLogService.recordBatch(saved.getId(), actorId, actorName, null,
                         List.of(new SlipAuditLogService.ChangeEntry("SLIP_EDIT", before, after)));
             }
+            priceMemoryService.rememberBatchAfterCommit(priceMemoryCommands, "slip.salesUpdate");
             return SlipDetailResponse.from(saved);
         } catch (OptimisticLockException | OptimisticLockingFailureException ex) {
             throw optimisticLockConflict();
@@ -147,6 +176,47 @@ public class SalesSlipUpdateService {
         }
     }
 
+    /**
+     * 요청 lineId 가 현재 매출 전표의 활성 라인인지 검증한다.
+     *
+     * <p>타 문서 UUID 주입은 400 INVALID_INPUT 으로 통일해 다른 문서 존재 여부를
+     * 노출하지 않는다. 개별 라인의 {@code lineId == null} 은 편집 중 추가된 신규 라인을 뜻하는
+     * 정상 값이다. 다만 기존 계보 구성품 ID가 누락된 요청에 신규 익명 라인이 함께 있으면 부분
+     * 재생성으로 계보가 파괴될 수 있어 {@link LineIdContractGate}가 별도로 거부한다. 평면 문서의
+     * 전 라인 교체는 정상이며 fingerprint 휴리스틱으로는 되돌아가지 않는다.
+     */
+    private void validateLineIds(List<SlipLine> existingLines,
+                                 List<SlipUpdateRequest.LineRequest> requestedLines) {
+        Set<UUID> ownedLineIds = existingLines.stream()
+                .map(SlipLine::getId)
+                .filter(Objects::nonNull)
+                .collect(java.util.stream.Collectors.toSet());
+        Set<UUID> requestedLineIds = new HashSet<>();
+        for (SlipUpdateRequest.LineRequest line : requestedLines) {
+            UUID lineId = line.lineId();
+            if (lineId == null) {
+                continue;
+            }
+            if (!ownedLineIds.contains(lineId) || !requestedLineIds.add(lineId)) {
+                throw new BusinessException(ErrorCode.INVALID_INPUT,
+                        "lineId 는 현재 전표의 활성 라인에서 중복 없이 지정해야 합니다");
+            }
+        }
+    }
+
+    /**
+     * [D-R8-6 · D-R8-9] 매출 전표 PUT 은 lineId 계약 선언을 의무화한다 —
+     * {@link SlipUpdateService#requireLineIdContract} 미러 (매입/매출 비대칭 재발 차단).
+     * 판정은 공용 {@link LineIdContractGate} 단일 구현에 위임하므로 두 미러는 드리프트할 수 없다.
+     *
+     * <p>R8-QA-1 라이브 실측: 세트 전표를 무수정 왕복 PUT(lineId 없음) → 200 → 계보 전량 소실 +
+     * 구성품 배분가 LINE_SAVE 각인. "구 클라이언트 호환" 은 호환이 아니라 조용한 파괴다.
+     * 그 경로의 주체인 구 클라이언트는 마커를 보내지 않으므로 여기서 차단된다.
+     */
+    private void requireLineIdContract(SlipUpdateRequest request) {
+        LineIdContractGate.require(request.lineIdContract());
+    }
+
     private SlipLine toLine(Slip slip, SlipUpdateRequest.LineRequest line) {
         return SlipLine.create(
                 slip,
@@ -157,6 +227,31 @@ public class SalesSlipUpdateService {
                 line.quantity(),
                 line.unitPrice(),
                 line.note());
+    }
+
+    /**
+     * 매출 수정 화면 라인 단가는 VAT 제외 공급단가이므로 공용 store 기준인 VAT 포함 단가로 정규화한다.
+     * 서버가 복원한 세트 구성품 계보는 parent 기억을 오염시키지 않도록 후보에서 제외한다.
+     */
+    private List<PartnerProductPriceMemoryCommand> collectPriceMemory(
+            Slip slip, List<SlipLine> lines, String actor) {
+        List<PartnerProductPriceMemoryCommand> commands = new ArrayList<>();
+        if (slip.getPartnerId() == null || lines == null) {
+            return commands;
+        }
+        for (SlipLine line : lines) {
+            if (BundleLineageResolver.isBundleComponent(line)
+                    || line.getProductId() == null || line.getUnitPrice() == null) {
+                continue;
+            }
+            BigDecimal vatInclusive = line.getUnitPrice()
+                    .multiply(new BigDecimal("1.1"))
+                    .setScale(2, RoundingMode.HALF_UP);
+            commands.add(new PartnerProductPriceMemoryCommand(
+                    slip.getPartnerId(), line.getProductId(), vatInclusive,
+                    PartnerProductPriceMemory.SOURCE_LINE_SAVE, actor));
+        }
+        return commands;
     }
 
     private String summarize(Slip slip) {
