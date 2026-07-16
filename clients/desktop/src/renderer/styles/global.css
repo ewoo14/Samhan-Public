@@ -29,6 +29,23 @@
   line-height: 1.2;
 }
 
+/*
+ * [R8-DESIGN-5] 최근단가 저장일 시각 병기 — 모바일 카드(터치 표면)는 hover 가 없어
+ * .price-source-note 의 title 이 도달하지 않는다. SR 은 단가 input 의 aria-describedby 로
+ * 이미 듣고 있으므로 이 요소는 aria-hidden(중복 낭독 방지) = 순수 시각 보강이다.
+ *
+ * 색: --ink-secondary(#5C6773) on --surface-card(#FFFFFF) = 5.765:1 → AA 충족(실토큰 재계산).
+ * --ink-tertiary 는 3.037:1 로 소형 텍스트 AA 미달이라 쓰지 않는다.
+ */
+.price-source-note-date {
+  display: block;
+  margin-top: 2px;
+  color: var(--ink-secondary);
+  /* R4-D7 선례와 동일하게 DS 배지 sm 토큰 인용 — 하드코딩 스케일 이탈 방지. */
+  font-size: var(--badge-channel-font-size-sm, 11px);
+  line-height: 1.2;
+}
+
 .price-memory-refresh-banner {
   margin: 12px 0;
   padding: 10px 12px;

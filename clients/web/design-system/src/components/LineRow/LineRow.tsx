@@ -73,7 +73,19 @@ export interface LineDraft {
   quantity: string
   /** 단가 (string — PriceField 호환). */
   unitPrice: string
-  /** 단가 출처 — USER 는 거래처 변경 시 보존, REMEMBERED 는 '최근가' 마커 표시. */
+  /**
+   * 단가 출처 — 마커 라벨/설명 분기 기준.
+   *
+   * <p>- {@code REMEMBERED}: (거래처+품목) 최근단가 자동채움 → 마커 **`거래처 최근단가`**.
+   *   단 {@code partnerSelected=false} 면 마커를 **해제**한다(D-R4-4) — 귀속시킬 거래처가 없는데
+   *   "이 거래처에 마지막으로 저장된 단가" 라고 말할 수 없기 때문이다. 단가 **값과 priceSource 는
+   *   호출자가 유지**해 재선택 시 재조회 자격을 보존한다.
+   * <p>- {@code CATALOG}: 품목 판매가 폴백 → 마커 **`판매가`**.
+   * <p>- {@code USER}: 사용자 확정값 → 마커 없음. 거래처 변경 자동재조회에서 보호된다.
+   *
+   * <p>⚠️ 라벨은 **`판매가`/`거래처 최근단가`** 다 — 구 `'정가'`(D-R4-1 에서 폐기: 출고가
+   * releasePrice 계열 별칭이라 오도) 와 구 `'최근가'` 는 사용 금지.
+   */
   priceSource?: 'REMEMBERED' | 'CATALOG' | 'USER' | null
   /** 판매가(catalog) fallback 값 — 거래처 변경 재조회 miss 시 사용. */
   catalogUnitPrice?: string | null

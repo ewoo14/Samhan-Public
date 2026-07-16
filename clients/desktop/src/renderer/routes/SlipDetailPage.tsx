@@ -39,6 +39,7 @@ import {
   Input,
   KOREAN_MOBILE_PHONE_PATTERN,
   Modal,
+  PartnerAutocomplete,
   PhoneInput,
   ProgressBar,
   SignatureViewer,
@@ -46,6 +47,7 @@ import {
   SlipNumberDisplay,
   Spinner,
   type AuditLogEntry,
+  type PartnerOption,
   type SlipEditRequestType as SlipEditRequestUiType,
 } from '@samhan/design-system'
 import axios from 'axios'
@@ -64,6 +66,8 @@ import {
   type SlipTransitionAction,
   type SlipType,
 } from '../api/slip'
+// D-R8-7: 전표 수정 거래처 자동완성 — 견적(EstimateFormPage)과 동일 소스로 통일한다.
+import { searchPartners } from '../api/sales'
 import { getApiErrorInfo } from '../api/apiError'
 import { type StockBalanceLookupLine } from '../api/inventory'
 import { InventoryLookupModal } from './components/InventoryLookupModal'
@@ -90,6 +94,11 @@ import {
   createDocCoeditProvider,
   type DocCoeditProvider,
 } from '../realtime/createCoeditProvider'
+import {
+  coeditLineIdsAreStale,
+  resolveServerLineId,
+  toServerLineIdSet,
+} from '../realtime/coeditLineIds'
 import { usePageTitle } from '../hooks/usePageTitle'
 import { usePermissions } from '../hooks/usePermissions'
 import { useIsMobile } from '../hooks/useIsMobile'
@@ -291,8 +300,17 @@ function toPurchaseEditLines(slip: SlipDetail): PurchaseEditLine[] {
   }))
 }
 
-function coeditHeaderValues(slip: SlipDetail, mode: SlipType): Record<string, string> {
+/**
+ * coedit 헤더 필드 — Y.Doc `header` map 에 실리는 값.
+ *
+ * <p>{@code partnerId} 는 D-R8-7 신규. 거래처 선택을 CRDT 로 전파하지 않으면 상대 피어는
+ * <b>구 partnerId</b> 를 그대로 들고 저장한다 — 화면엔 새 거래처가 보이는데 (거래처+품목)
+ * 가격기억은 원 거래처에 각인되는 R8-QA-3 결함이 협업 경로로 되살아난다. 화면에는
+ * 거래처명만 표시하고 UUID 는 payload 전용이다(D-R3-1).
+ */
+export function coeditHeaderValues(slip: SlipDetail, mode: SlipType): Record<string, string> {
   return {
+    partnerId: slip.partnerId ?? '',
     partnerName: slip.partnerName ?? '',
     partnerCode: slip.partnerCode ?? '',
     businessNumber: slip.businessNumber ?? '',
@@ -317,16 +335,30 @@ function seedSlipCoeditProvider(provider: DocCoeditProvider, slip: SlipDetail, m
   syncSlipCoeditProvider(provider, slip, mode)
 }
 
-function coeditLinesToEditLines(
+/**
+ * coedit Y.Doc → 매입/매출 수정 폼 라인.
+ *
+ * <p>🔴 <b>lineId 는 반드시 Y.Doc 에서 직독한다 — 위치복원 금지</b> (R8-FE-1 = R8-QA-2 · BLOCKING).
+ * 종전 {@code lineId: current[index]?.lineId ?? null} 은 원격 피어가 1행을 삭제하는 순간
+ * 무너진다: Y.Doc 은 즉시 당겨지지만 {@code current} 는 아직 구 스냅샷이라 남은 행이 전부
+ * 이웃의 lineId 를 물려받고, 서버가 그 lineId 를 무조건 신뢰해 남의 세트 계보를 각인하며
+ * 사용자 단가가 가격기억에서 증발한다(라이브 2/2 결정적 재현).
+ *
+ * <p>{@code key}(React 키)·{@code productId} 는 종전대로 {@code previous} 폴백을 유지한다 —
+ * 이 둘은 계보/가격기억 귀속에 쓰이지 않으므로 밀림의 피해 범위 밖이고, productId 는
+ * 선택기반(타이핑 아님)이라 폴백이 빈 값 덮어쓰기를 막아준다.
+ */
+export function coeditLinesToEditLines(
   provider: DocCoeditProvider,
   current: PurchaseEditLine[],
+  knownServerLineIds: ReadonlySet<string>,
 ): PurchaseEditLine[] {
   return provider.items.toArray().map((_, index) => {
     const previous = current[index]
     const quantityValue = provider.getItemValue(index, 'quantity')
     return {
       key: previous?.key ?? createEditLineKey(),
-      lineId: previous?.lineId ?? null,
+      lineId: resolveServerLineId(provider, index, knownServerLineIds),
       productId: provider.getItemValue(index, 'productId') || previous?.productId || '',
       productName: provider.getItemValue(index, 'productName'),
       modelName: provider.getItemValue(index, 'modelName'),
@@ -438,6 +470,8 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
   const [salesIsConflict, setSalesIsConflict] = useState(false)
   const [salesReloadSuccessMessage, setSalesReloadSuccessMessage] = useState<string | null>(null)
   const [salesUpdatedAt, setSalesUpdatedAt] = useState<string | null>(null)
+  // D-R8-7: 거래처 UUID — payload 전용(화면 미표시). PartnerAutocomplete 선택과 coedit header 로만 갱신된다.
+  const [salesPartnerId, setSalesPartnerId] = useState('')
   const [salesPartnerName, setSalesPartnerName] = useState('')
   const [salesPartnerCode, setSalesPartnerCode] = useState('')
   const [salesBusinessNumber, setSalesBusinessNumber] = useState('')
@@ -456,6 +490,8 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
   const [purchaseIsConflict, setPurchaseIsConflict] = useState(false)
   const [purchaseReloadSuccessMessage, setPurchaseReloadSuccessMessage] = useState<string | null>(null)
   const [purchaseUpdatedAt, setPurchaseUpdatedAt] = useState<string | null>(null)
+  // D-R8-7: 거래처 UUID — payload 전용(화면 미표시).
+  const [purchasePartnerId, setPurchasePartnerId] = useState('')
   const [purchasePartnerName, setPurchasePartnerName] = useState('')
   const [purchasePartnerCode, setPurchasePartnerCode] = useState('')
   const [purchaseBusinessNumber, setPurchaseBusinessNumber] = useState('')
@@ -501,6 +537,11 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
   const [slipFormCoeditProvider, setSlipFormCoeditProvider] = useState<DocCoeditProvider | null>(null)
   // coedit provider 로딩 중 여부 — 로딩 중에만 입력/저장 잠금(이중소스 방지). 로드 실패(provider=null) 시엔 비-coedit 평문 편집·저장 허용(콜랩 서버 다운 시 영구잠금 회귀 방지, 리뷰 Opus 라운드2 BLOCKING).
   const [slipFormCoeditPending, setSlipFormCoeditPending] = useState(false)
+  // R8-FE-1 심층방어 — 협업 중 라인 구조 잠금(견적 lineStructureLocked 와 동일 계약).
+  // 전표 행삭제는 provider.replaceItems(next) 로 Y.Doc 을 통째 delete+repush 하므로 상대 피어의
+  // 동시 편집 델타를 파괴하고 index seed-lock 도 깬다. 근본 fix(Y.Doc lineId 직독)와 별개로
+  // 견적과 같은 잠금을 회복해 전표/견적 비대칭을 없앤다.
+  const slipCoeditActive = Boolean(slipFormCoeditProvider) || slipFormCoeditPending
 
   const detailQuery = useQuery({
     queryKey: ['slip', id],
@@ -873,6 +914,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
   })
 
   const syncPurchaseFormFromData = useCallback((data: SlipDetail) => {
+    setPurchasePartnerId(data.partnerId ?? '')
     setPurchasePartnerName(data.partnerName ?? '')
     setPurchasePartnerCode(data.partnerCode ?? '')
     setPurchaseBusinessNumber(data.businessNumber ?? '')
@@ -918,6 +960,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
 
   // SP-08-6-2: 매출 수정 폼 동기화 + 충돌 reload 핸들러
   const syncSalesFormFromData = useCallback((data: SlipDetail) => {
+    setSalesPartnerId(data.partnerId ?? '')
     setSalesPartnerName(data.partnerName ?? '')
     setSalesPartnerCode(data.partnerCode ?? '')
     setSalesBusinessNumber(data.businessNumber ?? '')
@@ -976,8 +1019,14 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
     let provider: DocCoeditProvider | null = null
     let unsubscribeDoc: (() => void) | null = null
 
+    // 계보/가격기억 귀속의 권위 — 현재 로드된 상세 응답의 라인 id 집합. Y.Doc 직독 lineId 는
+    // 이 집합으로 검증해야 클라 랜덤 UUID(구 seed/신규행)가 payload 에 새어 400 이 나지 않는다.
+    const knownServerLineIds = toServerLineIdSet(slipData.lines)
+
     const applyProviderState = (nextProvider: DocCoeditProvider) => {
       if (mode === 'OUTBOUND') {
+        // D-R8-7: 상대 피어의 거래처 재선택을 수신 — 이게 없으면 구 partnerId 로 저장한다.
+        setSalesPartnerId(nextProvider.getHeaderValue('partnerId'))
         setSalesPartnerName(nextProvider.getHeaderValue('partnerName'))
         setSalesPartnerCode(nextProvider.getHeaderValue('partnerCode'))
         setSalesBusinessNumber(nextProvider.getHeaderValue('businessNumber'))
@@ -987,9 +1036,10 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
         setSalesProjectName(nextProvider.getHeaderValue('projectName'))
         setSalesRecipientPhone(nextProvider.getHeaderValue('recipientPhone'))
         setSalesPaymentDueDate(nextProvider.getHeaderValue('paymentDueDate'))
-        setSalesEditLines((prev) => coeditLinesToEditLines(nextProvider, prev))
+        setSalesEditLines((prev) => coeditLinesToEditLines(nextProvider, prev, knownServerLineIds))
         return
       }
+      setPurchasePartnerId(nextProvider.getHeaderValue('partnerId'))
       setPurchasePartnerName(nextProvider.getHeaderValue('partnerName'))
       setPurchasePartnerCode(nextProvider.getHeaderValue('partnerCode'))
       setPurchaseBusinessNumber(nextProvider.getHeaderValue('businessNumber'))
@@ -998,7 +1048,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
       setPurchaseProjectName(nextProvider.getHeaderValue('projectName'))
       setPurchaseRecipientPhone(nextProvider.getHeaderValue('recipientPhone'))
       setPurchasePaymentDueDate(nextProvider.getHeaderValue('paymentDueDate'))
-      setPurchaseEditLines((prev) => coeditLinesToEditLines(nextProvider, prev))
+      setPurchaseEditLines((prev) => coeditLinesToEditLines(nextProvider, prev, knownServerLineIds))
     }
 
     void createDocCoeditProvider({
@@ -1011,7 +1061,13 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
         return
       }
       provider = nextProvider
-      if (nextProvider.isEmpty()) seedSlipCoeditProvider(nextProvider, slipData, mode)
+      // 재시드 게이트 — 견적(EstimateFormPage)과 정렬(전표는 종전 isEmpty() 만 봐 비대칭이었다).
+      // isEmpty(): 최초 진입. coeditLineIdsAreStale(): lineId seed 도입 이전에 만들어져 서버에
+      // 영속된 Y.Doc — 라인마다 클라 랜덤 UUID 라 그대로 두면 전 라인이 신규로 강등돼 계보가
+      // 조용히 소실된다(계보 보유 문서면 BE requireLineIdContract 가 400).
+      if (nextProvider.isEmpty() || coeditLineIdsAreStale(nextProvider, knownServerLineIds)) {
+        seedSlipCoeditProvider(nextProvider, slipData, mode)
+      }
       applyProviderState(nextProvider)
       unsubscribeDoc = nextProvider.subscribeDoc(() => applyProviderState(nextProvider))
       setSlipFormCoeditProvider(nextProvider)
@@ -1313,9 +1369,62 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
     navigate(`/purchases/${id}/print/purchase`)
   }
 
+  /**
+   * D-R8-7: 전표 수정의 거래처 선택 — 자유입력을 대체하는 단일 경로.
+   *
+   * <p>거래처 4필드(partnerId/명/코드/사업자번호)를 <b>CRDT 트랜잭션 1회</b>로 원자 전파한다.
+   * 필드를 따로 쓰면 상대 피어가 중간 상태(새 이름 + 구 UUID)를 관측하는 창이 열린다.
+   * partnerCode 는 사업자번호 digits 규약(P0-B) 을 따른다.
+   *
+   * <p>해제(null)는 지원하지 않는다 — 전표는 생성 시점부터 거래처가 확정돼 있고, BE
+   * {@code SlipUpdateRequest.partnerId} 는 null 을 "기존 거래처 보존" 으로 읽는다.
+   */
+  const handleSlipPartnerSelect = (option: PartnerOption | null) => {
+    if (!option) return
+    const nextPartnerId = option.id ?? ''
+    const nextBizNo = option.bizNo ?? option.partnerCode ?? ''
+    const apply = (setId: (v: string) => void, setName: (v: string) => void,
+                   setCode: (v: string) => void, setBizNo: (v: string) => void) => {
+      setId(nextPartnerId)
+      setName(option.name)
+      setCode(nextBizNo)
+      setBizNo(nextBizNo)
+    }
+    if (mode === 'OUTBOUND') {
+      apply(setSalesPartnerId, setSalesPartnerName, setSalesPartnerCode, setSalesBusinessNumber)
+    } else {
+      apply(setPurchasePartnerId, setPurchasePartnerName, setPurchasePartnerCode, setPurchaseBusinessNumber)
+    }
+    const provider = slipFormCoeditProvider
+    if (!provider) return
+    provider.doc.transact(() => {
+      provider.setHeaderValue('partnerId', nextPartnerId)
+      provider.setHeaderValue('partnerName', option.name)
+      provider.setHeaderValue('partnerCode', nextBizNo)
+      provider.setHeaderValue('businessNumber', nextBizNo)
+    })
+  }
+
+  const searchSlipPartnerOptions = async (q: string): Promise<PartnerOption[]> => {
+    const rows = await searchPartners(q, 8)
+    return rows.map((row) => ({
+      id: row.partnerId ?? undefined,
+      partnerCode: row.businessRegistrationNumber,
+      name: row.companyName,
+      bizNo: row.businessRegistrationNumber,
+      phone: row.contactPhone ?? undefined,
+    }))
+  }
+
+  /** 현재 거래처의 PartnerAutocomplete controlled value — 이름이 있으면 표시한다. */
+  const slipPartnerOption = (name: string, bizNo: string, partnerId: string): PartnerOption | null =>
+    name ? { id: partnerId || undefined, partnerCode: bizNo, name, bizNo } : null
+
   const handlePurchaseEditSave = () => {
     purchaseUpdateMutation.mutate({
       updatedAt: purchaseUpdatedAt ?? slip.updatedAt,
+      // D-R8-7: null 이면 BE 가 기존 거래처를 보존한다(계약 주석과 동일).
+      partnerId: purchasePartnerId || null,
       partnerName: purchasePartnerName.trim() || null,
       partnerCode: purchasePartnerCode.trim() || null,
       businessNumber: purchaseBusinessNumber.trim() || null,
@@ -1340,6 +1449,8 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
   const handleSalesEditSave = () => {
     salesUpdateMutation.mutate({
       updatedAt: salesUpdatedAt ?? slip.updatedAt,
+      // D-R8-7: null 이면 BE 가 기존 거래처를 보존한다(계약 주석과 동일).
+      partnerId: salesPartnerId || null,
       partnerName: salesPartnerName.trim() || null,
       partnerCode: salesPartnerCode.trim() || null,
       businessNumber: salesBusinessNumber.trim() || null,
@@ -1425,35 +1536,31 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
           <span className="detail-label">판매번호</span>
           <Input inputSize="sm" readOnly value={slip.slipNo} aria-label="판매번호" />
         </label>
+        {/*
+          D-R8-7: 거래처는 PartnerAutocomplete 단일 경로.
+          기존 수동 '거래처' CollaborativeSlipInput 제거 — SlipFormPage 가 "P0 D-AC3-01" 로
+          밟은 선례와 정렬한다. 자유입력 시 partnerName 만 바뀌고 partnerId 는 불변이라
+          (거래처+품목) 가격기억이 원 거래처에 각인됐다(R8-QA-3 라이브 실증).
+          거래처코드/사업자번호는 선택 거래처에서 파생되는 read-only 표시로 강등한다.
+        */}
         <label className="sales-edit-field">
           <span className="detail-label">거래처</span>
-          <CollaborativeSlipInput
-            provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
-            fieldPath="header.partnerName"
-            value={salesPartnerName}
-            onValueChange={setSalesPartnerName}
-            aria-label="거래처"
+          <PartnerAutocomplete
+            value={slipPartnerOption(salesPartnerName, salesBusinessNumber, salesPartnerId)}
+            onChange={handleSlipPartnerSelect}
+            searchPartners={searchSlipPartnerOptions}
+            ariaLabel="거래처"
+            placeholder="거래처명 또는 사업자번호"
+            disabled={slipFormCoeditPending}
           />
         </label>
         <label className="sales-edit-field">
           <span className="detail-label">거래처코드</span>
-          <CollaborativeSlipInput
-            provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
-            fieldPath="header.partnerCode"
-            value={salesPartnerCode}
-            onValueChange={setSalesPartnerCode}
-            aria-label="거래처코드"
-          />
+          <Input inputSize="sm" readOnly value={salesPartnerCode} aria-label="거래처코드" />
         </label>
         <label className="sales-edit-field">
           <span className="detail-label">사업자번호</span>
-          <CollaborativeSlipInput
-            provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
-            fieldPath="header.businessNumber"
-            value={salesBusinessNumber}
-            onValueChange={setSalesBusinessNumber}
-            aria-label="사업자번호"
-          />
+          <Input inputSize="sm" readOnly value={salesBusinessNumber} aria-label="사업자번호" />
         </label>
         <label className="sales-edit-field">
           <span className="detail-label">배송주소</span>
@@ -1594,6 +1701,8 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
                     variant="ghost"
                     size="sm"
                     aria-label={`${index + 1}번 행 삭제`}
+                    disabled={slipCoeditActive}
+                    title={slipCoeditActive ? '협업 편집 중에는 행을 삭제할 수 없습니다' : undefined}
                     onClick={() => removeSalesLine(index)}
                   >
                     ×
@@ -1671,35 +1780,25 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
           <span className="detail-label">구매번호</span>
           <Input inputSize="sm" readOnly value={slip.slipNo} aria-label="구매번호" />
         </label>
+        {/* D-R8-7: 거래처 = PartnerAutocomplete 단일 경로(매출 폼과 동일 계약). */}
         <label className="purchase-edit-field">
           <span className="detail-label">거래처</span>
-          <CollaborativeSlipInput
-            provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
-            fieldPath="header.partnerName"
-            value={purchasePartnerName}
-            onValueChange={setPurchasePartnerName}
-            aria-label="거래처"
+          <PartnerAutocomplete
+            value={slipPartnerOption(purchasePartnerName, purchaseBusinessNumber, purchasePartnerId)}
+            onChange={handleSlipPartnerSelect}
+            searchPartners={searchSlipPartnerOptions}
+            ariaLabel="거래처"
+            placeholder="거래처명 또는 사업자번호"
+            disabled={slipFormCoeditPending}
           />
         </label>
         <label className="purchase-edit-field">
           <span className="detail-label">거래처코드</span>
-          <CollaborativeSlipInput
-            provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
-            fieldPath="header.partnerCode"
-            value={purchasePartnerCode}
-            onValueChange={setPurchasePartnerCode}
-            aria-label="거래처코드"
-          />
+          <Input inputSize="sm" readOnly value={purchasePartnerCode} aria-label="거래처코드" />
         </label>
         <label className="purchase-edit-field">
           <span className="detail-label">사업자번호</span>
-          <CollaborativeSlipInput
-            provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
-            fieldPath="header.businessNumber"
-            value={purchaseBusinessNumber}
-            onValueChange={setPurchaseBusinessNumber}
-            aria-label="사업자번호"
-          />
+          <Input inputSize="sm" readOnly value={purchaseBusinessNumber} aria-label="사업자번호" />
         </label>
         <label className="purchase-edit-field">
           <span className="detail-label">배송주소</span>
@@ -1830,6 +1929,8 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
                     variant="ghost"
                     size="sm"
                     aria-label={`${index + 1}번 행 삭제`}
+                    disabled={slipCoeditActive}
+                    title={slipCoeditActive ? '협업 편집 중에는 행을 삭제할 수 없습니다' : undefined}
                     onClick={() => removePurchaseLine(index)}
                   >
                     ×

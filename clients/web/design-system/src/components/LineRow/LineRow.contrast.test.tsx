@@ -87,13 +87,21 @@ describe('LineRow refreshed-price contrast', () => {
     expect(contrast(token('ink-primary'), token('surface-selected-hover'))).toBeGreaterThanOrEqual(4.5)
   })
 
-  it('keeps the price marker chip readable on its own surface and on the default card row', () => {
+  it('keeps the price marker chip readable on the surfaces it actually renders on', () => {
     // R6-M6: 실제 렌더 쌍 — 칩(.priceChangedStatus/.priceMemoryNote) 텍스트는
     // --action-brand on --action-brand-subtle (11px bold = small text → AA 4.5:1).
+    // 두 칩 모두 background:--action-brand-subtle / color:--action-brand 라 이 쌍이 공용이다.
     expect(contrast(token('action-brand'), token('action-brand-subtle'))).toBeGreaterThanOrEqual(4.5)
-    // 칩 테두리(--action-brand)는 기본 행 배경(--surface-card) 위 1.4.11 경계 대비 3:1.
-    expect(contrast(token('action-brand'), token('surface-card'))).toBeGreaterThanOrEqual(3)
-    // 기본 배경 쌍 — 기본 행 본문 텍스트 AA.
+
+    // [R8-DESIGN-4] 🔴 종전 단언 `action-brand on surface-card` 는 **렌더되지 않는 쌍**이었다:
+    //  - 테두리를 가진 칩은 .priceChangedStatus 뿐인데(.priceMemoryNote 는 border 선언 자체가 없음),
+    //  - .priceChangedStatus 는 line.priceRefreshChanged 일 때만 렌더되고 그 행은 항상
+    //    .lineRow.priceRefreshed → background: --surface-selected (hover 시 --surface-selected-hover).
+    //  즉 그 테두리가 --surface-card 위에 뜨는 경우는 없다. 실제 렌더 표면으로 교체한다.
+    expect(contrast(token('action-brand'), token('surface-selected'))).toBeGreaterThanOrEqual(3)
+    expect(contrast(token('action-brand'), token('surface-selected-hover'))).toBeGreaterThanOrEqual(3)
+
+    // 기본 배경 쌍 — 기본 행 본문 텍스트 AA (.priceMemoryNote 가 뜨는 행은 --surface-card 유지).
     expect(contrast(token('ink-primary'), token('surface-card'))).toBeGreaterThanOrEqual(4.5)
   })
 

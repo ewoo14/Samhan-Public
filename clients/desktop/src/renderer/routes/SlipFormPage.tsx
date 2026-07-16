@@ -415,6 +415,10 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
   const selectedPartnerIdRef = useRef<string | null>(null)
   const priceRefreshRequestRef = useRef(0)
   selectedPartnerIdRef.current = selectedPartner?.id ?? null
+  // R8-FE-3: 안내 낭독을 실제 적용 여부와 같은 조건으로 묶기 위한 최신 라인 스냅샷
+  // (견적 EstimateFormPage.linesRef 와 동일 패턴 — 비대칭 해소).
+  const linesRef = useRef(lines)
+  linesRef.current = lines
 
   // 거래처 snapshot — 자동완성 선택 시 채워짐(폼 미표시, 전표 기록/주소복사용).
   // eCount 12필드 입력 카드는 출고전표 폼 정비로 제거(ioType/timeDate/검수지/결제·할인·약정 등).
@@ -507,10 +511,30 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
       }
       return
     }
+    /**
+     * R8-FE-3: 응답 도착 시점에 이 라인에 단가를 실제로 쓸 수 있는가.
+     *
+     * <p>종전에는 안내가 setLines 의 stale guard <b>밖</b>에서 무조건 발화해, 응답이 늦게 오는
+     * 사이 사용자가 거래처를 바꾸거나 단가를 직접 입력해 write 가 skip 돼도 aria-live 가
+     * "적용" 이라 낭독했다(거짓 고지). 견적(EstimateFormPage)은 `if (applyPrice)` guard 안에서
+     * 발화하고 있었으므로 이건 또 하나의 slip/estimate 비대칭이었다 — 여기서 정렬한다.
+     *
+     * <p>write guard(아래 setLines 내부)는 그대로 둔다 — 이 판정은 낭독 여부만 좁히며,
+     * 어긋나더라도 "안내 누락"(무해)이지 "잘못된 write"가 되지 않는 방향으로만 틀린다.
+     */
+    const canStillApply = () => {
+      const current = linesRef.current.find((candidate) => candidate.id === line.id)
+      if (!current) return false
+      if (current.productId !== productId) return false
+      if (selectedPartnerIdRef.current !== partnerId) return false
+      if (current.priceSource === 'USER') return false
+      return true
+    }
     try {
       const memory = await getPriceMemory(partnerId, productId)
       const remembered = memory?.unitPrice
       const resolvedUnitPrice = remembered == null ? fallbackUnitPrice : String(remembered)
+      const applied = canStillApply()
       setLines((currentLines) =>
         currentLines.map((current) => {
           if (current.id !== line.id) return current
@@ -527,11 +551,14 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
           }
         }),
       )
-      setPriceLookupAnnouncement(
-        `라인 ${lineNumber} ${remembered == null ? '판매가' : '거래처 최근단가'} 적용`,
-      )
+      if (applied) {
+        setPriceLookupAnnouncement(
+          `라인 ${lineNumber} ${remembered == null ? '판매가' : '거래처 최근단가'} 적용`,
+        )
+      }
     } catch {
       // 가격기억 조회 실패는 품목 선택 자체를 막지 않는다. miss/오류 모두 판매가(catalog) fallback 유지.
+      const applied = canStillApply()
       setLines((currentLines) =>
         currentLines.map((current) =>
           current.id === line.id
@@ -541,7 +568,7 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
             : current,
         ),
       )
-      setPriceLookupAnnouncement(`라인 ${lineNumber} 판매가 적용`)
+      if (applied) setPriceLookupAnnouncement(`라인 ${lineNumber} 판매가 적용`)
     }
   }
 
@@ -684,6 +711,12 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
         lookupLoading: false,
         priceRefreshChanged: false,
       })))
+      // R8-FE-6(=R8-DESIGN-2·R7-FE-3): 해제 시 stale 단건 안내를 비운다 — 미클리어 시 배너
+      // 비활성 폴백이 "라인 N 거래처 최근단가 적용" 을 계속 낭독한다(aria-live 거짓 고지).
+      // R6-M5 는 재선택 refresh 시작에서만 비웠고 해제 분기엔 setter 가 없었다.
+      // ⚠️ R7 은 이걸 "slip/estimate 비대칭" 이라 했으나 실측 결과 두 폼 모두 동일 결함이다 —
+      // 양쪽 동시 수정(EstimateFormPage.handlePartnerOptionChange 미러).
+      setPriceLookupAnnouncement('')
       // 선택 해제 — 관련 필드 클리어
       setPartnerName('')
       setCustomerTel('')

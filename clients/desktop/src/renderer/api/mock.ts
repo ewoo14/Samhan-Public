@@ -76,6 +76,17 @@ function envelope<T>(data: T) {
   }
 }
 
+/**
+ * 성공 응답을 200 이외의 상태코드로 반환한다 (예: 201 CREATED).
+ *
+ * <p>{@code envelope()} 만 반환하면 client.ts 가 상태코드를 200 으로 고정하므로, BE 가
+ * {@code @ResponseStatus(HttpStatus.CREATED)} 인 endpoint 를 mock 이 200 으로 미러해
+ * 계약이 갈린다(R8-FE-5 — duplicate).
+ */
+function mockOk<T>(status: number, data: T) {
+  return { __mockStatus: status, body: envelope(data) }
+}
+
 function mockError(status: number, code: string, message: string) {
   return {
     __mockStatus: status,
@@ -1727,6 +1738,18 @@ const MOCK_PRODUCT_CATEGORIES = [
  * 라인 시연용 — 상세 화면 라인 표시.
  * Slice A: `specification` 필드 추가 (피드백 #4 / Designer components.md § 3).
  */
+/**
+ * 전표 상세 라인 fixture — BE {@code SlipLineResponse} 미러.
+ *
+ * <p>[R8-FE-5] {@code setHead}/{@code parentSetModel} 는 R8 신규. 종전 fixture 는 이 두 필드를
+ * <b>아예 갖고 있지 않아</b> mock 이 세트 계보를 표현조차 못 했고, 그 결과 "라인 verbatim 승계"
+ * 를 검증한다는 duplicate 테스트가 실제로는 계보를 전혀 보지 못한 채 통과했다(H2 원결함이
+ * mock gate 통과). duplicate mock 주석은 *"lines[].setHead/parentSetModel 포함"* 이라며
+ * 자기 계약을 명시하고 있었으므로, fixture 부재는 그 계약의 미이행이었다.
+ *
+ * <p>계보 구성 — line-001·line-002 = 같은 세트({@code SET-AJ040-4WAY})의 head + 구성품,
+ * line-003 = 평면 라인. 계보 승계/파괴를 모두 관측할 수 있는 최소 조합이다.
+ */
 const SAMPLE_LINES = [
   {
     id: 'line-001',
@@ -1741,6 +1764,9 @@ const SAMPLE_LINES = [
     supplyAmount: '3700000',
     vatAmount: '370000',
     note: null,
+    // 세트 전개 첫 구성품 — payload hydrate 전용, 화면 식별자로 표시하지 않는다.
+    setHead: true,
+    parentSetModel: 'SET-AJ040-4WAY',
   },
   {
     id: 'line-002',
@@ -1752,6 +1778,8 @@ const SAMPLE_LINES = [
     unitPrice: '85000',
     lineTotal: '170000',
     note: null,
+    setHead: false,
+    parentSetModel: 'SET-AJ040-4WAY',
   },
   {
     id: 'line-003',
@@ -1763,6 +1791,9 @@ const SAMPLE_LINES = [
     unitPrice: '120000',
     lineTotal: '120000',
     note: null,
+    // 평면 라인 — 세트 소속이 아니다.
+    setHead: false,
+    parentSetModel: null,
   },
 ]
 
@@ -3239,19 +3270,33 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
   // R6-M3: 실 BE 는 UUID 타입 바인딩(Jackson/Spring UUID.fromString)이라 version/variant 를
   // 검증하지 않는다 — RFC-4122 version 강제([1-5]/[89ab])는 실 wire 가 200/204 로 받는
   // version-less id(MOCK_ADMIN_PARTNERS 전원)를 mock 만 400 으로 거절해 조용한 CATALOG
-  // 폴백을 만든다. Java 관대 파싱과 동일한 canonical hex 8-4-4-4-12 만 검증한다.
-  const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+  // 폴백을 만든다.
+  //
+  // [R8-FE-7] 🔴 GET 과 POST 는 **바인딩 경로가 달라 관대함이 다르다** — 하나의 regex 로
+  // 兼用하면 GET 이 실 wire 보다 엄격해진다(라이브 실측: `partnerId=1-1-1-1-1` → 실 API **204**
+  // / mock **400**). 경로별로 분리한다:
+  //
+  //  - GET  `@RequestParam UUID` → Spring 이 `UUID.fromString` 호출 = **관대**.
+  //         JDK17 구현은 "대시 4개 + 각 세그먼트가 hex 파싱 가능" 만 보므로 축약형
+  //         `1-1-1-1-1` 을 `00000001-0001-0001-0001-000000000001` 로 받아들인다.
+  //  - POST `@RequestBody` → Jackson UUIDDeserializer = **엄격**. canonical 36자만 수용하고
+  //         그 외 길이는 base64 시도 후 실패 → 400. 즉 기존 canonical regex 가 정확하다.
+  //
+  // ※ JDK 의 세그먼트 masking(9~16자 hex 를 잘라 담는 동작)까지는 재현하지 않는다 —
+  //   mock 이 실 wire 보다 **관대한** 쪽 오차는 false-RED 를 만들지 않는다.
+  const lenientUuidPattern = /^[0-9a-f]{1,8}-[0-9a-f]{1,4}-[0-9a-f]{1,4}-[0-9a-f]{1,4}-[0-9a-f]{1,12}$/i
+  const canonicalUuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
   if (method === 'POST' && /\/slips\/price-memory\/bulk$/.test(url)) {
     const body = parseMockBody(config)
     const partnerId = body['partnerId']
     const productIds = body['productIds']
     if (
       typeof partnerId !== 'string'
-      || !uuidPattern.test(partnerId)
+      || !canonicalUuidPattern.test(partnerId)
       || !Array.isArray(productIds)
       || productIds.length < 1
       || productIds.length > 100
-      || productIds.some((id) => typeof id !== 'string' || !uuidPattern.test(id))
+      || productIds.some((id) => typeof id !== 'string' || !canonicalUuidPattern.test(id))
     ) {
       return mockError(400, 'INVALID_INPUT', 'partnerId UUID와 productIds UUID 1~100개가 필요합니다.')
     }
@@ -3264,7 +3309,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     const urlObj = new URL(url.startsWith('http') ? url : `http://mock${url}`)
     const partnerId = String(config.params?.['partnerId'] ?? urlObj.searchParams.get('partnerId') ?? '')
     const productId = String(config.params?.['productId'] ?? urlObj.searchParams.get('productId') ?? '')
-    if (!uuidPattern.test(partnerId) || !uuidPattern.test(productId)) {
+    if (!lenientUuidPattern.test(partnerId) || !lenientUuidPattern.test(productId)) {
       return mockError(400, 'INVALID_INPUT', 'partnerId와 productId는 UUID여야 합니다.')
     }
     const row = priceMemoryRows.get(priceMemoryKey(partnerId, productId))
@@ -4708,8 +4753,15 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
   // BE 계약: body 없음, 201 + ApiResponse<SlipDetailResponse>(POST /slips 응답과 동일 스키마,
   // lines[].setHead/parentSetModel 포함). 서버 semantics 미러 — 헤더 승계 + 전표일자=오늘 +
   // 신규 채번 + DRAFT, 라인은 원본 상세(GET /slips/{id} mock 과 동일 소스)를 verbatim 승계.
-  // 403(생성 권한)/409(OUTBOUND 당일 마감 초과)는 mock 시간 의존 비결정성을 피해
-  // 실 BE 검증 대상으로 남기고 404 만 미러한다.
+  //
+  // [R8-FE-4] 권한 미러 — 종전 주석은 "403/409 는 시간 의존 비결정성" 이라 묶어 적었으나 이는
+  // 범주 오류였다. 403 은 시간에 의존하지 않는다(역할→pageCode 매트릭스의 순수함수) —
+  // 시간에 의존하는 건 409(OUTBOUND 당일 마감 초과)뿐이다. 그 오분류 때문에 mock 이 권한을
+  // 아예 검사하지 않아, 생성 권한이 없는 역할(dev_master 는 sales.slip.create 미보유)로도
+  // 복사가 200 으로 성공해 실 BE 403 과 갈렸다. 403 은 미러하고 409 만 실 BE 검증에 남긴다.
+  //
+  // BE SlipController.duplicate: resolveSlipType(id) → checkCreatePermission 순서라
+  // **404 가 403 보다 우선**한다(타 전표 존재여부 oracle 노출 회피). 그 순서까지 미러한다.
   const slipDuplicateMatch = url.match(/\/slips\/([^/?]+)\/duplicate$/)
   if (method === 'POST' && slipDuplicateMatch) {
     const sourceId = decodeURIComponent(slipDuplicateMatch[1]!)
@@ -4717,11 +4769,17 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     if (!source || source['isDeleted'] === true) {
       return mockError(404, 'NOT_FOUND', '원본 전표를 찾을 수 없습니다.')
     }
+    // BE checkCreatePermission: INBOUND → purchases.slip.edit/update, OUTBOUND → sales.slip.create/create.
+    const duplicateDenied = source['slipType'] === 'INBOUND'
+      ? mockRequirePermission('purchases.slip.edit', 'update')
+      : mockRequirePermission('sales.slip.create', 'create')
+    if (duplicateDenied) return duplicateDenied
     const now = new Date()
     const yyyy = now.getFullYear()
     const mm = String(now.getMonth() + 1).padStart(2, '0')
     const dd = String(now.getDate()).padStart(2, '0')
-    return envelope({
+    // [R8-FE-5] BE 는 @ResponseStatus(HttpStatus.CREATED) — envelope() 기본 200 은 계약 위반.
+    return mockOk(201, {
       ...source,
       id: `dup-slip-${Date.now()}`,
       // 전표번호 슬래시 형식 yyyy/MM/dd-N (feedback_slip_order_number_format) — 신규 채번.

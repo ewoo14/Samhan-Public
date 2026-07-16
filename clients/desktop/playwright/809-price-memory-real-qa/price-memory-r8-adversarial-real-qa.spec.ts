@@ -196,7 +196,7 @@ test.describe('#809 R8 — OPUS 4.8 적대검증 라이브 재현', () => {
    *
    * 이 경로는 기존 스펙 자신의 헬퍼 `mirrorSlipLine`(lineId 미포함)이 그대로 밟는다.
    */
-  test('R8-QA-1 [BLOCKING] lineId 미전송 무수정 PUT → 세트 계보 전량 파괴 + 구성품 배분가 LINE_SAVE 각인', async ({ browser }) => {
+  test('R8-QA-1 [BLOCKING·fix 가드] 계약 마커 없는 lineId 미전송 무수정 PUT → 400 거부 · 세트 계보 보존 · 기억 미오염', async ({ browser }) => {
     const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } })
     const page = await ctx.newPage()
     const auth = await login(page)
@@ -233,19 +233,22 @@ test.describe('#809 R8 — OPUS 4.8 적대검증 라이브 재현', () => {
         })),
       },
     })
-    expect(res.status(), 'lineId 미전송 PUT 이 거부되지 않고 200 으로 통과한다(계약 표면)').toBe(200)
+    // D-R8-6 + D-R8-9 이후: 계약 마커(lineIdContract) 없는 요청 = 구 클라이언트 → 400 거부.
+    // R8 리뷰 시점에는 이 단언이 `toBe(200)` 이었고 그게 곧 BLOCKING 의 증거였다(거부 없이 통과).
+    expect(res.status(), 'R8-QA-1 가드: 계약 마커 없는 lineId 미전송 PUT 은 400 으로 거부돼야 함(구 클라이언트 차단)').toBe(400)
 
     await page.reload()
     await expect(page.getByText(SINGLE.model).first()).toBeVisible({ timeout: 30000 })
     await capture(page, '02-r8-qa-1-after-nolineid-put-lineage-destroyed')
 
-    // 🔴 계보 전량 파괴 — set_head 전부 f, parent_set_model 전부 NULL.
-    expect(lineageOf(slipId), 'R8-QA-1: 무수정 PUT 인데 세트 계보가 보존되지 않음(데이터 손실)').toBe(
+    // 400 으로 거부됐으므로 계보는 PUT 전과 동일해야 한다(R8 리뷰 시점엔 set_head 전부 f · parent 전부 NULL 로 파괴됐다).
+    expect(lineageOf(slipId), 'R8-QA-1 가드: 거부된 PUT 이 세트 계보를 건드리지 않아야 함(데이터 손실 차단)').toBe(
       `${COMP_HEAD.model}:true:${BUNDLE.model}|${COMP_TAIL.model}:false:${BUNDLE.model}|${SINGLE.model}:false:-`,
     )
-    // 🔴 구성품 배분가 각인 — 계보를 잃어 isBundleComponent 필터를 통과해버린다.
-    expect(memoryOf(COMP_HEAD.id), 'R8-QA-1: head 구성품 배분가가 LINE_SAVE 로 각인됨(기억 오염)').toBe('NONE')
-    expect(memoryOf(COMP_TAIL.id), 'R8-QA-1: 구성품 배분가가 LINE_SAVE 로 각인됨(기억 오염)').toBe('NONE')
+    // 계보가 살아 있으므로 구성품은 isBundleComponent 필터에 계속 걸려 기억되지 않아야 한다.
+    // (R8 리뷰 시점엔 계보를 잃어 필터를 통과, 구성품 배분가 501600·752400 이 LINE_SAVE 로 각인됐다.)
+    expect(memoryOf(COMP_HEAD.id), 'R8-QA-1 가드: 거부된 PUT 이 head 구성품 배분가를 각인하지 않아야 함').toBe('NONE')
+    expect(memoryOf(COMP_TAIL.id), 'R8-QA-1 가드: 거부된 PUT 이 구성품 배분가를 각인하지 않아야 함').toBe('NONE')
     await ctx.close()
   })
 
@@ -406,6 +409,10 @@ test.describe('#809 R8 — OPUS 4.8 적대검증 라이브 재현', () => {
       headers: authHeaders(auth),
       data: {
         updatedAt: detail.updatedAt,
+        // [D-R8-9] 이 케이스는 "정상 최신 클라이언트가 구성품의 품목을 교체" 하는 시나리오다 —
+        // 계약 마커를 실어야 lineId 시맨틱이 활성화되고, 그래야 D-R8-8 productId 게이트가
+        // 검증 대상이 된다. 마커가 없으면 400 에 막혀 이 케이스 자체가 성립하지 않는다.
+        lineIdContract: true,
         partnerName: detail.partnerName, partnerCode: detail.partnerCode, memo: detail.memo,
         businessNumber: detail.businessNumber, deliveryAddress: detail.deliveryAddress,
         supervisionAddress: detail.supervisionAddress, projectName: detail.projectName,

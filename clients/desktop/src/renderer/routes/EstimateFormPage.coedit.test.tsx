@@ -46,10 +46,29 @@ vi.mock('@samhan/design-system', () => ({
       </label>
     )
   }),
-  PartnerAutocomplete: ({ label, disabled, onChange }: { label?: string; disabled?: boolean; onChange: (value: unknown) => void }) => (
+  // 실 FormField 는 render-prop 으로 id/aria 배선을 내려준다 — mock 도 같은 계약을 지켜야
+  // '거래처명 read-only 강등'(R8-DESIGN-1) 이 mock gate 를 실제로 통과한다.
+  FormField: ({ label, required, hint, error, render }: any) => (
+    <div>
+      <label>{label}{required ? ' *' : ''}</label>
+      {render({ id: undefined, ariaDescribedBy: undefined, invalid: Boolean(error), required })}
+      {hint && !error ? <span>{hint}</span> : null}
+      {error ? <span role="alert">{error}</span> : null}
+    </div>
+  ),
+  // 실 PartnerAutocomplete 은 controlled value 를 getInputLabel(partner)=partner.name 으로 입력창에
+  // 표시한다. mock 도 value 를 렌더해야 "원격 거래처 변경이 자동완성에 반영되는가" 를 검증할 수 있다.
+  PartnerAutocomplete: ({ label, disabled, onChange, error, value }: { label?: string; disabled?: boolean; onChange: (value: unknown) => void; error?: string; value?: { name?: string } | null }) => (
     <label>
       {label ? <span>{label}</span> : null}
-      <input data-testid="estimate-partner-autocomplete" disabled={disabled} />
+      <input
+        data-testid="estimate-partner-autocomplete"
+        disabled={disabled}
+        aria-invalid={error ? true : undefined}
+        value={value?.name ?? ''}
+        readOnly
+      />
+      {error ? <span role="alert">{error}</span> : null}
       <button type="button" data-testid="estimate-select-partner-a" disabled={disabled} onClick={() => onChange(mocks.partnerA)}>
         partner-a
       </button>
@@ -198,6 +217,8 @@ function makeProvider() {
     items: {
       toArray: () => rows,
     },
+    // D-R8-7: 거래처 4필드는 CRDT 트랜잭션 1회로 원자 전파한다(중간 상태 관측 창 차단).
+    doc: { transact: vi.fn((fn: () => void) => fn()) },
     setHeaderValue: vi.fn((fieldName: string, value: string) => {
       header.set(fieldName, value)
     }),
@@ -295,8 +316,13 @@ describe('EstimateFormPage 견적 편집 full-form coedit 배선', () => {
     expect(provider.setHeaderValue).toHaveBeenCalledWith('estimateDate', '2099-07-01')
     expect(provider.setHeaderValue).toHaveBeenCalledWith('validUntil', '2099-07-31')
     expect(provider.setHeaderValue).toHaveBeenCalledWith('memo', '초기 메모')
+    // D-R8-7: partnerId 도 CRDT 헤더에 실어야 상대 피어가 구 partnerId 로 저장하지 않는다.
+    expect(provider.setHeaderValue).toHaveBeenCalledWith('partnerId', '11111111-1111-1111-1111-111111111111')
     expect(provider.replaceItems).toHaveBeenCalledWith([
       expect.objectContaining({
+        // R8-FE-9: seed 가 lineId 를 실지 않으면 replaceItems 가 클라 랜덤 UUID 를 채워
+        // Y.Doc 직독값이 서버 소유검증에서 전 라인 400 이 된다.
+        lineId: 'line-1',
         modelName: 'MODEL-1',
         productName: '제품 1',
         specification: '스펙 1',
@@ -307,8 +333,6 @@ describe('EstimateFormPage 견적 편집 full-form coedit 배선', () => {
     ])
 
     for (const fieldPath of [
-      'header.partnerName',
-      'header.partnerBusinessNo',
       'header.partnerAddress',
       'header.estimateDate',
       'header.validUntil',
@@ -323,7 +347,16 @@ describe('EstimateFormPage 견적 편집 full-form coedit 배선', () => {
       expect(field.getAttribute('data-field-path')).toBe(fieldPath)
       expect(field.getAttribute('data-provider-present')).toBe('true')
     }
-    expect((screen.getByTestId('estimate-partner-autocomplete') as HTMLInputElement).disabled).toBe(true)
+    // R8-DESIGN-1: '거래처명'·'사업자번호' 는 자유입력 coedit 필드에서 제외됐다 —
+    // 거래처 입력 경로가 2개면 권위 없는 쪽으로 partnerIdSnapshot 과 괴리가 생겨 마커가 거짓말한다.
+    // 이 단언은 자유입력이 되살아나면 즉시 RED 로 잡는다.
+    expect(screen.queryByTestId('estimate-coedit-header-partnerName')).toBeNull()
+    expect(screen.queryByTestId('estimate-coedit-header-partnerBusinessNo')).toBeNull()
+    expect((screen.getByTestId('estimate-form-partner-name') as HTMLInputElement).readOnly).toBe(true)
+    expect((screen.getByTestId('estimate-form-partner-business-no') as HTMLInputElement).readOnly).toBe(true)
+    // D-R8-1: coedit 중에도 거래처 재선택이 가능해야 한다 — 종전 disabled 는 "거래처를 다시
+    // 선택해 주세요" 안내와 결합해 저장 데드락을 만들었다.
+    expect((screen.getByTestId('estimate-partner-autocomplete') as HTMLInputElement).disabled).toBe(false)
     // R4-F6: 단가 필드만 doc-sync 전용 콜백 배선 — 자동채움 provider write 의 doc-sync 가
     // pending REMEMBERED/CATALOG 분류를 USER 로 재분류하지 않게 분리한다(타 필드는 기존 경로).
     expect(screen.getByTestId('estimate-coedit-items-0-unitPrice').getAttribute('data-doc-sync')).toBe('true')
@@ -338,6 +371,7 @@ describe('EstimateFormPage 견적 편집 full-form coedit 배선', () => {
     renderPage()
     await waitFor(() => expect(provider.subscribeDoc).toHaveBeenCalledTimes(1))
 
+    provider.setHeaderValue('partnerId', '22222222-2222-2222-2222-222222222222')
     provider.setHeaderValue('partnerName', '원격 거래처')
     provider.setHeaderValue('partnerBusinessNo', '999-88-77777')
     provider.setHeaderValue('partnerAddress', '원격 주소')
@@ -359,7 +393,13 @@ describe('EstimateFormPage 견적 편집 full-form coedit 배선', () => {
     })
 
     await waitFor(() => expect((screen.getByTestId('estimate-coedit-header-memo') as HTMLInputElement).value).toBe('원격 메모'))
-    expect((screen.getByTestId('estimate-coedit-header-partnerName') as HTMLInputElement).value).toBe('원격 거래처')
+    // R8-DESIGN-1: 거래처명은 read-only 로 강등됐으나 원격 수신 자체는 그대로 성립해야 한다
+    // (자유입력만 봉쇄한 것이지 CRDT 전파를 끊은 게 아니다).
+    expect((screen.getByTestId('estimate-form-partner-name') as HTMLInputElement).value).toBe('원격 거래처')
+    expect((screen.getByTestId('estimate-form-partner-business-no') as HTMLInputElement).value).toBe('999-88-77777')
+    // 🔴 자동완성(controlled value)도 같은 거래처를 가리켜야 한다 — 여기가 어긋나면 한 화면이
+    // 두 거래처를 동시에 주장한다(자동완성=구 거래처 / read-only 거래처명=새 거래처).
+    expect((screen.getByTestId('estimate-partner-autocomplete') as HTMLInputElement).value).toBe('원격 거래처')
     expect((screen.getByTestId('estimate-coedit-items-0-modelName') as HTMLInputElement).value).toBe('REMOTE-1')
     expect((screen.getByTestId('estimate-coedit-items-0-productName') as HTMLInputElement).value).toBe('원격 제품')
     expect((screen.getByTestId('estimate-coedit-items-0-quantity') as HTMLInputElement).value).toBe('5')

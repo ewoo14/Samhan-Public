@@ -25,6 +25,7 @@ import {
   type ApiEnvelope,
   type PageResponse,
 } from './client'
+import { withLineIdContract } from './lineIdContract'
 import type { BundleSetOptions } from './slip'
 
 export type { BundleSetOptions }
@@ -65,9 +66,27 @@ export interface EstimateLine {
   note: string | null
   /** VAT 포함 단가 — 단가 부가세포함 전환(2026-06-09). 화면 '단가' 표시값. nullable(legacy). */
   unitPriceWithVat?: string | null
-  /** 세트 전개 첫 구성품 여부 — payload hydrate 용도, 화면 식별자로 표시하지 않는다. */
+  /**
+   * 세트 전개 첫 구성품 여부 — 화면 식별자로 표시하지 않는다.
+   *
+   * <p>[R8-FE-8] 🔴 <b>현재 FE 소비자 0</b>이며 그건 의도다. 근거를 남긴다:
+   *
+   * <p>이 필드는 커밋 {@code 34f978ec9} 가 "전표 {@code SlipLineResponse} 엔 있는데 견적엔 없다"
+   * 는 <b>slip/estimate 비대칭</b>을 없애려고 노출했다. 그런데 같은 커밋이 도입한
+   * <b>lineId 왕복 계약</b>이 계보 보존의 책임을 서버로 옮겼다 — FE 는 상세 응답의 {@code id} 를
+   * {@code lineId} 로 되돌려 보내기만 하면 되고, 서버({@code BundleLineageResolver})가
+   * {@code Map<lineId, lineage>} 로 계보를 결정적으로 승계한다. 즉 <b>FE 가 계보를 알 필요가
+   * 없어졌다</b>. 종전처럼 FE 가 계보를 읽어 되돌려 보내는 설계는 R5~R7 이 붕괴시킨 그 경로다.
+   *
+   * <p>따라서 이 필드의 현재 역할은 (1) BE 응답 스키마와의 타입 parity (2) 향후 소비 후보의
+   * 계약 표면이다. 소비 후보 — <b>세트 구성품 시각 표시</b>와 <b>품목 교체 경고</b>:
+   * D-R8-8 로 구성품의 품목을 교체하면 서버가 계보를 조용히 끊으므로("세트에서 분리됩니다")
+   * 사전 고지가 유효하다. 다만 그건 신규 UI 설계·QA 가 필요한 별도 범위라 #820 에서 하지 않는다.
+   *
+   * <p>⚠️ 이 필드를 읽어 저장 payload 로 되돌려 보내지 말 것 — 그게 lineId 계약이 폐기한 설계다.
+   */
   setHead: boolean
-  /** 세트 구성품 부모 modelCode — payload hydrate 용도, 일반 라인은 null. */
+  /** 세트 구성품 부모 modelCode — 일반 라인은 null. 소비 정책은 {@link EstimateLine#setHead} 참조. */
   parentSetModel: string | null
 }
 
@@ -238,7 +257,8 @@ export async function updateEstimate(
 ): Promise<EstimateDetail> {
   const res = await apiClient.put<ApiEnvelope<EstimateDetail>>(
     `/slips/estimates/${id}`,
-    body,
+    // [D-R8-9] 전표 미러 — 계약 마커 스탬프. 누락 시 BE 400.
+    withLineIdContract(body),
   )
   return normalizeEstimateDetail(res.data.data)
 }

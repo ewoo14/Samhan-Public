@@ -17,6 +17,7 @@ import {
   type ApiEnvelope,
   type PageResponse,
 } from './client'
+import { withLineIdContract } from './lineIdContract'
 import type { SlipStatus } from '@samhan/design-system'
 import type { DeliveryTagCode } from '@samhan/design-system'
 
@@ -312,6 +313,13 @@ export interface SlipLineInput {
 /** 매입 전표 direct PUT 수정 요청 — BE `SlipUpdateRequest`. */
 export interface SlipUpdateRequest {
   updatedAt: string
+  /**
+   * 거래처 UUID — payload 전용(화면 미표시). null 이면 BE 가 기존 거래처를 보존한다.
+   *
+   * <p>D-R8-7 신규. 종전 계약은 partnerName 만 받아 거래처를 바꿔 저장해도 partner_id 가
+   * 불변이었고, 그 결과 (거래처+품목) 가격기억이 <b>원 거래처</b>에 각인됐다(R8-QA-3 라이브 실증).
+   */
+  partnerId?: string | null
   partnerName?: string | null
   partnerCode?: string | null
   memo?: string | null
@@ -627,7 +635,8 @@ export async function updatePurchaseSlip(
 ): Promise<SlipDetail> {
   const res = await apiClient.put<ApiEnvelope<SlipDetail>>(
     `/slips/${encodeURIComponent(id)}`,
-    body,
+    // [D-R8-9] 계약 마커는 여기서만 얹는다 — 호출자가 잊을 수 없게. 누락 시 BE 400.
+    withLineIdContract(body),
   )
   return res.data.data
 }
@@ -650,7 +659,8 @@ export async function updateSalesSlip(
 ): Promise<SlipDetail> {
   const res = await apiClient.put<ApiEnvelope<SlipDetail>>(
     `/slips/${encodeURIComponent(id)}/sales`,
-    body,
+    // [D-R8-9] 매입 미러 — 계약 마커 스탬프.
+    withLineIdContract(body),
   )
   return res.data.data
 }

@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { AxiosRequestConfig } from 'axios'
-import { getMockResponse } from './mock'
+import { getMockResponse, MOCK_AUTH } from './mock'
 import type { MonthlyIncomeStatementResponse } from './accounting'
 import { querySlips } from './slip'
 import {
@@ -166,7 +166,7 @@ describe('mock price memory contract', () => {
       expect.objectContaining({ productId: productA, unitPrice: 2035000 }),
     ])
 
-    // version-less 여도 canonical hex 8-4-4-4-12 가 아니면 여전히 400 (형태 자체 오류).
+    // version-less 여도 대시 5그룹 형태가 아니면 여전히 400 (형태 자체 오류).
     const malformed = mockRequest({
       method: 'GET',
       url: '/slips/price-memory',
@@ -174,6 +174,45 @@ describe('mock price memory contract', () => {
     }) as { __mockStatus: number; body: { code: string } }
     expect(malformed.__mockStatus).toBe(400)
     expect(malformed.body.code).toBe('INVALID_INPUT')
+  })
+
+  // [R8-FE-7] GET 과 POST 는 바인딩 경로가 달라 관대함이 다르다 — 하나의 regex 로 兼用하면
+  // GET 이 실 wire 보다 엄격해진다. 라이브 실측: `partnerId=1-1-1-1-1` → 실 API 204 / mock 400.
+  it('mock UUID validation matches each binding path: GET lenient (UUID.fromString) vs POST strict (Jackson)', () => {
+    const shorthand = '1-1-1-1-1'
+    const productA = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaa040'
+
+    // GET `@RequestParam UUID` → Spring 이 UUID.fromString 호출 = 관대. 축약형을
+    // 00000001-0001-0001-0001-000000000001 로 받아들이므로 400 이 아니라 **204(miss)** 여야 한다.
+    const lenientGet = mockRequest({
+      method: 'GET',
+      url: '/slips/price-memory',
+      params: { partnerId: shorthand, productId: productA },
+    }) as { __mockStatus: number; body: null }
+    expect(lenientGet.__mockStatus).toBe(204)
+
+    // POST `@RequestBody` → Jackson UUIDDeserializer = 엄격(canonical 36자만). 400 이 정답이다.
+    const strictPost = mockRequest({
+      method: 'POST',
+      url: '/slips/price-memory/bulk',
+      data: { partnerId: shorthand, productIds: [productA] },
+    }) as { __mockStatus: number; body: { code: string } }
+    expect(strictPost.__mockStatus).toBe(400)
+    expect(strictPost.body.code).toBe('INVALID_INPUT')
+
+    // 축약형 productId 도 같은 비대칭을 따른다.
+    const lenientGetProduct = mockRequest({
+      method: 'GET',
+      url: '/slips/price-memory',
+      params: { partnerId: '11111111-1111-4111-8111-111111111111', productId: shorthand },
+    }) as { __mockStatus: number }
+    expect(lenientGetProduct.__mockStatus).toBe(204)
+    const strictPostProduct = mockRequest({
+      method: 'POST',
+      url: '/slips/price-memory/bulk',
+      data: { partnerId: '11111111-1111-4111-8111-111111111111', productIds: [shorthand] },
+    }) as { __mockStatus: number }
+    expect(strictPostProduct.__mockStatus).toBe(400)
   })
 
   // R6-H2: 전표 복사 서버 endpoint(POST /slips/{id}/duplicate) mock 이 새 계약을 미러하는지 가드.
@@ -184,23 +223,91 @@ describe('mock price memory contract', () => {
       String(now.getMonth() + 1).padStart(2, '0'),
       String(now.getDate()).padStart(2, '0'),
     ]
-    const response = mockRequest({
+    const raw = mockRequest({
       method: 'POST',
       url: '/slips/slip-001/duplicate',
-    }) as MockEnvelope<{
+    }) as { __mockStatus: number; body: MockEnvelope<{
       id: string
       slipNo: string
       slipDate: string
       status: string
-      lines: Array<{ productId: string }>
-    }>
+      lines: Array<{
+        id: string
+        productId: string
+        quantity: number
+        unitPrice: string
+        setHead: boolean
+        parentSetModel: string | null
+      }>
+    }> }
 
+    // [R8-FE-5] BE 는 @ResponseStatus(HttpStatus.CREATED) — envelope() 기본 200 은 계약 위반이었다.
+    expect(raw.__mockStatus).toBe(201)
+    const response = raw.body
     expect(response.data.id).not.toBe('slip-001')
     expect(response.data.status).toBe('DRAFT')
     expect(response.data.slipDate).toBe(`${yyyy}-${mm}-${dd}`)
     // 전표번호 슬래시 yyyy/MM/dd-N 신규 채번 (feedback_slip_order_number_format)
     expect(response.data.slipNo).toBe(`${yyyy}/${mm}/${dd}-99`)
-    expect(response.data.lines.length).toBeGreaterThan(0)
+
+    // [R8-FE-5] 🔴 종전 단언은 `lines.length > 0` 한 줄이었다 — 테스트명이 "verbatim lines" 라고
+    // 주장하면서 실제로는 세트 계보를 전혀 보지 않아, 계보를 파괴하는 복사도 통과시켰다
+    // (H2 원결함이 mock gate 통과).
+    //
+    // ⚠️ 정직 고지: 현재 duplicate mock 과 GET 상세는 같은 SAMPLE_LINES 참조를 반환하므로
+    // 아래 toEqual 은 지금은 자명하게 참이다. 이 단언의 값은 "미래 회귀 차단" 에 있다 —
+    // duplicate mock 이 라인을 재조립하는 순간(R4-F2 의 /1.1 재분리 패턴, H2 의 FE 재조립 패턴)
+    // 즉시 RED 가 된다. 계보를 실제로 검증하는 건 그 아래 단언들이다.
+    const source = mockRequest({
+      method: 'GET',
+      url: '/slips/slip-001',
+    }) as MockEnvelope<{ lines: Array<Record<string, unknown>> }>
+    expect(response.data.lines).toEqual(source.data.lines)
+
+    // 계보가 fixture 에 실제로 존재하는지 — 이 단언이 없으면 위 toEqual 이 "둘 다 계보 없음" 으로
+    // 공허하게 참이 된다(R8-FE-5 의 원인 그 자체).
+    const head = response.data.lines.find((line) => line.setHead)
+    expect(head).toBeDefined()
+    expect(head!.parentSetModel).toBeTruthy()
+    const component = response.data.lines.find(
+      (line) => !line.setHead && line.parentSetModel === head!.parentSetModel,
+    )
+    expect(component).toBeDefined()
+    expect(response.data.lines.some((line) => line.parentSetModel === null)).toBe(true)
+  })
+
+  // [R8-FE-4] duplicate mock 이 권한을 검사하는지 — 종전엔 mockRequirePermission() 이 존재함에도
+  // duplicate 분기에서 호출되지 않아, 생성 권한 없는 역할도 복사에 성공(200)하고 실 BE 만 403 이었다.
+  it('slip duplicate mock enforces create permission like the real backend (R8-FE-4)', () => {
+    const originalRole = MOCK_AUTH.role
+    try {
+      // WAREHOUSE 는 sales.slip.create 미보유 → BE checkCreatePermission 이 403.
+      MOCK_AUTH.role = 'WAREHOUSE'
+      const denied = mockRequest({
+        method: 'POST',
+        url: '/slips/slip-001/duplicate',
+      }) as { __mockStatus: number; body: { code: string } }
+      expect(denied.__mockStatus).toBe(403)
+      expect(denied.body.code).toBe('FORBIDDEN')
+
+      // 404 는 403 보다 우선한다 — BE 가 resolveSlipType(id) 를 먼저 호출하므로,
+      // 권한 없는 역할이 타 전표의 존재 여부를 403/404 차이로 탐지할 수 없다.
+      const missing = mockRequest({
+        method: 'POST',
+        url: '/slips/no-such-slip/duplicate',
+      }) as { __mockStatus: number; body: { code: string } }
+      expect(missing.__mockStatus).toBe(404)
+
+      // 생성 권한 보유 역할은 통과.
+      MOCK_AUTH.role = 'SALES'
+      const allowed = mockRequest({
+        method: 'POST',
+        url: '/slips/slip-001/duplicate',
+      }) as { __mockStatus: number }
+      expect(allowed.__mockStatus).toBe(201)
+    } finally {
+      MOCK_AUTH.role = originalRole
+    }
   })
 
   it('slip duplicate mock returns 404 for a missing source', () => {

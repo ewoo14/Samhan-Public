@@ -16,7 +16,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Button, Card, PartnerAutocomplete, Spinner, type PartnerOption } from '@samhan/design-system'
+import { Button, Card, FormField, Input, PartnerAutocomplete, Spinner, type PartnerOption } from '@samhan/design-system'
 import {
   createEstimate,
   getEstimate,
@@ -42,6 +42,11 @@ import { usePermissions } from '../hooks/usePermissions'
 import { isAutoPriceSource, shouldAutoFillPrice } from '../utils/priceSourceRules'
 import { CollaborativeSlipInput } from '../components/collab/CollaborativeSlipInput'
 import { createDocCoeditProvider, type DocCoeditProvider } from '../realtime/createCoeditProvider'
+import {
+  coeditLineIdsAreStale,
+  resolveServerLineId,
+  toServerLineIdSet,
+} from '../realtime/coeditLineIds'
 import { LineLookupReferenceModal } from './components/LineLookupReferenceModal'
 import { BundleOptionRow } from './components/BundleOptionRow'
 
@@ -211,6 +216,10 @@ function toDraftLinesFromEstimate(estimate: EstimateDetail): DraftLine[] {
 }
 
 function seedEstimateCoeditProvider(provider: DocCoeditProvider, estimate: EstimateDetail) {
+  // D-R8-7/R8-DESIGN-1: partnerId 를 CRDT 헤더에 편입 — 거래처 재선택을 상대 피어에 전파하지
+  // 않으면 상대는 구 partnerId 로 저장해 가격기억이 원 거래처에 각인된다(전표 R8-QA-3 미러).
+  // 화면에는 거래처명만 보이고 UUID 는 payload 전용이다(D-R3-1).
+  provider.setHeaderValue('partnerId', estimate.partnerId ?? '')
   provider.setHeaderValue('partnerName', estimate.partnerName)
   provider.setHeaderValue('partnerBusinessNo', estimate.partnerBusinessNo ?? '')
   provider.setHeaderValue('partnerAddress', estimate.partnerAddress ?? '')
@@ -219,6 +228,12 @@ function seedEstimateCoeditProvider(provider: DocCoeditProvider, estimate: Estim
   provider.setHeaderValue('memo', estimate.memo ?? '')
   provider.replaceItems(
     toDraftLinesFromEstimate(estimate).map((line) => ({
+      // 🔴 lineId 는 반드시 Y.Doc 에 실어야 한다 (R8-FE-9 — fix 지뢰).
+      // 종전 seed 는 lineId 를 pick 하지 않았고, replaceItems 는 lineId 가 비면 클라 랜덤
+      // UUID(generateLineId())를 대신 채운다 → Y.Doc 의 lineId 가 전부 서버가 모르는 값 →
+      // 직독값을 저장 payload 에 실으면 소유검증에서 전 라인 400. 서버 line.id 로 시드해
+      // 전표(toPurchaseEditLines)와 같은 계약으로 맞춘다.
+      lineId: line.lineId ?? '',
       modelName: line.modelName,
       productName: line.productName,
       specification: line.specification,
@@ -234,9 +249,18 @@ type LocalAutoPriceWrite = Pick<
   'unitPrice' | 'priceSource' | 'priceMemoryUpdatedAt' | 'priceRefreshChanged'
 >
 
+/**
+ * coedit Y.Doc → 견적 폼 라인.
+ *
+ * <p>🔴 <b>lineId 는 Y.Doc 직독 + 서버 소유검증</b> (R8-FE-1 미러 — 전표/견적 비대칭 재발 차단).
+ * 종전 {@code lineId: current[index]?.lineId ?? null} 은 전표와 동일한 위치복원 결함이었다.
+ * 견적은 coedit 중 라인 추가·삭제를 잠그므로(lineStructureLocked) 전표만큼 자주 터지지는
+ * 않으나, 잠금은 <b>로컬 UI</b> 만 막을 뿐 원격 피어의 Y.Doc 델타를 막지 못하므로 같은 계약으로 고친다.
+ */
 function coeditLinesToDraftLines(
   provider: DocCoeditProvider,
   current: DraftLine[],
+  knownServerLineIds: ReadonlySet<string>,
   localAutoPriceWrites?: Map<string, LocalAutoPriceWrite>,
 ): DraftLine[] {
   return provider.items.toArray().map((_, index) => {
@@ -250,7 +274,7 @@ function coeditLinesToDraftLines(
     )
     return {
       uid: previous?.uid ?? nextLineUid(),
-      lineId: previous?.lineId ?? null,
+      lineId: resolveServerLineId(provider, index, knownServerLineIds),
       productId: provider.getItemValue(index, 'productId') || null,
       modelName: provider.getItemValue(index, 'modelName'),
       productName: provider.getItemValue(index, 'productName'),
@@ -421,7 +445,12 @@ function EstimateMobileLineCard(props: {
           inputMode="decimal"
           inputStyle={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
           aria-label={`라인 ${lineNumber} 단가`}
-          aria-describedby={priceStatus ? priceStatusId : undefined}
+          // [R8-DESIGN-6] 데스크톱 행과 동일 — 카드 div 의 aria-describedby 는 role=generic 이라
+          // 전달되지 않으므로 "단가 변경" 을 이 input 의 describedby 체인에 append 한다.
+          aria-describedby={[
+            priceStatus ? priceStatusId : null,
+            props.line.priceRefreshChanged ? priceChangedStatusId : null,
+          ].filter(Boolean).join(' ') || undefined}
         />
         {/* R4-D2: 라인별 aria-live 제거 — 전역 고지는 배너(role="status") 1곳이 담당. */}
         {priceStatus ? (
@@ -433,6 +462,20 @@ function EstimateMobileLineCard(props: {
             className="price-source-note"
           >
             {priceStatus.label}
+          </span>
+        ) : null}
+        {/*
+          [R8-DESIGN-5] 저장일 시각 병기 — 모바일 카드는 **터치 표면**이라 hover 가 없어
+          title 이 영영 도달하지 않는다. SR 은 단가 input 의 aria-describedby → 위 note 의
+          aria-label 로 저장일을 이미 듣지만(그래서 "키보드 미도달" 은 성립하지 않는다),
+          **보이는 눈으로 터치하는 사용자**에게는 마커 라벨만 남고 "언제 저장된 단가인지" 가
+          사라진다. 데스크톱 LineRow 는 hover 로 도달하므로 여유가 없는 그리드 행을 넓히지 않고
+          공간이 있는 이 카드에만 병기한다.
+          aria-hidden — 같은 정보를 위 note 의 aria-label 이 이미 전달하므로 SR 중복 낭독 방지.
+        */}
+        {priceStatus && props.line.priceMemoryUpdatedAt ? (
+          <span className="price-source-note-date" aria-hidden="true">
+            {`${props.line.priceMemoryUpdatedAt.slice(0, 10)} 저장`}
           </span>
         ) : null}
       </div>
@@ -473,6 +516,14 @@ export function EstimateFormPage() {
   const [partnerBusinessNo, setPartnerBusinessNo] = useState<string>('')
   const [partnerAddress, setPartnerAddress] = useState<string>('')
   const [partnerIdSnapshot, setPartnerIdSnapshot] = useState<string>('')
+  /**
+   * D-R8-1: hydrate 시점의 서버 partnerId — "legacy(원래 없음)" 와 "사용자가 해제함" 을 가르는 유일한 기준.
+   *
+   * <p>이 구분이 없으면 둘 중 하나를 반드시 틀린다: 공백 전반을 허용하면 <b>원래 거래처가 있던
+   * 견적을 해제하고 저장</b>할 때 BE 가 null 을 "기존 보존" 으로 읽어 화면(빈칸)과 DB(구 거래처)가
+   * 조용히 갈라지고, 공백 전반을 막으면 <b>legacy 견적이 영구히 저장 불가</b>가 된다.
+   */
+  const [hydratedPartnerId, setHydratedPartnerId] = useState<string>('')
   const [estimateDate, setEstimateDate] = useState<string>(today())
   const [validUntil, setValidUntil] = useState<string>(datePlusDays(today(), 30))
   const [memo, setMemo] = useState<string>('')
@@ -482,13 +533,26 @@ export function EstimateFormPage() {
   const [estimateFormCoeditProvider, setEstimateFormCoeditProvider] = useState<DocCoeditProvider | null>(null)
   const [estimateFormCoeditPending, setEstimateFormCoeditPending] = useState(false)
   const [priceLookupAnnouncement, setPriceLookupAnnouncement] = useState('')
+  /** D-R8-1: 거래처 가드 위반 표시 — 배너를 컨트롤과 결선(FormField error → aria-describedby+role=alert)한다. */
+  const [partnerFieldInvalid, setPartnerFieldInvalid] = useState(false)
+  /** D-R8-1: 가드 위반 시 해당 필드로 포커스 이동 — 배너만 띄우면 SR/키보드 사용자가 원인을 못 찾는다. */
+  const partnerInputRef = useRef<HTMLInputElement>(null)
   const selectedPartnerIdRef = useRef<string>('')
   const priceRefreshRequestRef = useRef(0)
   const modelLookupRequestRef = useRef(new Map<string, number>())
   const localAutoPriceWritesRef = useRef(new Map<string, LocalAutoPriceWrite>())
   const linesRef = useRef(lines)
   linesRef.current = lines
-  // R4-D4: 마커 카피 분기/해제 기준 — 저장 payload partnerId·가격기억 흐름과 동일 소스(반응형 스냅샷).
+  /**
+   * R4-D4: 마커 카피 분기/해제 기준 — 저장 payload partnerId·가격기억 흐름과 동일 소스(반응형 스냅샷).
+   *
+   * <p>R8-DESIGN-8 — 이 플래그의 의미는 "사용자가 거래처를 선택했나" 가 <b>아니라</b>
+   * <b>"(거래처+품목) 가격기억을 귀속시킬 partnerId 가 지금 있나"</b> 다. 그래서 "사용자 해제" 와
+   * "legacy 견적(partner_id NULL)" 이 같은 false 로 수렴하는 것은 <b>의도된 동치</b>다 —
+   * 두 경우 모두 귀속 대상 UUID 가 없어 REMEMBERED 마커를 걸 근거가 없고, CATALOG 설명도
+   * 거래처를 단정해선 안 된다. 두 상태를 <b>구분해야 하는 곳은 저장 가드 하나뿐</b>이며
+   * (해제=차단 / legacy=허용), 그건 {@code hydratedPartnerId} 가 담당한다(D-R8-1).
+   */
   const hasPartner = Boolean(partnerIdSnapshot)
   // R4-D9: 배너 live region 은 상시 마운트 — 내용과 함께 조건부 마운트하면 일부 SR 이 미낭독.
   const priceRefreshNoticeActive = lines.some((line) => line.priceRefreshChanged)
@@ -519,6 +583,23 @@ export function EstimateFormPage() {
     if (estimateFormCoeditProvider) return
     selectedPartnerIdRef.current = e.partnerId
     setPartnerIdSnapshot(e.partnerId)
+    setHydratedPartnerId(e.partnerId ?? '')
+    // D-R8-1: hydrate 가 setPartner() 를 끝내 호출하지 않아 `partner` state 가 편집 모드 내내
+    // null 로 남았다 — 그 결과 (1) PartnerAutocomplete 이 거래처 보유 견적에서도 항상 빈 칸으로
+    // 보이고 (2) effectivePartnerId 의 2차 폴백 분기가 구조적으로 죽어 있었다.
+    // legacy(partnerId 없음)여도 거래처명이 있으면 표시한다 — 무엇이 들어있는지 감추지 않는다.
+    setPartner(e.partnerName
+      ? {
+          partnerId: e.partnerId || null,
+          businessRegistrationNumber: e.partnerBusinessNo ?? '',
+          companyName: e.partnerName,
+          representativeName: null,
+          contactPhone: null,
+          address: e.partnerAddress ?? null,
+          groupName: null,
+          note: null,
+        }
+      : null)
     setPartnerName(e.partnerName)
     setPartnerBusinessNo(e.partnerBusinessNo ?? '')
     setPartnerAddress(e.partnerAddress ?? '')
@@ -543,16 +624,43 @@ export function EstimateFormPage() {
     let unsubscribeDoc: (() => void) | null = null
     setEstimateFormCoeditPending(true)
 
+    // 계보/가격기억 귀속의 권위 — 현재 로드된 상세 응답의 라인 id 집합(전표와 동일 계약).
+    const knownServerLineIds = toServerLineIdSet(estimate.lines)
+
     const applyProviderState = (nextProvider: DocCoeditProvider) => {
-      setPartnerName(nextProvider.getHeaderValue('partnerName'))
-      setPartnerBusinessNo(nextProvider.getHeaderValue('partnerBusinessNo'))
-      setPartnerAddress(nextProvider.getHeaderValue('partnerAddress'))
+      // D-R8-7: 상대 피어의 거래처 재선택 수신. 미수신 시 구 partnerId 로 저장한다.
+      const nextPartnerId = nextProvider.getHeaderValue('partnerId')
+      const nextPartnerName = nextProvider.getHeaderValue('partnerName')
+      const nextPartnerBizNo = nextProvider.getHeaderValue('partnerBusinessNo')
+      const nextPartnerAddress = nextProvider.getHeaderValue('partnerAddress')
+      setPartnerIdSnapshot(nextPartnerId)
+      setPartnerName(nextPartnerName)
+      setPartnerBusinessNo(nextPartnerBizNo)
+      setPartnerAddress(nextPartnerAddress)
+      // `partner` 는 PartnerAutocomplete 의 controlled value 다 — 함께 갱신하지 않으면 원격
+      // 거래처 변경 시 자동완성엔 구 거래처명이, 바로 옆 read-only '거래처명' 엔 새 이름이 떠
+      // 한 화면이 두 거래처를 동시에 주장한다(R8-DESIGN-1 이 지적한 "입력 경로 2개" 의 재발).
+      // selectedPartnerIdRef 도 함께 맞춰 in-flight 단가 재조회의 stale guard 기준을 일치시킨다.
+      selectedPartnerIdRef.current = nextPartnerId
+      setPartner(nextPartnerName
+        ? {
+            partnerId: nextPartnerId || null,
+            businessRegistrationNumber: nextPartnerBizNo,
+            companyName: nextPartnerName,
+            representativeName: null,
+            contactPhone: null,
+            address: nextPartnerAddress || null,
+            groupName: null,
+            note: null,
+          }
+        : null)
       setEstimateDate(nextProvider.getHeaderValue('estimateDate'))
       setValidUntil(nextProvider.getHeaderValue('validUntil'))
       setMemo(nextProvider.getHeaderValue('memo'))
       const nextLines = coeditLinesToDraftLines(
         nextProvider,
         linesRef.current,
+        knownServerLineIds,
         localAutoPriceWritesRef.current,
       )
       linesRef.current = nextLines
@@ -573,8 +681,18 @@ export function EstimateFormPage() {
       const providerLineCount = nextProvider.items.toArray().length
       // 슬1은 협업 중 라인 추가/삭제를 잠가 index seed-lock 을 유지한다.
       // provider 라인수와 서버 라인수가 다르면 stale snapshot 으로 보고 서버 기준 재시드한다.
-      if (nextProvider.isEmpty() || providerLineCount !== serverLineCount) {
+      // coeditLineIdsAreStale(): lineId seed 도입 이전에 만들어져 서버에 영속된 Y.Doc — 라인수는
+      // 같아도 lineId 가 전부 클라 랜덤 UUID 라 그대로 두면 전 라인이 신규로 강등돼 계보가
+      // 소실되고, 계보 보유 견적이면 BE requireLineIdContract 가 400 을 낸다(R8-FE-9).
+      if (nextProvider.isEmpty()
+        || providerLineCount !== serverLineCount
+        || coeditLineIdsAreStale(nextProvider, knownServerLineIds)) {
         seedEstimateCoeditProvider(nextProvider, estimate)
+      } else if (!nextProvider.getHeaderValue('partnerId') && estimate.partnerId) {
+        // partnerId 헤더 편입(D-R8-7) 이전에 만들어져 서버에 영속된 Y.Doc 은 그 키가 없다.
+        // 재시드 대상이 아니면(예: 라인 0건 견적) 여기서 backfill 하지 않는 한
+        // applyProviderState 가 빈 문자열로 partnerIdSnapshot 을 덮어 저장이 막힌다.
+        nextProvider.setHeaderValue('partnerId', estimate.partnerId)
       }
       applyProviderState(nextProvider)
       unsubscribeDoc = nextProvider.subscribeDoc(() => applyProviderState(nextProvider))
@@ -611,14 +729,37 @@ export function EstimateFormPage() {
     return { supply, vat: total - supply, total }
   }, [lines])
 
+  /**
+   * D-R8-7/R8-DESIGN-1: 거래처 4필드를 CRDT 트랜잭션 1회로 원자 전파한다.
+   *
+   * <p>coedit 중에는 이 전파가 <b>필수</b>다 — applyProviderState 가 doc 변경마다 헤더를
+   * 폼 state 로 되읽으므로, 전파하지 않으면 로컬 선택이 즉시 구 CRDT 값으로 되돌아간다.
+   * 필드를 따로 쓰면 상대 피어가 중간 상태(새 이름 + 구 UUID)를 관측하는 창이 열린다.
+   */
+  const propagatePartnerToCoedit = (
+    partnerId: string, name: string, bizNo: string, address: string,
+  ) => {
+    const provider = estimateFormCoeditProvider
+    if (!provider) return
+    provider.doc.transact(() => {
+      provider.setHeaderValue('partnerId', partnerId)
+      provider.setHeaderValue('partnerName', name)
+      provider.setHeaderValue('partnerBusinessNo', bizNo)
+      provider.setHeaderValue('partnerAddress', address)
+    })
+  }
+
   const handleSelectPartner = (p: PartnerSummary) => {
     const nextPartnerId = p.partnerId && UUID_PATTERN.test(p.partnerId) ? p.partnerId : ''
+    const nextBizNo = p.businessRegistrationNumber
+    const nextAddress = p.address ?? ''
     selectedPartnerIdRef.current = nextPartnerId
     setPartner(p)
     setPartnerIdSnapshot(nextPartnerId)
     setPartnerName(p.companyName)
-    setPartnerBusinessNo(p.businessRegistrationNumber)
-    setPartnerAddress(p.address ?? '')
+    setPartnerBusinessNo(nextBizNo)
+    setPartnerAddress(nextAddress)
+    propagatePartnerToCoedit(nextPartnerId, p.companyName, nextBizNo, nextAddress)
     if (nextPartnerId) {
       void refreshAutoPricesForPartner(nextPartnerId)
     }
@@ -641,6 +782,15 @@ export function EstimateFormPage() {
       priceRefreshRequestRef.current += 1
       setPartner(null)
       setPartnerIdSnapshot('')
+      setPartnerName('')
+      setPartnerBusinessNo('')
+      setPartnerAddress('')
+      // R8-FE-6(=R8-DESIGN-2·R7-FE-3): 해제 시 stale 단건 안내를 비운다 — 미클리어 시
+      // 배너 비활성 폴백이 "라인 N 거래처 최근단가 적용" 을 계속 낭독한다(aria-live 거짓 고지).
+      // 재선택 refresh 시작에서만 비우던 R6-M5 의 누락분. slip/estimate 양 폼 동시 처리.
+      setPriceLookupAnnouncement('')
+      // D-R4-4: 단가값·priceSource 는 유지하고 마커만 해제한다(재선택 시 재조회 자격 보존).
+      propagatePartnerToCoedit('', '', '', '')
       setLines((prev) => {
         const next = prev.map((line) => ({
           ...line,
@@ -963,16 +1113,30 @@ export function EstimateFormPage() {
         : partner?.partnerId && UUID_PATTERN.test(partner.partnerId)
           ? partner.partnerId
           : ''
-    if (!effectivePartnerId) {
+    // D-R8-1: legacy 견적(hydrate 시점에 partner_id 가 원래 없었고 사용자가 새로 선택하지도 않음)
+    // 은 거래처 없이 저장을 허용한다. BE 는 이미 nullable 이고(Estimate.partnerId 에 nullable=false
+    // 없음 + javadoc "거래처 UUID (선택)"), editHeader 는 null 을 "기존 값 보존" 으로 읽는다 —
+    // 즉 FE 가드가 BE 계약보다 엄격했던 것이 데드락의 원인이다.
+    //
+    // 🔴 공백 전반을 열면 안 된다: 원래 거래처가 있던 견적을 사용자가 해제하고 저장하면 BE 가
+    // 구 partnerId 를 보존해 화면(빈칸)과 DB(구 거래처)가 조용히 갈라지고 회계 귀속이 어긋난다.
+    // 그래서 "원래 없었나"(hydratedPartnerId) 로만 좁힌다.
+    const legacyWithoutPartner = isEdit && !hydratedPartnerId
+    if (!effectivePartnerId && !legacyWithoutPartner) {
       setTopError(partnerName.trim()
         ? '거래처 정보를 다시 불러올 수 없습니다. 거래처를 다시 선택해 주세요.'
         : '거래처를 선택하세요.')
+      setPartnerFieldInvalid(true)
+      partnerInputRef.current?.focus()
       return null
     }
-    if (!partnerName.trim()) {
+    if (!partnerName.trim() && !legacyWithoutPartner) {
       setTopError('거래처명이 비어있습니다.')
+      setPartnerFieldInvalid(true)
+      partnerInputRef.current?.focus()
       return null
     }
+    setPartnerFieldInvalid(false)
     const valid = lines.filter(
       (l) => l.productId && Number.parseInt(l.quantity || '0', 10) > 0,
     )
@@ -1021,8 +1185,10 @@ export function EstimateFormPage() {
     if (!body) return
     if (isEdit) {
       const updateBody: UpdateEstimateRequest = {
-        partnerId: body.partnerId,
-        partnerName: body.partnerName,
+        // D-R8-1: legacy 견적은 빈 문자열이 될 수 있다 — 빈 값을 그대로 실으면 BE UUID 파싱이
+        // 깨지므로 undefined 로 omit 해 editHeader 의 "null = 기존 값 보존" 계약에 태운다.
+        partnerId: body.partnerId || undefined,
+        partnerName: body.partnerName || undefined,
         partnerBusinessNo: body.partnerBusinessNo,
         partnerAddress: body.partnerAddress,
         validUntil: body.validUntil,
@@ -1050,8 +1216,10 @@ export function EstimateFormPage() {
     if (!body) return
     try {
       const updateBody: UpdateEstimateRequest = {
-        partnerId: body.partnerId,
-        partnerName: body.partnerName,
+        // D-R8-1: legacy 견적은 빈 문자열이 될 수 있다 — 빈 값을 그대로 실으면 BE UUID 파싱이
+        // 깨지므로 undefined 로 omit 해 editHeader 의 "null = 기존 값 보존" 계약에 태운다.
+        partnerId: body.partnerId || undefined,
+        partnerName: body.partnerName || undefined,
         partnerBusinessNo: body.partnerBusinessNo,
         partnerAddress: body.partnerAddress,
         validUntil: body.validUntil,
@@ -1116,12 +1284,20 @@ export function EstimateFormPage() {
 
       <Card>
         {/* 거래처 선택 */}
+        {/*
+          D-R8-1 + R8-DESIGN-1: coedit 중에도 활성. 종전 `disabled={coeditActive}` 는
+          "거래처를 다시 선택해 주세요" 안내와 결합해 저장 데드락을 만들었다(선택 수단이 비활성).
+          거래처 4필드는 propagatePartnerToCoedit 이 CRDT 트랜잭션 1회로 원자 전파하므로
+          협업 중 재선택이 안전하다. 로딩 중(coeditPending)에만 잠가 이중소스를 막는다.
+        */}
         <div style={{ marginBottom: 16 }}>
           <PartnerAutocomplete
+            ref={partnerInputRef}
             label="거래처 검색"
             placeholder="거래처명 또는 사업자번호"
             value={partner
               ? {
+                  id: partner.partnerId ?? undefined,
                   partnerCode: partner.businessRegistrationNumber,
                   name: partner.companyName,
                   bizNo: partner.businessRegistrationNumber,
@@ -1130,8 +1306,21 @@ export function EstimateFormPage() {
               : null}
             onChange={handlePartnerOptionChange}
             searchPartners={searchPartnerOptions}
-            disabled={Boolean(isReadOnly) || coeditActive}
+            disabled={Boolean(isReadOnly) || estimateFormCoeditPending}
+            error={partnerFieldInvalid
+              ? '거래처를 선택해 주세요. 저장하려면 거래처가 필요합니다.'
+              : undefined}
           />
+          {/* D-R8-1: legacy 견적 — 데드락 문구("다시 선택해 주세요") 대신 실제로 무슨 일이 일어나는지 알린다. */}
+          {isEdit && !hydratedPartnerId && !partnerIdSnapshot ? (
+            <p
+              className="estimate-form-legacy-partner-note"
+              data-testid="estimate-form-legacy-partner-note"
+              style={{ marginTop: 8, fontSize: 13, color: 'var(--text-secondary)' }}
+            >
+              이 견적서는 거래처 정보 없이 등록됐습니다. 거래처를 선택하지 않으면 거래처 없이 저장됩니다.
+            </p>
+          ) : null}
         </div>
 
         <div
@@ -1143,28 +1332,39 @@ export function EstimateFormPage() {
             marginBottom: 16,
           }}
         >
-          <CollaborativeSlipInput
-            provider={estimateFormCoeditProvider}
-            coeditPending={estimateFormCoeditPending}
-            fieldPath="header.partnerName"
+          {/*
+            R8-DESIGN-1: '거래처명'·'사업자번호' 를 자유입력에서 자동완성 파생 read-only 로 강등.
+            종전엔 거래처 입력 경로가 2개인데 권위 있는 쪽(PartnerAutocomplete)만 잠겨 있어,
+            거래처명만 고쳐 저장하면 화면 거래처와 partnerIdSnapshot 이 괴리되고 마커가 거짓말을
+            했다. slip 이 "P0 D-AC3-01" 로 밟은 선례와 정렬한다.
+          */}
+          <FormField
             label="거래처명"
-            value={partnerName}
-            onValueChange={setPartnerName}
-            readOnly={Boolean(isReadOnly)}
             required
-            aria-label="거래처명"
-            data-testid="estimate-form-partner-name"
+            hint="거래처 검색에서 선택한 값입니다"
+            render={({ id, ariaDescribedBy }) => (
+              <Input
+                id={id}
+                aria-describedby={ariaDescribedBy}
+                value={partnerName}
+                readOnly
+                aria-label="거래처명"
+                data-testid="estimate-form-partner-name"
+              />
+            )}
           />
-          <CollaborativeSlipInput
-            provider={estimateFormCoeditProvider}
-            coeditPending={estimateFormCoeditPending}
-            fieldPath="header.partnerBusinessNo"
+          <FormField
             label="사업자번호"
-            value={partnerBusinessNo}
-            onValueChange={setPartnerBusinessNo}
-            readOnly={Boolean(isReadOnly)}
-            aria-label="사업자번호"
-            data-testid="estimate-form-partner-business-no"
+            render={({ id, ariaDescribedBy }) => (
+              <Input
+                id={id}
+                aria-describedby={ariaDescribedBy}
+                value={partnerBusinessNo}
+                readOnly
+                aria-label="사업자번호"
+                data-testid="estimate-form-partner-business-no"
+              />
+            )}
           />
           <CollaborativeSlipInput
             provider={estimateFormCoeditProvider}
@@ -1314,8 +1514,19 @@ export function EstimateFormPage() {
           }
           return (
            <div key={line.uid}>
-            {/* R6-L2: role="row" 는 부모 table/rowgroup 없는 orphan(axe aria-required-parent
-                serious)이라 제거 — aria-describedby 는 전역 attribute 라 role 없이 유효. */}
+            {/*
+              R6-L2: role="row" 는 부모 table/rowgroup 없는 orphan(axe aria-required-parent
+              serious)이라 제거.
+
+              [R8-DESIGN-6] 🔴 종전 주석은 *"aria-describedby 는 전역 attribute 라 role 없이 유효"*
+              라고 적었으나 이는 **거짓 주장**이었다. 전역 attribute = "마크업상 허용" 일 뿐이고,
+              role 없는 div 는 role=generic 으로 매핑돼 AT 가 그 description 을 낭독하지 않는다
+              (사용자가 포커스할 수도, 탐색할 수도 없는 컨테이너다). 즉 이 배선은 무해하지만
+              **전달되지 않는다**.
+              실제 전달 경로는 아래 단가 input 의 aria-describedby 체인이다 — 거기에
+              priceChangedStatusId 를 append 해 "단가 변경" 을 포커스 시 실제로 듣게 했다.
+              이 div 의 속성은 시각/DOM 연관 표기로만 남긴다.
+            */}
             <div
               aria-describedby={line.priceRefreshChanged ? priceChangedStatusId : undefined}
               style={{
@@ -1423,7 +1634,12 @@ export function EstimateFormPage() {
                   inputMode="decimal"
                   inputStyle={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
                   aria-label={`라인 ${i + 1} 단가`}
-                  aria-describedby={priceStatus ? priceStatusId : undefined}
+                  // [R8-DESIGN-6] "단가 변경" 표시는 여기로만 AT 에 도달한다 — PriceChangeIndicator
+                  // 는 role 없는 span 이라 스스로는 낭독되지 않는다.
+                  aria-describedby={[
+                    priceStatus ? priceStatusId : null,
+                    line.priceRefreshChanged ? priceChangedStatusId : null,
+                  ].filter(Boolean).join(' ') || undefined}
                   data-testid={`estimate-form-line-${i}-unit-price`}
                 />
                 {/* R4-D2: 라인별 aria-live 제거 — 전역 고지는 배너(role="status") 1곳이 담당. */}

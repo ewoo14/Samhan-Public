@@ -236,9 +236,21 @@ async function apiPost<T>(page: Page, auth: LoginResult, apiPath: string, body?:
   return ((await res.json()) as { data: T }).data
 }
 
-/** [R6] raw API PUT — 실 게이트웨이 경유, 2xx 강제 + envelope data 반환. */
+/**
+ * [R6] raw API PUT — 실 게이트웨이 경유, 2xx 강제 + envelope data 반환.
+ *
+ * <p>[D-R8-9] 이 헬퍼의 호출처는 전부 전표/견적 수정이며 <b>정상 최신 클라이언트</b>를 흉내낸다.
+ * 따라서 lineId 계약 마커를 여기서 얹는다 — 프로덕션 api 함수(`withLineIdContract`)가 저장
+ * 길목에서 스탬프하는 것과 같은 구조다. 마커가 없으면 BE 가 구 클라이언트로 판정해 400 을 낸다.
+ *
+ * <p>⚠️ 구 클라이언트를 <b>의도적으로</b> 재현하는 적대 케이스(R8-QA-1)는 이 헬퍼를 쓰지 않고
+ * `page.request.put` 을 직접 호출한다 — 마커를 얹지 않는 것이 그 케이스의 핵심이기 때문이다.
+ */
 async function apiPut<T>(page: Page, auth: LoginResult, apiPath: string, body: unknown): Promise<T> {
-  const res = await page.request.put(`${API_BASE}${apiPath}`, { headers: authHeaders(auth), data: body })
+  const data = body != null && typeof body === 'object' && !Array.isArray(body)
+    ? { ...(body as Record<string, unknown>), lineIdContract: true }
+    : body
+  const res = await page.request.put(`${API_BASE}${apiPath}`, { headers: authHeaders(auth), data })
   expect(res.ok(), `PUT ${apiPath} 실패: HTTP ${res.status()} ${await res.text().catch(() => '')}`).toBeTruthy()
   return ((await res.json()) as { data: T }).data
 }
