@@ -4,6 +4,33 @@
 
 ---
 
+## 🟢 2026-07-17 (집PC 새벽) — #809 **R1~R9 적대검증 완주 · main 머지 완료** ✅
+
+> **다음 세션 첫 읽기.** #809 완결 — 다음은 대기 슬라이스 큐(#810 입금매핑부터).
+
+### 완료
+- **PR #820 머지**(main `b0881ea94`) · #809·#821·#822 close · CI 36/36 green.
+- **OPUS 4.8 ↔ CODEX SOL 5.6 R1~R9 적대검증 완주** — lineId 왕복 계약으로 7라운드 미수렴 근본해소 → R8(OPUS) fix 2차(신규 4+잔여 3: VAT·miss·구성품) → R9(CODEX SOL) 종합 15건(BLOCKING 1·HIGH 7)+잔여 3건 전건 fix.
+- 최종 검증: BE genuine **1361/0** · FE typecheck 0·vitest **788/0** · 라이브 **35/35** · 견적 race 20x shuffle green.
+
+### 🔑 이번 회차 핵심 교훈 (메모리 박제됨)
+- **PM 페이싱 조절** — 개발책임자 지적 "하루종일 한 슬라이스 iterate = PM 조절 실패" → [[feedback_pm_regulate_slice_effort]]. 3라운드+ "fix가 새 결함" 시 개발책임자께 바운드옵션 제시·한 코너씩 PM-QA 지양→적대라운드 종합발견+BATCH.
+- **R9 CODEX 종합이 PM one-corner QA 놓친 BLOCKING+HIGH 다수 포착** — 종합 적대검증의 가치 실증.
+- **CI가 로컬 vitest 놓친 flaky race 포착** — 로컬 788 green이나 CI RED(견적 hydrate-창 race). 로컬≠CI 재확인.
+- **회사PC 미완 WIP 이어받기** — [[feedback_incomplete_work_wip_branch_cross_pc]] 대로 git pull+sync 먼저·fresh 재디스패치·WIP diff 참조만.
+
+### 🔴 세션 정리 미완 (사용자 조치 대기)
+- **WIP 브랜치 `wip/809-r8-fix2-incomplete` 삭제 대기** — obsolete(머지 완료). 자동모드 classifier가 브랜치 삭제 차단(사용자 미명명) → 사용자가 `git push origin --delete wip/809-r8-fix2-incomplete` 또는 GitHub UI로 삭제 권장. `feat/809-partner-product-price-memory` 도 머지됨(삭제 가능).
+
+### 🔵 다음 대기 슬라이스 큐 (개발책임자 확정·순차)
+**#810**(입금매핑·결정 6건) → **#826**(주문서 통합·슬6 이식) → **#827**(레거시 GAS·🔴Google 자격 블로커) → **#825**(전역 입력 UX·결정 5건) → **#824**(품목행 공급가액·부가세) → **#823**(매출배분 거래처 검증) → 전표 거래처 필수화 → **#828**(role=row orphan) → #773 잔여 · #816 후속.
+
+### ⚙️ 환경 (DESKTOP-8SO2GTL 집PC · 세션 종료 시점)
+- Docker 스택 가동 중(게이트웨이 :8080·slip :18086·postgres :5432). slip-service = R9 fix 배포본(f77363ed8 코드).
+- codex `gpt-5.6-sol`/`gpt-5.6-luna` 정상 · CLI 0.144.4. 라이브 QA 스샷 r2~r9-postfix 누적(불가침).
+
+---
+
 ## 🔵 2026-07-16 (회사PC) — #809 **R8 리뷰+fix 1차 완주 · R8 fix 2차 중단 지점** (집PC 재개)
 
 > **다음 세션(집PC) 첫 읽기(최우선).** 개발책임자 지시: **"집PC에서 재개"**.
