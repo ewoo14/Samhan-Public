@@ -101,6 +101,29 @@ public final class BundleLineageResolver {
         }
     }
 
+    /**
+     * 이 문서(캡처된 기존 라인들)가 세트 계보(BUNDLE_SET) 를 <b>하나라도</b> 보유하는지.
+     *
+     * <p>[D-R8-13] "계보 보유 문서" 판정용. 요청 레벨 lineId 계약 마커는 클라이언트가
+     * <i>자기 자신에 대해</i> 하는 선언(자기신고)일 뿐이므로, 마커가 있어도 계보 보유 문서에서
+     * lineId 를 한 개도 싣지 않은 요청은 R8-QA-1 의 조용한 계보 파괴(세트 전표 무수정 왕복 →
+     * 전 라인 신규 재생성 → parent/set_head 소실)와 구분되지 않는다.
+     * {@link LineIdContractGate#requireLineIdsForLineage} 가 이 값을 근거로 그 우회를 차단한다.
+     *
+     * <p>계보 <b>없는</b> 평면 문서는 전 라인 교체(lineId 0개)가 정상 저장이므로 {@code false} 다 —
+     * 게이트가 평면 문서를 오탐으로 막지 않도록 여기서 계보 유무를 정확히 가른다.
+     *
+     * @return 캡처된 기존 라인 중 하나라도 세트 구성품(비어있지 않은 parentSetModel)이면 true
+     */
+    public boolean hasBundleLineage() {
+        for (BundleLineage lineage : lineagesById.values()) {
+            if (lineage.isBundleComponent()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /** 세트 구성품 여부. parent model 이 서버 영속 계보의 권위값이다. */
     public static boolean isBundleComponent(SlipLine line) {
         return line != null && line.getParentSetModel() != null

@@ -221,6 +221,15 @@ public class EstimateService {
             List<EstimateLine> existing = List.copyOf(estimate.getLines());
             validateLineIds(existing, req.lines());
             BundleLineageResolver bundleLineage = BundleLineageResolver.fromEstimateLines(existing);
+            // [D-R8-13] 마커는 자기신고 — 기존 라인 제거 이전에 계보 보유 견적에서 실제로 lineId 를
+            // 실었는지 내용과 대조한다. 계보 보유 + 요청 non-null lineId 전무 = R8-QA-1 파괴 경로와
+            // 구분 불가 → 400 거부(전표 미러와 동일 계약). 평면 견적·부분 편집은 통과시킨다.
+            LineIdContractGate.requireLineIdsForLineage(
+                    bundleLineage.hasBundleLineage(),
+                    (int) req.lines().stream()
+                            .map(UpdateEstimateRequest.EstimateLineUpdate::lineId)
+                            .filter(Objects::nonNull)
+                            .count());
             for (EstimateLine line : existing) {
                 estimate.removeLine(line);
             }

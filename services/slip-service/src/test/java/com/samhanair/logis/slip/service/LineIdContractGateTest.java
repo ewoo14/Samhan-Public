@@ -69,6 +69,53 @@ class LineIdContractGateTest {
                 });
     }
 
+    // -------------------------------------------------- [D-R8-13] 마커 vs 라인 내용 대조
+
+    /**
+     * 🔴 <b>계보 보유 문서 + lineId 전무 = 거부</b> — 마커(자기신고)를 라인 내용과 대조한다.
+     *
+     * <p>마커만 보고 통과시키면 스테일/악성 클라이언트가 {@code lineIdContract=true} 를 실은 채
+     * 계보 보유 문서에서 lineId 를 하나도 안 실어 세트 계보를 전량 파괴한다(R8-QA-13). 계보 보유와
+     * lineId 전무가 동시에 성립하면 그 파괴 경로와 구분되지 않으므로 400 으로 거부한다.
+     */
+    @Test
+    void requireLineIdsForLineage_lineageDocWithZeroLineIds_rejects() {
+        assertThatThrownBy(() -> LineIdContractGate.requireLineIdsForLineage(true, 0))
+                .isInstanceOfSatisfying(BusinessException.class, ex ->
+                        assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
+    }
+
+    /** 🔴 오탐 방지 — 계보 <b>없는</b> 평면 문서의 전 라인 교체(lineId 0개)는 정상 허용. */
+    @Test
+    void requireLineIdsForLineage_plainDocWithZeroLineIds_isAccepted() {
+        assertThatCode(() -> LineIdContractGate.requireLineIdsForLineage(false, 0))
+                .doesNotThrowAnyException();
+    }
+
+    /** 🔴 오탐 방지 — 계보 보유 문서라도 lineId 를 <b>일부라도</b> 실은 부분 편집은 정상 허용. */
+    @Test
+    void requireLineIdsForLineage_lineageDocWithSomeLineIds_isAccepted() {
+        assertThatCode(() -> LineIdContractGate.requireLineIdsForLineage(true, 1))
+                .doesNotThrowAnyException();
+    }
+
+    /**
+     * 거부 사유는 {@link #rejectionMessageStatesCauseAndAction} 의 마커 거부와 <b>다른</b> 조치를
+     * 안내한다 — "앱 업데이트" 가 아니라 <b>화면 새로고침</b>이며 "세트 구성품" 을 포함한다.
+     */
+    @Test
+    void requireLineIdsForLineage_rejectionMessageStatesRefreshAction() {
+        assertThatThrownBy(() -> LineIdContractGate.requireLineIdsForLineage(true, 0))
+                .isInstanceOfSatisfying(BusinessException.class, ex -> {
+                    assertThat(ex.getMessage())
+                            .as("결과 — 무엇을 잃을 뻔했는가")
+                            .contains("세트 구성품");
+                    assertThat(ex.getMessage())
+                            .as("조치 — 앱 업데이트가 아니라 화면 새로고침")
+                            .contains("새로고침");
+                });
+    }
+
     // ---------------------------------------------------------------- wire 전제 (Jackson)
 
     /**

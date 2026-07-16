@@ -78,6 +78,15 @@ public class SlipUpdateService {
 
         String before = summarize(slip);
         BundleLineageResolver bundleLineage = BundleLineageResolver.fromSlipLines(slip.getLines());
+        // [D-R8-13] 마커는 자기신고 — 라인 교체 이전에 계보 보유 문서에서 실제로 lineId 를 실었는지
+        // 내용과 대조한다. 계보 보유 + 요청 non-null lineId 전무 = R8-QA-1 파괴 경로와 구분 불가 →
+        // 400 거부(매출 미러와 동일 계약). 평면 문서·부분 편집은 requireLineIdsForLineage 가 통과시킨다.
+        LineIdContractGate.requireLineIdsForLineage(
+                bundleLineage.hasBundleLineage(),
+                (int) request.lines().stream()
+                        .map(SlipUpdateRequest.LineRequest::lineId)
+                        .filter(Objects::nonNull)
+                        .count());
         List<SlipLine> replacementLines = request.lines().stream()
                 .map(line -> toLine(slip, line))
                 .toList();

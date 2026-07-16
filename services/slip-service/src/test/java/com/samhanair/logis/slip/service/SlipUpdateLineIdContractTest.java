@@ -147,39 +147,44 @@ class SlipUpdateLineIdContractTest {
     // ------------------------------------------- 마커 존재 = lineId 계약 활성 (매출)
 
     /**
-     * 🔴 <b>D-R8-9 오탐 제거의 핵심</b> — 계보 보유 전표에서 전 라인을 지우고 전부 새 라인으로
-     * 교체하는 단일 저장은 lineId 가 <b>0개</b>지만 <b>정상</b>이다.
+     * 🔴 <b>D-R8-13 — 마커가 계보 파괴를 우회하지 못한다</b>: 계보 보유 전표에서 lineId 를 한 개도
+     * 싣지 않은 전 라인 교체는 마커가 있어도 <b>거부</b>한다.
      *
-     * <p>D-R8-6 의 "lineId 개수" 기준에서 이 저장은 구 클라이언트의 통째 PUT 과 구분되지 않아
-     * 400 이었다. 사용자는 이유를 알 수 없는 400 을 보고, 우회는 "기존 라인 1개를 남겨 저장한 뒤
-     * 두 번째 저장에서 제거" 뿐이었다. 마커가 그 구분을 대신하므로 이제 한 번에 저장된다.
+     * <p><b>D-R8-9 로부터의 개정</b>: D-R8-9 는 이 케이스(전 라인 교체 · lineId 0개)를 "오탐 제거"
+     * 명목으로 통째 허용했다. 그러나 R8-QA-13 이 라이브에서 실증한 것 — 그 허용은 <b>계보 보유
+     * 문서</b>에서 마커라는 다른 문으로 R8-QA-1(세트 전표 무수정 왕복 → 계보 전량 소실)을
+     * 재개방한다. 마커({@link LineIdContractGate#require})는 클라이언트 <i>자기신고</i>일 뿐이므로,
+     * 계보 보유 문서에서 실제로 lineId 를 실었는지는
+     * {@link LineIdContractGate#requireLineIdsForLineage} 가 <b>내용과 대조</b>해 별도 검증한다.
+     *
+     * <p>계보 <b>없는</b> 평면 문서의 전 라인 교체는 여전히 정상이다 —
+     * {@link #salesPut_onPlainSlip_withMarker_withoutLineIds_remainsAccepted} 가 오탐 없음을 고정한다.
      */
     @Test
-    void salesPut_withMarker_andNoLineIdAtAll_replacesEveryLineWithoutInheritingLineage() {
+    void salesPut_onBundleSlip_withMarker_butNoLineIdAtAll_isRejected() {
         Slip slip = bundleSalesSlip();
         stubLoad(slip);
-        when(slipRepository.saveAndFlush(any(Slip.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        // 전 라인 삭제 + 전부 신규 라인 — lineId 를 하나도 싣지 않는다.
+        // 전 라인 삭제 + 전부 신규 라인 — 마커는 싣되 lineId 는 하나도 싣지 않는다(R8-QA-13 재현).
         List<SlipUpdateRequest.LineRequest> allNew = List.of(
                 new SlipUpdateRequest.LineRequest(FRESH_PRODUCT, "교체 품목 A", "NEW-1", null,
                         2, new BigDecimal("150000"), "전 라인 교체", null),
                 new SlipUpdateRequest.LineRequest(PLAIN_PRODUCT, "교체 품목 B", "NEW-2", null,
                         1, new BigDecimal("90000"), "전 라인 교체", null));
 
-        assertThatCode(() -> salesUpdateService.update(
+        assertThatThrownBy(() -> salesUpdateService.update(
                 slip.getId(), request(slip, allNew, true), UUID.randomUUID(), "전 라인 교체자"))
-                .doesNotThrowAnyException();
+                .isInstanceOfSatisfying(BusinessException.class, ex -> {
+                    assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT);
+                    // require 의 "앱 업데이트" 와 다른 조치 — 화면 새로고침을 안내한다.
+                    assertThat(ex.getMessage()).contains("세트 구성품", "새로고침");
+                });
 
-        verify(slipRepository).saveAndFlush(any(Slip.class));
+        // 거부는 교체 이전에 — 저장이 한 건도 발생하면 안 되고 원 세트 계보가 전량 살아있어야 한다
+        // (R8-QA-1 이 마커라는 다른 문으로 재개방되지 않았음을 실증).
+        verify(slipRepository, never()).saveAndFlush(any());
         assertThat(slip.getLines()).hasSize(2);
-        // 계보 "정상" = 신규 라인이 사라진 세트의 계보를 물려받지 않는 것. 승계했다면 그게 결함이다.
-        assertThat(slip.getLines()).allSatisfy(line -> {
-            assertThat(line.getParentSetModel()).isNull();
-            assertThat(line.isSetHead()).isFalse();
-        });
-        assertThat(slip.getLines()).extracting(SlipLine::getProductId)
-                .containsExactly(FRESH_PRODUCT, PLAIN_PRODUCT);
+        assertThat(slip.getLines()).allMatch(line -> SET_MODEL.equals(line.getParentSetModel()));
     }
 
     /**
@@ -284,20 +289,59 @@ class SlipUpdateLineIdContractTest {
                 assertThat(line.getParentSetModel()).isEqualTo(SET_MODEL));
     }
 
-    /** 매입 미러도 계보 보유 전표의 전 라인 교체를 허용한다 (D-R8-9 오탐 제거의 매입측). */
+    /**
+     * 매입 미러 — 계보 보유 매입 전표 + 마커 + lineId 전무도 거부한다 (D-R8-13). 매입/매출
+     * 비대칭은 이 PR 의 재발 패턴이므로 매출
+     * {@link #salesPut_onBundleSlip_withMarker_butNoLineIdAtAll_isRejected} 와 <b>같은</b>
+     * 계약(같은 사유 문구 포함)이어야 한다.
+     */
     @Test
-    void purchasePut_withMarker_andNoLineIdAtAll_isAccepted() {
+    void purchasePut_onBundleSlip_withMarker_butNoLineIdAtAll_isRejected() {
         Slip slip = bundlePurchaseSlip();
+        stubLoad(slip);
+
+        assertThatThrownBy(() -> purchaseUpdateService.update(
+                slip.getId(), request(slip, linesWithoutIds(slip), true),
+                UUID.randomUUID(), "전 라인 교체자"))
+                .isInstanceOfSatisfying(BusinessException.class, ex -> {
+                    assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT);
+                    assertThat(ex.getMessage()).contains("세트 구성품", "새로고침");
+                });
+
+        verify(slipRepository, never()).saveAndFlush(any());
+        assertThat(slip.getLines()).allMatch(line -> SET_MODEL.equals(line.getParentSetModel()));
+    }
+
+    /**
+     * 🔴 <b>오탐 방지 (D-R8-13)</b> — 계보 보유 전표라도 lineId 를 <b>일부라도</b> 실은 부분 편집은
+     * 정상이다. "계보 보유" 와 "lineId 전무" 가 <b>동시에</b> 성립할 때만 거부한다.
+     *
+     * <p>이 케이스가 없으면 게이트가 "계보 보유 문서면 무조건 거부" 로 과잉 조여도 green 이 되어,
+     * 세트 전표에 행 하나를 추가·수정하는 정상 편집까지 400 으로 막는 회귀를 잡지 못한다.
+     */
+    @Test
+    void salesPut_onBundleSlip_withMarker_andSomeLineIds_isAccepted() {
+        Slip slip = bundleSalesSlip();
         stubLoad(slip);
         when(slipRepository.saveAndFlush(any(Slip.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        assertThatCode(() -> purchaseUpdateService.update(
-                slip.getId(), request(slip, linesWithoutIds(slip), true),
-                UUID.randomUUID(), "전 라인 교체자"))
+        // 첫 라인만 lineId 유지(계보 승계), 둘째는 신규 라인(lineId null) — requestedLineIdCount = 1 > 0.
+        UUID keptLineId = slip.getLines().get(0).getId();
+        List<SlipUpdateRequest.LineRequest> partial = List.of(
+                new SlipUpdateRequest.LineRequest(COMPONENT_PRODUCT, "실내기", "COMP-1", null,
+                        1, new BigDecimal("330000"), "유지", keptLineId),
+                new SlipUpdateRequest.LineRequest(FRESH_PRODUCT, "신규 단품", "NEW-9", null,
+                        1, new BigDecimal("120000"), "편집 중 추가", null));
+
+        assertThatCode(() -> salesUpdateService.update(
+                slip.getId(), request(slip, partial, true), UUID.randomUUID(), "부분 편집자"))
                 .doesNotThrowAnyException();
 
-        assertThat(slip.getLines()).allSatisfy(line ->
-                assertThat(line.getParentSetModel()).isNull());
+        verify(slipRepository).saveAndFlush(any(Slip.class));
+        // 유지된 첫 라인은 세트 계보 승계, 추가된 둘째 라인은 평면.
+        assertThat(slip.getLines()).hasSize(2);
+        assertThat(slip.getLines().get(0).getParentSetModel()).isEqualTo(SET_MODEL);
+        assertThat(slip.getLines().get(1).getParentSetModel()).isNull();
     }
 
     // ---------------------------------------------------------------- 픽스처

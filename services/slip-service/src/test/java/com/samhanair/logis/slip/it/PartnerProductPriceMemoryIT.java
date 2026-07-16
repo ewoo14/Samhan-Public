@@ -1292,17 +1292,21 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
     }
 
     /**
-     * [D-R8-9 오탐 제거 — 실 PostgreSQL 회귀]
+     * [D-R8-13 — 실 PostgreSQL 회귀] 마커가 계보 파괴를 우회하지 못한다.
      *
-     * <p>계보 보유 세트 전표에서 <b>전 라인을 지우고 전부 새 라인으로 교체</b>하는 단일 저장은
-     * lineId 가 0개지만 <b>정상</b>이다. D-R8-6 의 "lineId 개수" 기준에서 이 저장은 구 클라이언트의
-     * 통째 PUT 과 구분되지 않아 400 이었고, 사용자는 이유를 알 수 없는 거부를 봤다.
+     * <p><b>D-R8-9 로부터의 개정</b>: D-R8-9 는 계보 보유 세트 전표의 "전 라인 교체(lineId 0개)"를
+     * 오탐 제거 명목으로 허용했다. 그러나 R8-QA-13 이 라이브에서 실증한 것 — 그 허용은 마커라는
+     * 다른 문으로 R8-QA-1(세트 전표 무수정 왕복 → 계보 전량 소실)을 재개방한다. 마커
+     * ({@code lineIdContract=true})는 클라이언트 <i>자기신고</i>일 뿐이므로, 계보 보유 문서에서 실제로
+     * lineId 를 실었는지는 서버가 내용과 대조해 별도 검증한다.
      *
-     * <p>마커가 그 구분을 대신하므로 이제 한 번에 저장된다. 저장 결과는 <b>평면 라인</b>이어야
-     * 한다 — 새 라인이 사라진 세트의 계보를 물려받으면 그게 곧 거짓 세트 각인이다.
+     * <p>따라서 계보 보유 전표 + 마커 + lineId 전무는 이제 <b>400</b> 으로 거부하고, 원 세트 계보와
+     * 구성품 기억(0건)이 <b>전량 보존</b>돼야 한다. 계보 <b>없는</b> 평면 문서의 전 라인 교체는
+     * 여전히 정상이다({@link com.samhanair.logis.slip.service.SlipUpdateLineIdContractTest} 의
+     * plain 오라클 + 게이트 단위 테스트가 오탐 없음을 고정).
      */
     @Test
-    void bundleSlipFullLineReplacementWithMarker_isAcceptedAndDropsLineage() {
+    void bundleSlipFullLineReplacementWithMarker_butNoLineIds_isRejectedToPreventLineageDestruction() {
         UUID partnerId = UUID.randomUUID();
         UUID bundleProductId = UUID.randomUUID();
         UUID firstComponentId = UUID.randomUUID();
@@ -1313,27 +1317,27 @@ class PartnerProductPriceMemoryIT extends AbstractPostgresIT {
         var created = slipService.create(
                 slipRequest(SlipType.OUTBOUND, partnerId, bundleProductId,
                         new BigDecimal("550000.00")),
-                "actor-r8-9", "D-R8-9 전 라인 교체");
+                "actor-r8-13", "D-R8-13 전 라인 교체 거부");
         try {
             awaitPriceMemory(partnerId, bundleProductId);
 
-            // 전 라인 교체 — 마커는 싣고 lineId 는 하나도 싣지 않는다.
-            var updated = salesSlipUpdateService.update(
+            // 전 라인 교체 — 마커는 싣고 lineId 는 하나도 싣지 않는다(R8-QA-13 재현).
+            assertThatThrownBy(() -> salesSlipUpdateService.update(
                     created.id(),
                     updateRequest(created.id(), created, List.of(
                             new SlipUpdateRequest.LineRequest(
                                     replacementProductId, "교체 단품", "PLAIN-809", null,
                                     2, new BigDecimal("150000.00"), "전 라인 교체", null)),
                             true),
-                    UUID.randomUUID(), "전 라인 교체자");
+                    UUID.randomUUID(), "전 라인 교체자"))
+                    .isInstanceOfSatisfying(BusinessException.class, ex ->
+                            assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT));
             awaitPriceMemoryExecutorIdle();
 
-            // 400 이 아니라 200 — 이것이 D-R8-9 가 제거한 오탐이다.
-            assertThat(updated.lines()).hasSize(1);
-            // 새 라인은 사라진 세트의 계보를 물려받지 않는다.
-            assertThat(updated.lines().get(0).setHead()).isFalse();
-            assertThat(updated.lines().get(0).parentSetModel()).isNull();
-            assertThat(updated.lines().get(0).productId()).isEqualTo(replacementProductId);
+            // 계보 그대로 + 구성품 기억 0건 — 마커 우회 경로가 실 DB 에서 차단됐음을 실증.
+            assertBundleSlipLineage(created.id(), firstComponentId, secondComponentId);
+            assertOnlyParentBundleMemory(partnerId, bundleProductId,
+                    firstComponentId, secondComponentId);
         } finally {
             cleanupSlip(created.id());
         }

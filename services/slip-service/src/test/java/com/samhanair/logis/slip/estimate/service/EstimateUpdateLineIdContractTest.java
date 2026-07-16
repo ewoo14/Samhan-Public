@@ -1,6 +1,7 @@
 package com.samhanair.logis.slip.estimate.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -14,6 +15,7 @@ import com.samhanair.logis.common.exception.ErrorCode;
 import com.samhanair.logis.shared.realtime.collection.CollectionRealtimePublisher;
 import com.samhanair.logis.slip.client.ProductClient;
 import com.samhanair.logis.slip.estimate.domain.Estimate;
+import com.samhanair.logis.slip.estimate.domain.EstimateLine;
 import com.samhanair.logis.slip.estimate.repository.EstimateRepository;
 import com.samhanair.logis.slip.estimate.revision.service.EstimateRevisionService;
 import com.samhanair.logis.slip.estimate.web.dto.UpdateEstimateRequest;
@@ -45,6 +47,9 @@ class EstimateUpdateLineIdContractTest {
     private static final UUID PARTNER_ID = UUID.randomUUID();
     private static final UUID NEW_PARTNER_ID = UUID.randomUUID();
     private static final UUID PRODUCT_ID = UUID.randomUUID();
+    private static final UUID COMPONENT_PRODUCT = UUID.randomUUID();
+    private static final UUID SECOND_COMPONENT = UUID.randomUUID();
+    private static final String SET_MODEL = "SET-809";
 
     private final EstimateRepository estimateRepository = mock(EstimateRepository.class);
     private final EstimateNumberService estimateNumberService = mock(EstimateNumberService.class);
@@ -136,7 +141,96 @@ class EstimateUpdateLineIdContractTest {
         assertThat(estimate.getPartnerName()).isEqualTo("원 거래처");
     }
 
+    /**
+     * 🔴 <b>D-R8-13 견적 미러 — 마커가 계보 파괴를 우회하지 못한다</b>: 계보 보유 견적에서 lineId 를
+     * 한 개도 싣지 않은 전 라인 교체는 마커가 있어도 거부한다. 전표 미러
+     * ({@code SlipUpdateLineIdContractTest.salesPut_onBundleSlip_withMarker_butNoLineIdAtAll_isRejected})
+     * 와 <b>같은</b> 계약이어야 한다 — 전표/견적 비대칭은 이 PR 의 8라운드 재발 패턴이다.
+     *
+     * <p>거부는 {@code editHeader} 이후·<b>기존 라인 제거 이전</b>에 일어난다. 헤더는 인메모리로
+     * 이미 바뀌지만 트랜잭션 롤백이 지운다(실 롤백은 IT 가 담당). 이 단위 테스트가 잠그는 것은
+     * <b>라인 제거·라인 검증(productClient)·가격기억·버전 캡처가 한 건도 발생하지 않는다</b>는 것,
+     * 그리고 원 세트 계보가 전량 살아있다는 것이다.
+     */
+    @Test
+    void update_onBundleEstimate_withMarker_butNoLineIdAtAll_isRejected() {
+        Estimate estimate = bundleEstimate();
+        when(estimateRepository.findById(estimate.getId())).thenReturn(Optional.of(estimate));
+
+        // 마커는 싣되 lineId 는 하나도 싣지 않은 전 라인 교체 (R8-QA-13 견적 재현).
+        UpdateEstimateRequest allNew = new UpdateEstimateRequest(
+                PARTNER_ID, "세트 견적 거래처", null, null, null, "전 라인 교체",
+                List.of(new UpdateEstimateRequest.EstimateLineUpdate(
+                        PRODUCT_ID, "교체 단품", "PLAIN-809", null, 1,
+                        new BigDecimal("150000"), null, null, false, null)),
+                true);
+
+        assertThatThrownBy(() -> service.update(estimate.getId(), allNew, "user-set", "전 라인 교체자"))
+                .isInstanceOfSatisfying(BusinessException.class, ex -> {
+                    assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.INVALID_INPUT);
+                    // require 의 "앱 업데이트" 와 다른 조치 — 화면 새로고침을 안내한다.
+                    assertThat(ex.getMessage()).contains("세트 구성품", "새로고침");
+                });
+
+        // 원 세트 계보가 전량 살아있어야 한다 — 거부가 라인 제거보다 앞섰다는 실증.
+        assertThat(estimate.getLines()).hasSize(2);
+        assertThat(estimate.getLines()).allMatch(line -> SET_MODEL.equals(line.getParentSetModel()));
+        verify(priceMemoryService, never()).rememberBatchAfterCommit(any(), any());
+        verifyNoInteractions(estimateRevisionService, productClient);
+    }
+
+    /**
+     * 🔴 오탐 방지 (D-R8-13) — 계보 보유 견적이라도 lineId 를 <b>일부라도</b> 실은 부분 편집은 정상.
+     * "계보 보유" 와 "lineId 전무" 가 동시에 성립할 때만 거부한다.
+     */
+    @Test
+    void update_onBundleEstimate_withMarker_andSomeLineIds_isAccepted() {
+        Estimate estimate = bundleEstimate();
+        when(estimateRepository.findById(estimate.getId())).thenReturn(Optional.of(estimate));
+        when(productClient.lookup(any())).thenAnswer(inv -> java.util.List.of());
+
+        UUID keptLineId = estimate.getLines().get(0).getId();
+        UpdateEstimateRequest partial = new UpdateEstimateRequest(
+                PARTNER_ID, "세트 견적 거래처", null, null, null, "부분 편집",
+                List.of(new UpdateEstimateRequest.EstimateLineUpdate(
+                        COMPONENT_PRODUCT, "실내기", "COMP-1", null, 1,
+                        new BigDecimal("330000"), null, null, false, keptLineId)),
+                true);
+
+        // 계보 보유 + lineId 1개 = requestedLineIdCount 1 > 0 → 게이트 통과(예외 없음).
+        assertThatCode(() -> service.update(estimate.getId(), partial, "user-set", "부분 편집자"))
+                .doesNotThrowAnyException();
+
+        // 게이트가 통과했으므로 라인 교체가 실제로 진행돼 후속 기억 배치까지 도달한다
+        // (거부됐다면 이 지점에 도달하지 못한다) — 게이트가 계보 보유 문서를 과잉 거부하지 않음을 고정.
+        verify(priceMemoryService).rememberBatchAfterCommit(any(), any());
+    }
+
     // ---------------------------------------------------------------- 픽스처
+
+    /**
+     * 세트 계보(SET-809) 를 보유한 견적 — head(COMP-1) + 구성품(COMP-2) 2행. lineId 대조 게이트가
+     * 계보를 인식하려면 영속 id 가 있어야 하므로 auditing 이 채우는 id 를 반영으로 심는다.
+     */
+    private Estimate bundleEstimate() {
+        Estimate estimate = Estimate.create("2026/07/16-2", LocalDate.of(2026, 7, 16), 2,
+                PARTNER_ID, "세트 견적 거래처", null, null, null, null, "user-1");
+        ReflectionTestUtils.setField(estimate, "id", UUID.randomUUID());
+        addBundleLine(estimate, 1, COMPONENT_PRODUCT, "실내기", "COMP-1",
+                new BigDecimal("330000"), true);
+        addBundleLine(estimate, 2, SECOND_COMPONENT, "실외기", "COMP-2",
+                new BigDecimal("220000"), false);
+        return estimate;
+    }
+
+    private void addBundleLine(Estimate estimate, int lineNo, UUID productId, String name,
+                               String model, BigDecimal unitPrice, boolean setHead) {
+        EstimateLine line = EstimateLine.create(estimate, lineNo, productId, name, model,
+                null, 1, unitPrice, "구성품");
+        line.assignBundleComponent(SET_MODEL, setHead);
+        ReflectionTestUtils.setField(line, "id", UUID.randomUUID());
+        estimate.addLine(line);
+    }
 
     private Estimate persistedEstimate() {
         Estimate estimate = Estimate.create("2026/07/16-1", LocalDate.of(2026, 7, 16), 1,
