@@ -3146,6 +3146,33 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     })
   }
 
+  // POST /api/products/lookup — productId batch 조회 (BE ProductController.lookup, ids ≤ 100).
+  // 전표 수정 거래처 변경 재조회의 카탈로그 판매가 소스(R8 잔여 1 — miss fallback).
+  if (method === 'POST' && url.endsWith('/api/products/lookup')) {
+    const body = parseMockBody(config)
+    const ids = body['ids']
+    if (!Array.isArray(ids) || ids.length < 1 || ids.length > 100) {
+      return mockError(400, 'INVALID_INPUT', 'ids는 1~100개여야 합니다.')
+    }
+    const idSet = new Set(ids.map((id) => String(id)))
+    return envelope(
+      Object.values(MOCK_PRODUCTS_BY_MODEL)
+        .filter((p) => idSet.has(p.productId))
+        .map((p) => ({
+          id: p.productId,
+          name: p.productName,
+          modelName: p.modelName,
+          productCode: null,
+          categoryId: p.categoryId ?? 'cat-home',
+          sellingPrice: p.sellingPrice,
+          status: 'ACTIVE',
+          goods: p.goods ?? true,
+          modelCode: p.modelCode ?? p.modelName,
+          productType: p.productType ?? 'SINGLE',
+        })),
+    )
+  }
+
   // GET /api/products?q=... — AC-2 품목 자동완성 검색 (product-service `/products?q=` 프록시)
   if (method === 'GET' && (url.endsWith('/api/products') || url.includes('/api/products?'))) {
     const q = String(config.params?.['q'] ?? '').toLowerCase()

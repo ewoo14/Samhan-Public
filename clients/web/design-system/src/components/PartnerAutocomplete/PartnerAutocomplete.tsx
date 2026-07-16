@@ -52,6 +52,8 @@ export interface PartnerAutocompleteProps {
   minChars?: number
   /** 입력 후 서버 검색까지 debounce 시간 ms (default: 250). */
   debounceMs?: number
+  /** 내부 input 의 data-testid (예: 협업 필드 식별자). */
+  inputTestId?: string
 }
 
 export const PartnerAutocomplete = forwardRef<

@@ -3,7 +3,7 @@ import {
   createDocCoeditProvider,
   type DocCoeditProvider,
 } from '../realtime/createCoeditProvider'
-import { coeditHeaderValues, coeditLinesToEditLines } from './SlipDetailPage'
+import { bundleComponentLineIds, coeditHeaderValues, coeditLinesToEditLines } from './SlipDetailPage'
 import { toServerLineIdSet } from '../realtime/coeditLineIds'
 import type { SlipDetail } from '../api/slip'
 
@@ -192,5 +192,31 @@ describe('SlipDetailPage — lineId 왕복 계약 (R8-FE-2)', () => {
     expect(next[1]!.lineId).toBe(SERVER_LINE_2)
     expect(next[1]!.productId).toBe(PRODUCT_3)
     provider.destroy()
+  })
+})
+
+describe('bundleComponentLineIds — 거래처 변경 재조회의 세트 구성품 제외 (R8 재fix 회귀 교정)', () => {
+  it('parentSetModel 비공백 라인만 제외한다 — setHead 무관(head 도 구성품, BE isBundleComponent 미러)', () => {
+    const ids = bundleComponentLineIds([
+      // 평면(단품) 라인 — 재가격 대상 유지.
+      { id: SERVER_LINE_1, parentSetModel: null },
+      // 세트 head — 첫 구성품(setHead=true 지만 parentSetModel 비공백) → 제외.
+      // 라이브 실증: 재조회가 닿으면 배분가 88,000 → 80,000(−9.09%) 변형(전표 2026/07/16-94).
+      { id: SERVER_LINE_2, parentSetModel: 'SET-HM2WAY' },
+      // 세트 tail 구성품 → 제외.
+      { id: SERVER_LINE_3, parentSetModel: 'SET-HM2WAY' },
+    ])
+    expect(ids.has(SERVER_LINE_1)).toBe(false)
+    expect(ids.has(SERVER_LINE_2)).toBe(true)
+    expect(ids.has(SERVER_LINE_3)).toBe(true)
+  })
+
+  it('공백 parentSetModel·undefined·id 없는 라인은 제외 집합에 넣지 않는다 (BE isBlank 미러)', () => {
+    const ids = bundleComponentLineIds([
+      { id: SERVER_LINE_1, parentSetModel: '  ' }, // 공백 = 계보 아님(BE isBlank)
+      { id: SERVER_LINE_2 },                        // 필드 부재 = 평면
+      { id: null, parentSetModel: 'SET-X' },        // id 없는 라인은 집합화 불가
+    ])
+    expect(ids.size).toBe(0)
   })
 })

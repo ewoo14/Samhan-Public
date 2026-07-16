@@ -44,6 +44,7 @@ import { CollaborativeSlipInput } from '../components/collab/CollaborativeSlipIn
 import { createDocCoeditProvider, type DocCoeditProvider } from '../realtime/createCoeditProvider'
 import {
   coeditLineIdsAreStale,
+  reseedCoeditLineIds,
   resolveServerLineId,
   toServerLineIdSet,
 } from '../realtime/coeditLineIds'
@@ -680,14 +681,22 @@ export function EstimateFormPage() {
       const serverLineCount = toDraftLinesFromEstimate(estimate).length
       const providerLineCount = nextProvider.items.toArray().length
       // 슬1은 협업 중 라인 추가/삭제를 잠가 index seed-lock 을 유지한다.
-      // provider 라인수와 서버 라인수가 다르면 stale snapshot 으로 보고 서버 기준 재시드한다.
-      // coeditLineIdsAreStale(): lineId seed 도입 이전에 만들어져 서버에 영속된 Y.Doc — 라인수는
-      // 같아도 lineId 가 전부 클라 랜덤 UUID 라 그대로 두면 전 라인이 신규로 강등돼 계보가
-      // 소실되고, 계보 보유 견적이면 BE requireLineIdContract 가 400 을 낸다(R8-FE-9).
+      // provider 라인수와 서버 라인수가 다르면(구조 변화) server-wins full-seed 한다.
       if (nextProvider.isEmpty()
-        || providerLineCount !== serverLineCount
-        || coeditLineIdsAreStale(nextProvider, knownServerLineIds)) {
+        || providerLineCount !== serverLineCount) {
         seedEstimateCoeditProvider(nextProvider, estimate)
+      } else if (coeditLineIdsAreStale(nextProvider, knownServerLineIds)) {
+        // 라인수는 같은데 lineId 가 전부 클라 랜덤 UUID(lineId seed 이전 구 Y.Doc) — 그대로 두면
+        // 전 라인이 신규로 강등돼 계보가 소실되고 계보 보유 견적이면 BE requireLineIdContract 가
+        // 400(R8-FE-9). ⚠️ 전표 R8 회귀와 동일: full-seed 는 원격 헤더/셀 편집을 파괴하므로
+        // 아이템 lineId 만 서버 기준 in-place 복구하고 나머지 값은 보존한다(reseedCoeditLineIds).
+        reseedCoeditLineIds(
+          nextProvider,
+          toDraftLinesFromEstimate(estimate).map((line) => line.lineId ?? ''),
+        )
+        if (!nextProvider.getHeaderValue('partnerId') && estimate.partnerId) {
+          nextProvider.setHeaderValue('partnerId', estimate.partnerId)
+        }
       } else if (!nextProvider.getHeaderValue('partnerId') && estimate.partnerId) {
         // partnerId 헤더 편입(D-R8-7) 이전에 만들어져 서버에 영속된 Y.Doc 은 그 키가 없다.
         // 재시드 대상이 아니면(예: 라인 0건 견적) 여기서 backfill 하지 않는 한

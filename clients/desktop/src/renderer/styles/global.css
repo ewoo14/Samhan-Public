@@ -106,6 +106,18 @@
   color: var(--ink-secondary, #5C6773);
 }
 
+/*
+ * D-R8-10/R8-QA-11: 전표 수정 인라인 테이블의 거래처 변경 재조회 강조행.
+ * 모바일 카드(.price-memory-refreshed-row)와 동일 토큰(--action-brand 8.02:1, --surface-selected).
+ * <tr> 배경은 브라우저별 편차가 있어 셀(td) 배경 + 첫 셀 좌측 accent 로 표현한다.
+ */
+.slip-line-table tr.price-memory-refreshed-row td {
+  background: var(--surface-selected);
+}
+.slip-line-table tr.price-memory-refreshed-row td:first-child {
+  box-shadow: inset 4px 0 0 var(--action-brand);
+}
+
 .push-permission-denied-toast {
   position: fixed;
   right: 16px;

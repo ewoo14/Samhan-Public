@@ -233,6 +233,27 @@ function AsyncAutocompleteInner<T>(
     }
   }, [])
 
+  /**
+   * disabled 전환 시 열림 상태를 강제로 닫는다 (R8-QA-9).
+   *
+   * <p>포커스된 combobox 가 `open=true` 인 채로 `disabled=true` 로 플립되면 — 예: 전표 수정
+   * 진입 시 focus effect 가 거래처 입력에 `.focus()` 를 준 직후 coedit provider 로딩으로
+   * `disabled` 가 켜질 때 — 브라우저는 요소를 블러하지만 <b>React 는 disabled 요소에 onBlur 를
+   * 발화하지 않는다</b>. 그 결과 `open` 이 닫히지 못하고 고착되어
+   * `displayValue = open ? draft : selectedLabel` 이 빈 draft 를 계속 표시하고
+   * (aria-expanded 도 true 로 고착) 선택된 값이 화면에서 사라진다. disabled 전이를 직접 감지해
+   * blur 타이머·open 을 정리함으로써 그 고착을 끊는다 — displayValue 가 selectedLabel 로 복원된다.
+   */
+  useEffect(() => {
+    if (!disabled) return
+    if (blurTimer.current) {
+      window.clearTimeout(blurTimer.current)
+      blurTimer.current = undefined
+    }
+    setOpen(false)
+    setActiveIndex(-1)
+  }, [disabled])
+
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (!open) return
 

@@ -96,6 +96,7 @@ import {
 } from '../realtime/createCoeditProvider'
 import {
   coeditLineIdsAreStale,
+  reseedCoeditLineIds,
   resolveServerLineId,
   toServerLineIdSet,
 } from '../realtime/coeditLineIds'
@@ -104,6 +105,12 @@ import { usePermissions } from '../hooks/usePermissions'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { usePresence } from '../hooks/usePresence'
 import { OUTBOUND_DELIVERY_TAG_LABELS } from '../api/slipCutoff'
+import {
+  usePartnerPriceRefresh,
+  type PartnerRepriceCandidate,
+} from '../utils/usePartnerPriceRefresh'
+import { lookupProducts } from '../api/productApi'
+import { vatExclusiveOf, vatInclusiveOf } from '../utils/vatPrice'
 
 const SLIP_HEADER_TEXT_FIELDS = new Set(['memo', 'deliveryAddress', 'supervisionAddress', 'projectName'])
 
@@ -298,6 +305,31 @@ function toPurchaseEditLines(slip: SlipDetail): PurchaseEditLine[] {
     unitPrice: String(line.unitPrice),
     note: line.note ?? '',
   }))
+}
+
+/**
+ * 세트 구성품 lineId 집합 — 거래처 변경 재조회 <b>제외</b> 대상 (R8 재fix 회귀 교정).
+ *
+ * <p>BE {@code BundleLineageResolver.isBundleComponent}(parentSetModel 비공백 — <b>setHead 무관</b>,
+ * head 도 구성품) 의 FE 미러. 근거(코드 실증):
+ * <ul>
+ *   <li>구성품은 수정 저장의 가격기억 각인 대상이 <b>아니다</b> — {@code SalesSlipUpdateService}/
+ *       {@code SlipUpdateService.collectPriceMemory:245} 가 isBundleComponent 라인을 제외하고,
+ *       수정 경로에는 BUNDLE_SET 재각인 자체가 없다(SOURCE_BUNDLE_SET 은 생성 전개 시점 전용).</li>
+ *   <li>구성품 배분가는 세트 전개(BundleExpander)가 정한 VAT제외 직기입 값이라, 거래처 변경
+ *       재조회(카탈로그 VAT포함 해석 ÷1.1)가 닿으면 −9.09% 변형된다(라이브 실증: 88,000→80,000).</li>
+ *   <li>수정 화면(전개 후 저장본)에는 BUNDLE 제품 라인이 존재하지 않는다 — "세트 head 재가격" 은
+ *       BUNDLE 제품 라인이 실존하는 <b>생성 폼</b>(SOURCE_BUNDLE_SET 기억 대상)에만 해당한다.</li>
+ * </ul>
+ */
+export function bundleComponentLineIds(
+  lines: ReadonlyArray<{ id?: string | null; parentSetModel?: string | null }>,
+): ReadonlySet<string> {
+  const ids = new Set<string>()
+  for (const line of lines) {
+    if (line.id && (line.parentSetModel ?? '').trim() !== '') ids.add(line.id)
+  }
+  return ids
 }
 
 /**
@@ -537,11 +569,29 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
   const [slipFormCoeditProvider, setSlipFormCoeditProvider] = useState<DocCoeditProvider | null>(null)
   // coedit provider 로딩 중 여부 — 로딩 중에만 입력/저장 잠금(이중소스 방지). 로드 실패(provider=null) 시엔 비-coedit 평문 편집·저장 허용(콜랩 서버 다운 시 영구잠금 회귀 방지, 리뷰 Opus 라운드2 BLOCKING).
   const [slipFormCoeditPending, setSlipFormCoeditPending] = useState(false)
-  // R8-FE-1 심층방어 — 협업 중 라인 구조 잠금(견적 lineStructureLocked 와 동일 계약).
-  // 전표 행삭제는 provider.replaceItems(next) 로 Y.Doc 을 통째 delete+repush 하므로 상대 피어의
-  // 동시 편집 델타를 파괴하고 index seed-lock 도 깬다. 근본 fix(Y.Doc lineId 직독)와 별개로
-  // 견적과 같은 잠금을 회복해 전표/견적 비대칭을 없앤다.
-  const slipCoeditActive = Boolean(slipFormCoeditProvider) || slipFormCoeditPending
+  // [D-R8-11] 협업 중 행삭제 잠금 제거 — 근본 fix(Y.Doc lineId 직독: resolveServerLineId 가 서버
+  // 미보유 lineId 를 신규 라인으로 강등)가 이미 계보를 방어하므로 잠금은 과잉이었다. 잠금은
+  // (1) 수정 모달의 행삭제를 영구 불가로 만들고 (2) 근본 fix 의 라이브 검증을 봉쇄했다. 대신
+  // 툴바 서버측 삭제 경합(R8-QA-12)은 저장 400 을 충돌 안내+최신 불러오기로 처리한다(위 onError).
+
+  // D-R8-10/R8-QA-11: 수정 모달도 거래처 변경 시 가격을 새 거래처 기준으로 재조회한다(폼과 공용 훅).
+  // 미적용 시 옛 거래처의 협상단가가 새 거래처에 각인됐다. CRDT 라인(Y.Doc 파생)이라 새 단가는
+  // provider 에 써서 원격 전파 + doc-sync 되돌림을 피하고, 변경행 강조는 라인 밖 별도 Set 으로 추적한다
+  // (coeditLinesToEditLines 가 라인을 Y.Doc 에서 재생성하므로 라인 필드에 담으면 소실).
+  const partnerReprice = usePartnerPriceRefresh()
+  // 카탈로그 조회(훅 run 이전 단계)까지 포함한 재조회 세션 순서 가드 — 훅의 supersession 은 run()
+  // 호출 순서 기준이라, 카탈로그 fetch 지연으로 이전 선택의 run 이 나중에 시작되면 최신 선택을
+  // 뒤집을 수 있다. 세션 seq 로 카탈로그 단계에서 선차단한다.
+  const modalRepriceSeqRef = useRef(0)
+  const [repriceChangedLineIds, setRepriceChangedLineIds] = useState<ReadonlySet<string>>(() => new Set())
+  const salesEditLinesRef = useRef(salesEditLines)
+  salesEditLinesRef.current = salesEditLines
+  const purchaseEditLinesRef = useRef(purchaseEditLines)
+  purchaseEditLinesRef.current = purchaseEditLines
+  // 편집 세션 종료(두 폼 모두 닫힘) 시 재조회 강조 초기화 — 다음 세션에 이전 강조가 잔존하지 않도록.
+  useEffect(() => {
+    if (!salesEditOpen && !purchaseEditOpen) setRepriceChangedLineIds(new Set())
+  }, [salesEditOpen, purchaseEditOpen])
 
   const detailQuery = useQuery({
     queryKey: ['slip', id],
@@ -706,6 +756,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
       setSalesConflictMessage(null)
       setSalesIsConflict(false)
       setSalesReloadSuccessMessage(null)
+      setRepriceChangedLineIds(new Set())
       setSalesEditOpen(false)
       queryClient.setQueryData(['slip', id], updated)
       await queryClient.invalidateQueries({ queryKey: ['slipAuditLogs', id] })
@@ -725,6 +776,16 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
         setSalesConflictMessage('매출 라인 입력값이 올바르지 않습니다. 수량과 단가를 확인해 주세요.')
         return
       }
+      // R8-QA-12: coedit 중 동료가 라인을 서버측 삭제하면, 내 화면의 lineId 가 서버 활성 라인과
+      // 어긋나 저장이 400(INVALID_INPUT — validateLineIds/계약/계보 게이트)으로 거부된다. 이건
+      // 입력값 오류가 아니라 문서 구조 불일치이므로, 막다른 "입력값 확인" 대신 충돌 배너 +
+      // "최신 내용 불러오기" 복구 경로를 준다(409 UX 와 동일). 재조회+재시드가 어긋난 lineId 를
+      // 서버 기준으로 정합화한다. (D-R8-11 로 행삭제 잠금을 제거한 뒤의 경합 안전망.)
+      if (axios.isAxiosError(error) && error.response?.status === 400) {
+        setSalesIsConflict(true)
+        setSalesConflictMessage('동료가 라인을 변경했거나 화면이 최신이 아닙니다. 최신 내용 불러오기 후 다시 저장해 주세요.')
+        return
+      }
       setSalesIsConflict(false)
       setSalesConflictMessage('매출 전표 수정에 실패했습니다. 입력값을 확인해 주세요.')
     },
@@ -736,6 +797,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
       setPurchaseConflictMessage(null)
       setPurchaseIsConflict(false)
       setPurchaseReloadSuccessMessage(null)
+      setRepriceChangedLineIds(new Set())
       setPurchaseEditOpen(false)
       queryClient.setQueryData(['slip', id], updated)
       await queryClient.invalidateQueries({ queryKey: ['slipAuditLogs', id] })
@@ -753,6 +815,12 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
       if (axios.isAxiosError(error) && error.response?.status === 422) {
         setPurchaseIsConflict(false)
         setPurchaseConflictMessage('매입 라인 입력값이 올바르지 않습니다. 수량과 단가를 확인해 주세요.')
+        return
+      }
+      // R8-QA-12 미러 — 매출과 동일 계약(문서 구조 불일치 400 → 충돌 안내 + 최신 불러오기).
+      if (axios.isAxiosError(error) && error.response?.status === 400) {
+        setPurchaseIsConflict(true)
+        setPurchaseConflictMessage('동료가 라인을 변경했거나 화면이 최신이 아닙니다. 최신 내용 불러오기 후 다시 저장해 주세요.')
         return
       }
       setPurchaseIsConflict(false)
@@ -1062,11 +1130,16 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
       }
       provider = nextProvider
       // 재시드 게이트 — 견적(EstimateFormPage)과 정렬(전표는 종전 isEmpty() 만 봐 비대칭이었다).
-      // isEmpty(): 최초 진입. coeditLineIdsAreStale(): lineId seed 도입 이전에 만들어져 서버에
-      // 영속된 Y.Doc — 라인마다 클라 랜덤 UUID 라 그대로 두면 전 라인이 신규로 강등돼 계보가
-      // 조용히 소실된다(계보 보유 문서면 BE requireLineIdContract 가 400).
-      if (nextProvider.isEmpty() || coeditLineIdsAreStale(nextProvider, knownServerLineIds)) {
+      // ⚠️ 두 경로를 분리한다 — 예전엔 stale 도 full-seed 로 처리해 원격 헤더/셀 편집을 파괴했다
+      // (R8 mock 게이트 회귀: 원격 memo/수량 소실). 계보 복구의 본래 의도는 lineId 부착뿐이다.
+      if (nextProvider.isEmpty()) {
+        // 최초 진입(빈 Y.Doc) — 서버 상세로 헤더+아이템 전체를 시드한다.
         seedSlipCoeditProvider(nextProvider, slipData, mode)
+      } else if (coeditLineIdsAreStale(nextProvider, knownServerLineIds)) {
+        // lineId seed 이전 구 스냅샷 — 원격 편집(memo/수량 등)은 보존하고 아이템 lineId 만
+        // 서버 기준으로 in-place 복구한다(reseedCoeditLineIds). 미복구 시 전 라인이 신규로
+        // 강등돼 계보가 소실되거나 계보 보유 문서에서 BE requireLineIdContract 가 400 을 낸다.
+        reseedCoeditLineIds(nextProvider, slipData.lines.map((line) => line.id ?? ''))
       }
       applyProviderState(nextProvider)
       unsubscribeDoc = nextProvider.subscribeDoc(() => applyProviderState(nextProvider))
@@ -1396,13 +1469,143 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
       apply(setPurchasePartnerId, setPurchasePartnerName, setPurchasePartnerCode, setPurchaseBusinessNumber)
     }
     const provider = slipFormCoeditProvider
-    if (!provider) return
-    provider.doc.transact(() => {
-      provider.setHeaderValue('partnerId', nextPartnerId)
-      provider.setHeaderValue('partnerName', option.name)
-      provider.setHeaderValue('partnerCode', nextBizNo)
-      provider.setHeaderValue('businessNumber', nextBizNo)
+    if (provider) {
+      provider.doc.transact(() => {
+        provider.setHeaderValue('partnerId', nextPartnerId)
+        provider.setHeaderValue('partnerName', option.name)
+        provider.setHeaderValue('partnerCode', nextBizNo)
+        provider.setHeaderValue('businessNumber', nextBizNo)
+      })
+    }
+    // D-R8-10/R8-QA-11: 거래처 변경 → 새 거래처 기준 단가 재조회 + 배너 + 변경행 강조.
+    void repriceEditLinesForPartner(nextPartnerId)
+  }
+
+  /**
+   * D-R8-10/R8-QA-11: 거래처 변경 시 수정 모달 라인 단가를 새 거래처 기준으로 bulk 재조회한다.
+   * 공용 훅(usePartnerPriceRefresh)이 수명주기·조회·해석을 맡고, 여기서는 CRDT 라인 규약으로
+   * 후보(lineId)를 뽑아 새 단가를 provider(있으면)/로컬 state(없으면)에 적용하고 변경행을 추적한다.
+   *
+   * <p><b>miss fallback = 카탈로그 판매가</b> (R8 잔여 1 — R8-QA-11-MISS): 수정 라인은 카탈로그
+   * 판매가를 들고 있지 않으므로 lookupProducts(POST /api/products/lookup)로 각 productId 의
+   * 판매가를 조회해 후보 catalogFallback 으로 공급한다. 종전(fallback=현재단가)은 miss 시 옛
+   * 거래처 협상단가가 그대로 남아 저장 시 새 거래처에 각인됐다(라이브 실증: A 협상 777,000 → B
+   * miss → B 기억 854,700). 폼(SlipFormPage 의 catalogUnitPrice 스냅샷)과 동일 처방의 모달판이다.
+   * 카탈로그 미확보 라인(품목 삭제/조회 실패/판매가 null)만 종전대로 현재값 유지(변경 없음) —
+   * 값을 지어내지 않는다.
+   *
+   * <p><b>VAT 도메인 변환</b> (R8 잔여 2 — 드리프트): 기억·카탈로그는 VAT <b>포함</b>, 수정 필드는
+   * VAT <b>제외</b> 공급단가다(utils/vatPrice.ts 에 BE 실증 기록). 후보는 포함 도메인으로 승격해
+   * 훅에 넘기고(비교 도메인 통일), 적용 시 {@code vatExclusiveOf}(BE ÷1.1 원 단위 HALF_UP 미러)로
+   * 필드 도메인 변환한다. 미변환 시 기억 500,000 이 필드에 그대로 실려 저장 ×1.1 = 550,000 으로
+   * 거래처 변경마다 ~10% 복리 팽창했다(라이브 실증). 라인별 세구분 분기는 두지 않는다 — BE
+   * SlipLine 에 세구분 필드가 없고 수정 저장 각인이 전 라인 균일 ×1.1 이므로 균일 ÷1.1 이 유일한
+   * 정합 미러다.
+   *
+   * <p><b>세트 구성품 제외</b> (R8 재fix 회귀 교정): {@link bundleComponentLineIds} 라인
+   * (parentSetModel 비공백 — head 포함)은 후보에서 뺀다. 구성품은 수정 저장의 가격기억 각인
+   * 대상이 아니고(BE isBundleComponent 제외 + 수정 경로 BUNDLE_SET 재각인 부재), 배분가는 세트
+   * 전개가 정한 값이라 거래처 변경으로 재가격되면 안 된다(라이브 실증: 구성품 88,000→80,000
+   * −9.09% 변형 회귀). 평면(단품) 라인만 재가격한다 — 생성 폼의 BUNDLE 제품 라인 재가격
+   * (SOURCE_BUNDLE_SET 대상)은 폼 경로 그대로이며 수정 화면에는 그 라인 유형이 존재하지 않는다.
+   *
+   * <p><b>in-flight 편집 가드</b>: 조회 대기 중 사용자가(또는 원격 피어가) 그 라인 단가를 직접
+   * 편집했으면 적용 시점 재검증으로 건너뛴다 — 폼의 priceSource=USER 재분류 보호와 동일 의도.
+   */
+  const repriceEditLinesForPartner = async (partnerId: string) => {
+    const seq = ++modalRepriceSeqRef.current
+    if (!partnerId) {
+      partnerReprice.invalidate()
+      setRepriceChangedLineIds(new Set())
+      return
+    }
+    const editLines = mode === 'OUTBOUND' ? salesEditLinesRef.current : purchaseEditLinesRef.current
+    const provider = slipFormCoeditProvider
+    const setEditLines = mode === 'OUTBOUND' ? setSalesEditLines : setPurchaseEditLines
+    const editLinesRef = mode === 'OUTBOUND' ? salesEditLinesRef : purchaseEditLinesRef
+    // 세트 구성품(lineage 는 서버 상세가 권위) — 재가격 금지 대상.
+    const componentLineIds = bundleComponentLineIds(slip.lines)
+    // 후보 원천: lineId(적용 키)+productId 보유 + 세트 구성품 아님. 비수치 단가(수정 중 빈 셀)는
+    // 건너뛴다 — 각인 위험은 이월된 숫자 단가에서 오고, 빈 셀에 값을 만들어 넣는 것은 재조회의 몫이 아니다.
+    const targets = editLines.filter(
+      (line) => line.productId
+        && line.lineId
+        && !componentLineIds.has(line.lineId)
+        && Number.isFinite(Number(String(line.unitPrice ?? '').trim() || 'NaN')),
+    )
+    if (targets.length === 0) {
+      setRepriceChangedLineIds(new Set())
+      return
+    }
+    // 필드(VAT제외) 스냅샷 — 적용 시 실변경 판정 기준(build 시점).
+    const currentExclusiveByLineId = new Map(
+      targets.map((line) => [line.lineId!, String(line.unitPrice ?? '').trim()]),
+    )
+    // 1단계: 카탈로그 판매가(VAT포함) 조회 — miss fallback 원천.
+    const catalogProducts = await lookupProducts(targets.map((line) => line.productId!))
+    if (modalRepriceSeqRef.current !== seq) return // 더 새 거래처 선택이 시작됨 — 이 세션 폐기
+    const catalogInclusiveByProductId = new Map<string, string>()
+    for (const product of catalogProducts) {
+      if (product.id && product.sellingPrice != null && Number.isFinite(product.sellingPrice)) {
+        catalogInclusiveByProductId.set(product.id, String(product.sellingPrice))
+      }
+    }
+    // 2단계: 후보를 기억 도메인(VAT포함)으로 승격해 공용 훅 실행.
+    const candidates: PartnerRepriceCandidate[] = targets.map((line) => {
+      const currentInclusive = vatInclusiveOf(currentExclusiveByLineId.get(line.lineId!) ?? '')
+      return {
+        key: line.lineId!,
+        productId: line.productId!,
+        currentUnitPrice: currentInclusive,
+        // 카탈로그 미확보 라인은 현재값(포함 승격) fallback — miss 여도 실변경 없음(값 안 지어냄).
+        catalogFallback: catalogInclusiveByProductId.get(line.productId!) ?? currentInclusive,
+      }
     })
+    const { outcomes, isCurrent } = await partnerReprice.run(partnerId, candidates)
+    if (!isCurrent() || modalRepriceSeqRef.current !== seq) return
+    // in-flight 편집 재검증 원천 — provider 있으면 Y.Doc(원격 포함 최신), 없으면 로컬 state 최신 ref.
+    const liveExclusiveOf = (lineId: string): string => {
+      if (provider) return provider.getItemValueById(lineId, 'unitPrice').trim()
+      const line = editLinesRef.current.find((candidate) => candidate.lineId === lineId)
+      return line === undefined ? '' : String(line.unitPrice ?? '').trim()
+    }
+    // 3단계: outcome(포함 도메인)을 필드 도메인(VAT제외)으로 변환해 실변경만 적용.
+    const changed = new Set<string>()
+    const priceByLineId = new Map<string, string>()
+    for (const outcome of outcomes) {
+      const nextExclusive = vatExclusiveOf(outcome.unitPrice)
+      const currentExclusive = currentExclusiveByLineId.get(outcome.key)
+      if (!nextExclusive || currentExclusive === undefined) continue
+      // in-flight 편집 가드: 조회 대기 중 이 라인 단가가 직접 편집됐으면(로컬/원격) 건너뛴다 —
+      // 사용자 확정값을 재조회 결과로 덮지 않는다(폼 priceSource=USER 재검증과 동일 의도).
+      // 삭제된 라인(provider miss='')도 여기서 자연 제외된다.
+      if (liveExclusiveOf(outcome.key) !== currentExclusive) continue
+      // 실변경 판정은 변환 후 필드 도메인 수치 비교 — 포함 도메인 hint(outcome.changed)는
+      // 원 미만 표현 차(예: 기억 499,999.5 vs 현재 승격 500,000)로 거짓 강조를 낼 수 있다.
+      if (Number(nextExclusive) === Number(currentExclusive)) continue
+      changed.add(outcome.key)
+      priceByLineId.set(outcome.key, nextExclusive)
+    }
+    if (priceByLineId.size > 0) {
+      if (provider) {
+        // Y.Doc 에 써서 원격 전파 + doc-sync 되돌림 방지. applyProviderState 가 라인 state 로 반영.
+        provider.doc.transact(() => {
+          for (const [lineId, unitPrice] of priceByLineId) {
+            provider.setItemValueById(lineId, 'unitPrice', unitPrice)
+          }
+        })
+      } else {
+        // 평문 모드(provider 없음) — 로컬 state 직접 갱신.
+        setEditLines((lines) =>
+          lines.map((line) =>
+            line.lineId && priceByLineId.has(line.lineId)
+              ? { ...line, unitPrice: priceByLineId.get(line.lineId)! }
+              : line,
+          ),
+        )
+      }
+    }
+    setRepriceChangedLineIds(changed)
   }
 
   const searchSlipPartnerOptions = async (q: string): Promise<PartnerOption[]> => {
@@ -1531,6 +1734,18 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
         </div>
       ) : null}
 
+      {/* D-R8-10/R8-QA-11: 거래처 변경 최근단가 재적용 배너(폼과 동일 문구/역할). 상시 마운트 live region. */}
+      <div
+        className={repriceChangedLineIds.size > 0 ? 'price-memory-refresh-banner' : undefined}
+        role="status"
+        aria-live="polite"
+        data-testid="sales-slip-edit-price-refresh-banner"
+      >
+        {repriceChangedLineIds.size > 0
+          ? '거래처 변경으로 최근단가 재적용 · 변경된 행을 확인해 주세요.'
+          : null}
+      </div>
+
       <div className="detail-grid" data-testid="sales-slip-edit-form">
         <label className="sales-edit-field">
           <span className="detail-label">판매번호</span>
@@ -1542,6 +1757,8 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
           밟은 선례와 정렬한다. 자유입력 시 partnerName 만 바뀌고 partnerId 는 불변이라
           (거래처+품목) 가격기억이 원 거래처에 각인됐다(R8-QA-3 라이브 실증).
           거래처코드/사업자번호는 선택 거래처에서 파생되는 read-only 표시로 강등한다.
+          inputTestId(D-R8-10): 협업 partnerName 필드 식별자 유지 — 원격 거래처 재선택이
+          CRDT 헤더로 전파돼 이 controlled value 에 반영된다(coedit-bound partner field).
         */}
         <label className="sales-edit-field">
           <span className="detail-label">거래처</span>
@@ -1552,6 +1769,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
             ariaLabel="거래처"
             placeholder="거래처명 또는 사업자번호"
             disabled={slipFormCoeditPending}
+            inputTestId="slip-coedit-field-header-partnerName"
           />
         </label>
         <label className="sales-edit-field">
@@ -1642,7 +1860,10 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
           </thead>
           <tbody>
             {salesEditLines.map((line, index) => (
-              <tr key={line.key}>
+              <tr
+                key={line.key}
+                className={line.lineId && repriceChangedLineIds.has(line.lineId) ? 'price-memory-refreshed-row' : undefined}
+              >
                 <td>
                   <CollaborativeSlipInput
                     provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
@@ -1701,8 +1922,6 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
                     variant="ghost"
                     size="sm"
                     aria-label={`${index + 1}번 행 삭제`}
-                    disabled={slipCoeditActive}
-                    title={slipCoeditActive ? '협업 편집 중에는 행을 삭제할 수 없습니다' : undefined}
                     onClick={() => removeSalesLine(index)}
                   >
                     ×
@@ -1775,12 +1994,24 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
         </div>
       ) : null}
 
+      {/* D-R8-10/R8-QA-11: 거래처 변경 최근단가 재적용 배너(매출 폼과 동일 계약·미러). */}
+      <div
+        className={repriceChangedLineIds.size > 0 ? 'price-memory-refresh-banner' : undefined}
+        role="status"
+        aria-live="polite"
+        data-testid="purchase-slip-edit-price-refresh-banner"
+      >
+        {repriceChangedLineIds.size > 0
+          ? '거래처 변경으로 최근단가 재적용 · 변경된 행을 확인해 주세요.'
+          : null}
+      </div>
+
       <div className="detail-grid" data-testid="purchase-slip-edit-form">
         <label className="purchase-edit-field">
           <span className="detail-label">구매번호</span>
           <Input inputSize="sm" readOnly value={slip.slipNo} aria-label="구매번호" />
         </label>
-        {/* D-R8-7: 거래처 = PartnerAutocomplete 단일 경로(매출 폼과 동일 계약). */}
+        {/* D-R8-7: 거래처 = PartnerAutocomplete 단일 경로(매출 폼과 동일 계약). inputTestId=협업 partnerName 식별자. */}
         <label className="purchase-edit-field">
           <span className="detail-label">거래처</span>
           <PartnerAutocomplete
@@ -1790,6 +2021,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
             ariaLabel="거래처"
             placeholder="거래처명 또는 사업자번호"
             disabled={slipFormCoeditPending}
+            inputTestId="slip-coedit-field-header-partnerName"
           />
         </label>
         <label className="purchase-edit-field">
@@ -1870,7 +2102,10 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
           </thead>
           <tbody>
             {purchaseEditLines.map((line, index) => (
-              <tr key={line.key}>
+              <tr
+                key={line.key}
+                className={line.lineId && repriceChangedLineIds.has(line.lineId) ? 'price-memory-refreshed-row' : undefined}
+              >
                 <td>
                   <CollaborativeSlipInput
                     provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
@@ -1929,8 +2164,6 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
                     variant="ghost"
                     size="sm"
                     aria-label={`${index + 1}번 행 삭제`}
-                    disabled={slipCoeditActive}
-                    title={slipCoeditActive ? '협업 편집 중에는 행을 삭제할 수 없습니다' : undefined}
                     onClick={() => removePurchaseLine(index)}
                   >
                     ×
@@ -3543,6 +3776,8 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
   )
 
   function updatePurchaseLine(index: number, patch: Partial<PurchaseEditLine>) {
+    // 단가를 직접 편집하면 그 행의 재조회 강조를 해제한다(사용자가 값을 확정/재확인).
+    if (patch.unitPrice !== undefined) clearRepriceHighlight(purchaseEditLinesRef.current[index]?.lineId)
     setPurchaseEditLines((prev) => prev.map((line, i) => (
       i === index ? { ...line, ...patch } : line
     )))
@@ -3558,9 +3793,22 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
 
   // SP-08-6-2: 매출 수정 라인 헬퍼
   function updateSalesLine(index: number, patch: Partial<PurchaseEditLine>) {
+    // 단가를 직접 편집하면 그 행의 재조회 강조를 해제한다(사용자가 값을 확정/재확인).
+    if (patch.unitPrice !== undefined) clearRepriceHighlight(salesEditLinesRef.current[index]?.lineId)
     setSalesEditLines((prev) => prev.map((line, i) => (
       i === index ? { ...line, ...patch } : line
     )))
+  }
+
+  /** 재조회 강조에서 특정 lineId 를 제거한다(사용자 직접 편집 시). */
+  function clearRepriceHighlight(lineId: string | null | undefined) {
+    if (!lineId) return
+    setRepriceChangedLineIds((prev) => {
+      if (!prev.has(lineId)) return prev
+      const next = new Set(prev)
+      next.delete(lineId)
+      return next
+    })
   }
 
   function removeSalesLine(index: number) {

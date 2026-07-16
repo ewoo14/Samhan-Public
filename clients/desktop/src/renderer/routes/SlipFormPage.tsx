@@ -68,7 +68,6 @@ import {
 } from '../api/inventory'
 import {
   createSlip,
-  getPriceMemories,
   getPriceMemory,
   lookupPartnerForAutoFill,
   emptyBundleSetOptions,
@@ -83,6 +82,10 @@ import {
 } from '../utils/deliverySchedule'
 import { toLocalDateISO } from '../utils/dateUtils'
 import { isAutoPriceSource, shouldAutoFillPrice } from '../utils/priceSourceRules'
+import {
+  usePartnerPriceRefresh,
+  type PartnerRepriceCandidate,
+} from '../utils/usePartnerPriceRefresh'
 import { searchProducts as searchProductsApi } from '../api/productApi'
 import { searchPartners as searchPartnersApi } from '../api/partnerApi'
 import { useIsMobile } from '../hooks/useIsMobile'
@@ -413,12 +416,15 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
   const [selectedPartner, setSelectedPartner] = useState<PartnerOption | null>(null)
   const [priceLookupAnnouncement, setPriceLookupAnnouncement] = useState('')
   const selectedPartnerIdRef = useRef<string | null>(null)
-  const priceRefreshRequestRef = useRef(0)
   selectedPartnerIdRef.current = selectedPartner?.id ?? null
   // R8-FE-3: 안내 낭독을 실제 적용 여부와 같은 조건으로 묶기 위한 최신 라인 스냅샷
   // (견적 EstimateFormPage.linesRef 와 동일 패턴 — 비대칭 해소).
   const linesRef = useRef(lines)
   linesRef.current = lines
+
+  // D-R8-10: 거래처 변경 bulk 재조회는 전표 수정 모달(SlipDetailPage)과 공용 훅을 쓴다 —
+  // 복붙 대신 단일 진실원(수명주기·조회·해석). LineDraft 적용은 아래 refreshAutoPricesForPartner.
+  const partnerReprice = usePartnerPriceRefresh()
 
   // 거래처 snapshot — 자동완성 선택 시 채워짐(폼 미표시, 전표 기록/주소복사용).
   // eCount 12필드 입력 카드는 출고전표 폼 정비로 제거(ioType/timeDate/검수지/결제·할인·약정 등).
@@ -572,72 +578,52 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
     }
   }
 
+  /**
+   * 거래처 변경 bulk 재조회 — 공용 훅(usePartnerPriceRefresh)이 수명주기·조회·해석을 맡고,
+   * 여기서는 LineDraft(priceSource/catalog 규약) 로 후보를 뽑아 로컬 state 에 적용한다(D-R8-10).
+   */
   const refreshAutoPricesForPartner = async (partnerId: string) => {
-    // R6-M5: 재조회 시작 시 단건 안내를 클리어(견적 refreshAutoPricesForPartner 669행과 동일).
-    // 미클리어 시 배너 비활성 폴백이 stale "라인 N … 적용" 문구를 재낭독한다(aria-live 거짓 고지).
+    // R6-M5: 재조회 시작 시 stale 단건 안내를 클리어(미클리어 시 배너 비활성 폴백이 aria-live 거짓 고지).
     setPriceLookupAnnouncement('')
-    const candidates = lines.filter(
-      (line) => line.productId && isAutoPriceSource(line.priceSource),
-    )
+    const candidates: PartnerRepriceCandidate[] = linesRef.current
+      .filter((line) => line.productId && isAutoPriceSource(line.priceSource))
+      .map((line) => ({
+        key: line.id,
+        productId: line.productId!,
+        currentUnitPrice: line.unitPrice,
+        catalogFallback: line.catalogUnitPrice ?? line.unitPrice,
+      }))
     if (candidates.length === 0) return
-    const requestId = ++priceRefreshRequestRef.current
-    const ids = new Set(candidates.map((line) => line.id))
+    const candidateIds = new Set(candidates.map((candidate) => candidate.key))
     setLines((current) =>
       current.map((line) =>
-        ids.has(line.id)
+        candidateIds.has(line.id)
           ? { ...line, lookupLoading: true, priceRefreshChanged: false }
           : line,
       ),
     )
-    const snapshotById = new Map(candidates.map((line) => [line.id, line]))
-    try {
-      const { hits: memories } = await getPriceMemories(
-        partnerId,
-        candidates.map((line) => line.productId!),
-      )
-      if (priceRefreshRequestRef.current !== requestId || selectedPartnerIdRef.current !== partnerId) return
-      const memoryByProductId = new Map(memories.map((memory) => [memory.productId, memory]))
-      setLines((current) =>
-        current.map((candidate) => {
-          const snapshot = snapshotById.get(candidate.id)
-          if (!snapshot || candidate.productId !== snapshot.productId) return candidate
-          if (!isAutoPriceSource(candidate.priceSource)) {
-            return { ...candidate, lookupLoading: false, priceRefreshChanged: false }
-          }
-          const fallback = snapshot.catalogUnitPrice ?? snapshot.unitPrice
-          const memory = memoryByProductId.get(snapshot.productId!)
-          const nextUnitPrice = memory == null ? fallback : String(memory.unitPrice)
-          return {
-            ...candidate,
-            unitPrice: nextUnitPrice,
-            priceSource: memory == null ? 'CATALOG' : 'REMEMBERED',
-            priceMemoryUpdatedAt: memory?.updatedAt ?? null,
-            priceRefreshChanged: nextUnitPrice !== candidate.unitPrice,
-            lookupLoading: false,
-          }
-        }),
-      )
-    } catch {
-      if (priceRefreshRequestRef.current !== requestId || selectedPartnerIdRef.current !== partnerId) return
-      setLines((current) =>
-        current.map((candidate) => {
-          const snapshot = snapshotById.get(candidate.id)
-          if (!snapshot || candidate.productId !== snapshot.productId) return candidate
-          if (!isAutoPriceSource(candidate.priceSource)) {
-            return { ...candidate, lookupLoading: false, priceRefreshChanged: false }
-          }
-          const fallback = snapshot.catalogUnitPrice ?? snapshot.unitPrice
-          return {
-            ...candidate,
-            unitPrice: fallback,
-            priceSource: 'CATALOG',
-            priceMemoryUpdatedAt: null,
-            priceRefreshChanged: fallback !== candidate.unitPrice,
-            lookupLoading: false,
-          }
-        }),
-      )
-    }
+    const { outcomes, isCurrent } = await partnerReprice.run(partnerId, candidates)
+    if (!isCurrent()) return
+    const outcomeById = new Map(outcomes.map((outcome) => [outcome.key, outcome]))
+    setLines((current) =>
+      current.map((candidate) => {
+        const outcome = outcomeById.get(candidate.id)
+        // 후보 build 이후 품목이 교체됐으면 스킵(계보 오귀속 방지).
+        if (!outcome || candidate.productId !== outcome.productId) return candidate
+        // build 이후 사용자 직접입력(USER)으로 전환됐으면 재조회 대상 아님.
+        if (!isAutoPriceSource(candidate.priceSource)) {
+          return { ...candidate, lookupLoading: false, priceRefreshChanged: false }
+        }
+        return {
+          ...candidate,
+          unitPrice: outcome.unitPrice,
+          priceSource: outcome.source,
+          priceMemoryUpdatedAt: outcome.updatedAt,
+          priceRefreshChanged: outcome.unitPrice !== candidate.unitPrice,
+          lookupLoading: false,
+        }
+      }),
+    )
   }
 
   const updateSetOption = (id: string, patch: Partial<BundleSetOptions>) =>
@@ -705,7 +691,7 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
     selectedPartnerIdRef.current = partner?.id ?? null
 
     if (!partner) {
-      priceRefreshRequestRef.current += 1
+      partnerReprice.invalidate()
       setLines((current) => current.map((line) => ({
         ...line,
         lookupLoading: false,

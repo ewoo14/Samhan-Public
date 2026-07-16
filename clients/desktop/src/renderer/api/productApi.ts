@@ -4,9 +4,11 @@
  * 노출 endpoint:
  * - `GET /api/products?q={q}&size=20` — 모델명/품목명 부분일치 검색
  *   (product-service `GET /products?q=`, gateway StripPrefix=1 으로 `/api/products` 경유)
+ * - `POST /api/products/lookup` — productId 배열 batch 조회 (BE `ProductController.lookup`,
+ *   요청당 ids ≤ 100). 전표 수정 거래처 변경 재조회의 카탈로그 판매가 소스(R8 잔여 1).
  *
  * 응답 shape:
- * - `ApiEnvelope<Page<ProductSummaryResponse>>`
+ * - `ApiEnvelope<Page<ProductSummaryResponse>>` (검색) / `ApiEnvelope<ProductSummaryResponse[]>` (lookup)
  * - `ProductSummaryResponse`: `{ id: UUID, name: string, modelName: string,
  *     productCode: string|null, categoryId: UUID, sellingPrice: BigDecimal, status: string }`
  *
@@ -55,19 +57,61 @@ export async function searchProducts(
     )
     const page = res.data.data
     const content = Array.isArray(page?.content) ? page.content : []
-    return content.map((p): ProductOption => ({
-      id: p.id,
-      modelName: p.modelName ?? '',
-      productName: p.name ?? '',
-      sellingPrice:
-        p.sellingPrice != null
-          ? Number(p.sellingPrice)
-          : undefined,
-      modelCode: p.modelCode ?? undefined,
-      productType: p.productType ?? undefined,
-    }))
+    return content.map(toProductOption)
   } catch {
     // 네트워크/서버 오류 시 graceful 빈 배열 반환
     return []
   }
+}
+
+/** BE `ProductSummaryResponse` → design-system `ProductOption` 공통 매핑 (검색/lookup 공용). */
+function toProductOption(p: ProductSummaryResponse): ProductOption {
+  return {
+    id: p.id,
+    modelName: p.modelName ?? '',
+    productName: p.name ?? '',
+    sellingPrice:
+      p.sellingPrice != null
+        ? Number(p.sellingPrice)
+        : undefined,
+    modelCode: p.modelCode ?? undefined,
+    productType: p.productType ?? undefined,
+  }
+}
+
+/** BE `LookupRequest` 상한 — 요청당 productId 최대 100개 (`@Size(max = 100)`). */
+const PRODUCT_LOOKUP_CHUNK_SIZE = 100
+
+/**
+ * 품목 batch 조회 — `POST /api/products/lookup` (BE `ProductController.lookup`).
+ *
+ * <p>전표 수정(모달/인라인) 거래처 변경 재조회에서 각 라인 productId 의 <b>카탈로그 판매가
+ * (VAT 포함 도메인 — utils/vatPrice.ts 실증)</b>를 miss fallback 으로 공급하기 위해 쓴다
+ * (R8 잔여 1: miss fallback 이 현재단가=옛 거래처값이면 협상가가 새 거래처에 각인).
+ *
+ * <p>BE 상한(100개) 초과분은 chunk 순차 호출로 합산하고, chunk 실패는 해당 품목만 미확보로
+ * 처리한다(graceful — 실패 품목은 카탈로그 없음과 동일 취급, 가격기억 조회는 별도라 hit 교정은
+ * 영향 없음).
+ *
+ * @param ids productId UUID 배열 (중복/빈값 자동 제거)
+ * @returns 조회 성공 품목의 `ProductOption[]` — 미존재/실패 품목은 결과에서 생략
+ */
+export async function lookupProducts(ids: string[]): Promise<ProductOption[]> {
+  const uniqueIds = [...new Set(ids)].filter(Boolean)
+  if (uniqueIds.length === 0) return []
+  const results: ProductOption[] = []
+  for (let start = 0; start < uniqueIds.length; start += PRODUCT_LOOKUP_CHUNK_SIZE) {
+    const chunk = uniqueIds.slice(start, start + PRODUCT_LOOKUP_CHUNK_SIZE)
+    try {
+      const res = await apiClient.post<ApiEnvelope<ProductSummaryResponse[]>>(
+        '/api/products/lookup',
+        { ids: chunk },
+      )
+      const items = Array.isArray(res.data.data) ? res.data.data : []
+      results.push(...items.map(toProductOption))
+    } catch {
+      // 실패 chunk 는 미확보 처리 — 호출자가 카탈로그 없음으로 fallback
+    }
+  }
+  return results
 }
