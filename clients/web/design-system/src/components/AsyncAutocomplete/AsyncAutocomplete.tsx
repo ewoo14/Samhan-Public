@@ -34,8 +34,11 @@ export interface AsyncAutocompleteProps<T> {
   getKey: (item: T) => string
   /** 입력란 표시값 + blur exact-match 기준. */
   getInputLabel: (item: T) => string
-  /** dropdown <li> 내부 내용. */
-  renderOption: (item: T) => ReactNode
+  /**
+   * dropdown <li> 내부 내용.
+   * @param context 후보를 만든 응답 검색어. 기존 1-인자 renderer는 그대로 동작한다.
+   */
+  renderOption: (item: T, context?: AsyncAutocompleteRenderContext) => ReactNode
   /** listbox aria-label. */
   listboxLabel: string
   /** blur 정확 일치 판정. 기본은 getInputLabel 대소문자 무시 비교. */
@@ -60,6 +63,12 @@ export interface AsyncAutocompleteProps<T> {
   debounceMs?: number
   /** dropdown 을 body floating layer 로 렌더한다. overflow 컨테이너 안에서는 기본 true 를 유지한다. */
   portal?: boolean
+}
+
+/** 후보 표시 renderer에 전달하는 응답 시점 검색 context. */
+export interface AsyncAutocompleteRenderContext {
+  /** 현재 표시 후보를 만든 검색어. draft가 아닌 resolved query다. */
+  query: string
 }
 
 /** 컴포넌트 내부 비동기 상태. */
@@ -95,7 +104,11 @@ function AsyncAutocompleteInner<T>(
   const [draft, setDraft] = useState<string>('')
   const [open, setOpen] = useState(false)
   const [activeIndex, setActiveIndex] = useState<number>(-1)
-  const [candidates, setCandidates] = useState<T[]>([])
+  /** 후보와 후보를 만든 검색어를 한 응답 시점에 함께 교체한다. */
+  const [searchState, setSearchState] = useState<{
+    candidates: T[]
+    resolvedQuery: string
+  }>({ candidates: [], resolvedQuery: '' })
   const [status, setStatus] = useState<SearchStatus>('idle')
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [floatingStyle, setFloatingStyle] = useState<CSSProperties | undefined>(undefined)
@@ -112,20 +125,32 @@ function AsyncAutocompleteInner<T>(
   const instanceSeq = useRef<number>(0)
   const latestSeq = useRef<number>(0)
 
+  const { candidates, resolvedQuery } = searchState
+
+  const cancelDebouncedSearch = useCallback(() => {
+    if (debounceTimer.current !== undefined) {
+      window.clearTimeout(debounceTimer.current)
+      debounceTimer.current = undefined
+    }
+  }, [])
+
   /** 선택 항목의 입력란 표시 레이블. */
   const selectedLabel = value ? getInputLabel(value) : ''
 
   /** 열릴 때 draft 초기화 → 전체 검색 마찰 없이 즉시 후보 표시 가능. */
   const handleFocus = () => {
     if (disabled) return
+    cancelDebouncedSearch()
     if (blurTimer.current) {
       window.clearTimeout(blurTimer.current)
       blurTimer.current = undefined
     }
     setDraft('')
     setActiveIndex(-1)
-    setCandidates([])
+    latestSeq.current = ++instanceSeq.current
+    setSearchState({ candidates: [], resolvedQuery: '' })
     setStatus('idle')
+    setErrorMsg(null)
     setOpen(true)
   }
 
@@ -139,29 +164,40 @@ function AsyncAutocompleteInner<T>(
 
   const pick = useCallback(
     (item: T) => {
+      cancelDebouncedSearch()
       onChange(item)
       setDraft(getInputLabel(item))
       setActiveIndex(-1)
       setOpen(false)
-      setCandidates([])
+      latestSeq.current = ++instanceSeq.current
+      setSearchState({ candidates: [], resolvedQuery: '' })
       setStatus('idle')
+      setErrorMsg(null)
     },
-    [getInputLabel, onChange],
+    [cancelDebouncedSearch, getInputLabel, onChange],
   )
 
   const handleBlur = (_e: FocusEvent<HTMLInputElement>) => {
     blurTimer.current = window.setTimeout(() => {
+      cancelDebouncedSearch()
+      latestSeq.current = ++instanceSeq.current
       setOpen(false)
       setActiveIndex(-1)
       const trimmed = draft.trim()
 
       if (!trimmed) {
         // 빈 입력 blur — 더미 onChange 금지 (blur 게이트 원칙).
+        setSearchState({ candidates: [], resolvedQuery: '' })
+        setStatus('idle')
+        setErrorMsg(null)
         return
       }
 
       // 입력한 값이 현재 선택과 정확히 일치하면 별도 처리 불필요.
       if (value && trimmed === getInputLabel(value)) {
+        setSearchState({ candidates: [], resolvedQuery: '' })
+        setStatus('idle')
+        setErrorMsg(null)
         return
       }
 
@@ -174,6 +210,9 @@ function AsyncAutocompleteInner<T>(
 
       // 일치 없음 — 기존 선택값 유지 (free-text 차단). onChange 미호출.
       // draft 를 selectedLabel 로 복원은 displayValue 가 자동 처리.
+      setSearchState({ candidates: [], resolvedQuery: '' })
+      setStatus('idle')
+      setErrorMsg(null)
     }, 120)
   }
 
@@ -184,6 +223,8 @@ function AsyncAutocompleteInner<T>(
       const seq = ++instanceSeq.current
       latestSeq.current = seq
 
+      // 새 검색이 시작되면 이전 후보와 이전 검색어를 함께 폐기한다.
+      setSearchState({ candidates: [], resolvedQuery: '' })
       setStatus('loading')
       setErrorMsg(null)
 
@@ -191,11 +232,12 @@ function AsyncAutocompleteInner<T>(
         const results = await search(q)
         // stale 응답 — 더 최신 요청이 발행됐으면 버림
         if (latestSeq.current !== seq) return
-        setCandidates(results)
+        // 후보와 그 후보를 만든 검색어를 원자적으로 갱신한다.
+        setSearchState({ candidates: results, resolvedQuery: q })
         setStatus('done')
       } catch {
         if (latestSeq.current !== seq) return
-        setCandidates([])
+        setSearchState({ candidates: [], resolvedQuery: '' })
         setStatus('error')
         setErrorMsg('검색 중 오류가 발생했습니다.')
       }
@@ -210,17 +252,29 @@ function AsyncAutocompleteInner<T>(
     setActiveIndex(-1)
     if (!open) setOpen(true)
 
+    // stale 가드 — 이미 발행된(in-flight) 검색 응답이 새 입력 이후 도착하면 폐기된다.
+    latestSeq.current = ++instanceSeq.current
+
     // debounce 리셋
-    if (debounceTimer.current) window.clearTimeout(debounceTimer.current)
+    cancelDebouncedSearch()
 
     const trimmed = nextDraft.trim()
     if (trimmed.length < minChars) {
-      setCandidates([])
+      // 검색이 예약되지 않는 입력 — 직전 후보를 비워 stale 후보 노출을 막는다.
+      setSearchState({ candidates: [], resolvedQuery: '' })
       setStatus('idle')
       return
     }
 
+    // debounce 대기 중에는 직전 searchState(후보 + resolvedQuery)·status 를 그대로 유지한다.
+    // — "listbox 표시 ⟹ 후보 존재" 불변식 복원: 대기 창에 빈 후보 + "검색 중…" listbox 가
+    //   뜨지 않아 키보드 선택(↓/Enter)이 항상 실제 후보를 대상으로 동작한다 (#825 CI 회귀 fix).
+    // — false-empty flash 근본 해소: 후보가 있던 화면이 대기 중 "검색 결과 없음"(done+빈 후보)
+    //   으로 바뀌는 상태 자체가 생기지 않는다 (R1 의 즉시 loading 우회를 대체).
+    // — 오강조 불가: 하이라이트는 draft 가 아닌 resolvedQuery(유지된 후보를 만든 검색어) 기준.
+    // 실제 loading 전환·이전 후보 폐기·결과 반영은 performSearch 가 실행 시점에 원자적으로 수행한다.
     debounceTimer.current = window.setTimeout(() => {
+      debounceTimer.current = undefined
       void performSearch(trimmed)
     }, debounceMs)
   }
@@ -229,9 +283,9 @@ function AsyncAutocompleteInner<T>(
   useEffect(() => {
     return () => {
       if (blurTimer.current) window.clearTimeout(blurTimer.current)
-      if (debounceTimer.current) window.clearTimeout(debounceTimer.current)
+      cancelDebouncedSearch()
     }
-  }, [])
+  }, [cancelDebouncedSearch])
 
   /**
    * disabled 전환 시 열림 상태를 강제로 닫는다 (R8-QA-9).
@@ -246,13 +300,18 @@ function AsyncAutocompleteInner<T>(
    */
   useEffect(() => {
     if (!disabled) return
+    cancelDebouncedSearch()
     if (blurTimer.current) {
       window.clearTimeout(blurTimer.current)
       blurTimer.current = undefined
     }
+    latestSeq.current = ++instanceSeq.current
     setOpen(false)
     setActiveIndex(-1)
-  }, [disabled])
+    setSearchState({ candidates: [], resolvedQuery: '' })
+    setStatus('idle')
+    setErrorMsg(null)
+  }, [cancelDebouncedSearch, disabled])
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (!open) return
@@ -279,8 +338,17 @@ function AsyncAutocompleteInner<T>(
             : null
       if (target) pick(target)
     } else if (e.key === 'Escape') {
+      if (blurTimer.current !== undefined) {
+        window.clearTimeout(blurTimer.current)
+        blurTimer.current = undefined
+      }
+      cancelDebouncedSearch()
+      latestSeq.current = ++instanceSeq.current
       setOpen(false)
       setActiveIndex(-1)
+      setSearchState({ candidates: [], resolvedQuery: '' })
+      setStatus('idle')
+      setErrorMsg(null)
     }
   }
 
@@ -389,7 +457,7 @@ function AsyncAutocompleteInner<T>(
           role="combobox"
           data-testid={inputTestId}
         />
-        {status === 'loading' ? (
+        {open && status === 'loading' ? (
           <span className={styles['loadingSpinner']} aria-hidden="true">
             <span className={styles['spinnerDot']} />
           </span>
@@ -461,7 +529,7 @@ function AsyncAutocompleteInner<T>(
                     pick(item)
                   }}
                 >
-                  {renderOption(item)}
+                  {renderOption(item, { query: resolvedQuery })}
                 </li>
               )
             })}
