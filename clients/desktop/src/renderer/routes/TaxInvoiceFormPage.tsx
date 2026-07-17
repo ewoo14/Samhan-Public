@@ -3,7 +3,9 @@
  *
  * <p>UX:
  * <ul>
- *   <li>거래처 선택 — partner-service `searchPartners` 자동완성. 선택 즉시 사업자번호/주소/명 snapshot 자동 입력.</li>
+ *   <li>거래처 선택 — 정준 {@code partnerApi.searchPartners} 자동완성 (#825 재수렴 CM-a,
+ *       (ii)통일과 동일 소스). 실 {@code partnerCode} + {@code bizNo} 분리 보유 — 선택 즉시
+ *       사업자번호/명 snapshot 자동 입력, 저장 payload 에 실 partnerCode 전송.</li>
  *   <li>라인 입력 — 품명 / 규격 / 수량 / 단가 (부가세 자동 계산 = 공급가액 × 10%).</li>
  *   <li>합계 — 공급가액 / 부가세 / 총합 자동 계산 (모든 라인 합).</li>
  *   <li>저장 — DRAFT 로 생성 / 갱신 후 상세로 이동.</li>
@@ -29,9 +31,38 @@ import { extractApiErrorMessage as extractErrorMessage } from '../api/apiError'
 import { taxInvoiceAuditApi } from '../api/createAuditApi'
 import { TaxInvoiceRealtimeClient } from '../realtime/AccountingRealtimeClient'
 import { AuditRevisionBadge } from '../components/audit/AuditOverlaySection'
-import { searchPartners, type PartnerSummary } from '../api/sales'
+import { searchPartners } from '../api/partnerApi'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { usePageTitle } from '../hooks/usePageTitle'
+
+export function resolveTaxInvoicePartnerId(
+  selectedPartnerId: string | undefined,
+  partnerIdSnapshot: string,
+  hasNewSelection: boolean,
+): string | null {
+  if (hasNewSelection) return selectedPartnerId ?? null
+  return partnerIdSnapshot || null
+}
+
+/**
+ * 저장 payload 의 실 partnerCode 결정 — {@link resolveTaxInvoicePartnerId} 와 대칭 시맨틱
+ * (#825 재수렴 CM-a).
+ *
+ * <p>새 선택이 있으면 선택 옵션의 실 partnerCode 만 사용한다 (빈 값이면 null — 이전
+ * snapshot 코드로의 silent fallback 은 partnerId≠partnerCode 오염이라 금지). 새 선택이
+ * 없으면 edit hydrate 시 BE 가 보존한 partnerCode snapshot 을 유지한다.
+ */
+export function resolveTaxInvoicePartnerCode(
+  selectedPartnerCode: string | undefined,
+  partnerCodeSnapshot: string,
+  hasNewSelection: boolean,
+): string | null {
+  if (hasNewSelection) {
+    const trimmed = selectedPartnerCode?.trim() ?? ''
+    return trimmed || null
+  }
+  return partnerCodeSnapshot || null
+}
 
 /** 클라이언트 라인 임시 ID — React key 안정성. */
 let __lineUidCounter = 0
@@ -218,14 +249,17 @@ export function TaxInvoiceFormPage() {
     onError: () => alert('복원에 실패했습니다.'),
   })
 
-  // 헤더 state
-  const [partner, setPartner] = useState<PartnerSummary | null>(null)
+  // 헤더 state — 선택 거래처는 정준 검색 소스의 PartnerOption 그대로 보유
+  // (실 partnerCode / bizNo / id(UUID) 분리 — #825 재수렴 CM-a).
+  const [partner, setPartner] = useState<PartnerOption | null>(null)
   /** Snapshot — partner 선택 시 채워짐. partner null 이라도 detail edit 시 채워질 수 있음. */
   const [partnerName, setPartnerName] = useState<string>('')
   const [partnerBusinessNo, setPartnerBusinessNo] = useState<string>('')
   const [partnerAddress, setPartnerAddress] = useState<string>('')
   /** edit 모드에서 BE 가 보존한 partnerId — search snapshot 없어도 mutation 시 사용. */
   const [partnerIdSnapshot, setPartnerIdSnapshot] = useState<string>('')
+  /** edit 모드에서 BE 가 보존한 실 partnerCode — 재선택 없으면 payload 에 유지 전송. */
+  const [partnerCodeSnapshot, setPartnerCodeSnapshot] = useState<string>('')
   const [supplyDate, setSupplyDate] = useState<string>(today())
   const [description, setDescription] = useState<string>('')
   const [lines, setLines] = useState<DraftLine[]>([emptyLine()])
@@ -236,7 +270,15 @@ export function TaxInvoiceFormPage() {
     if (!isEdit) return
     const t = detailQuery.data
     if (!t) return
+    // [#825 R1 M1] hydrate 재실행(SSE coedit·revert invalidate·refetch) 시 미저장 새 선택
+    // partner 도 함께 리셋해 소스 정합을 강제한다. 리셋 없이는 partnerIdSnapshot/partnerName 만
+    // 원본으로 복원되고 partner(새 선택 P2)가 잔존 → buildBody 가 P2 UUID + 원본 partnerName 을
+    // 전송하는 조용한 오염(partnerId≠partnerName)이 발생한다. 외부 refetch 는 이미 이름/주소/
+    // 라인 등 미저장 수기 입력을 폐기하므로(기존 hydrate 시맨틱), partner 선택도 동일하게
+    // 폐기하고 재선택을 유도하는 것이 세금계산서 무결성 우선의 안전 선택이다.
+    setPartner(null)
     setPartnerIdSnapshot(t.partnerId)
+    setPartnerCodeSnapshot(t.partnerCode ?? '')
     setPartnerName(t.partnerName)
     setPartnerBusinessNo(t.partnerBusinessNo ?? '')
     setPartnerAddress(t.partnerAddress ?? '')
@@ -266,40 +308,26 @@ export function TaxInvoiceFormPage() {
     return { supply, vat, total: supply + vat }
   }, [lines])
 
-  // 거래처 선택 — search row click
-  const handleSelectPartner = (p: PartnerSummary) => {
-    setPartner(p)
-    setPartnerName(p.companyName)
-    setPartnerBusinessNo(p.businessRegistrationNumber)
-    setPartnerAddress(p.address ?? '')
-    // edit 모드 partnerIdSnapshot 도 맞춰줌 (단, search PartnerSummary 에 partnerId 가 없으면 빈 채로
-    // BE 검증 단계에서 reject — 실제 운영은 search 가 partnerId 도 함께 반환해야 함).
-  }
-
-  const searchPartnerOptions = async (q: string): Promise<PartnerOption[]> => {
-    const rows = await searchPartners(q, 8)
-    return rows.map((row) => ({
-      partnerCode: row.businessRegistrationNumber,
-      name: row.companyName,
-      bizNo: row.businessRegistrationNumber,
-      phone: row.contactPhone ?? undefined,
-    }))
-  }
+  // 거래처 검색 — 정준 partnerApi.searchPartners (#825 재수렴 CM-a, (ii)통일 5화면과
+  // 동일 소스). 응답이 실 partnerCode + bizNo 분리 PartnerOption 이라 어댑터 불요 —
+  // 구 sales.ts 어댑터의 partnerCode=bizNo 오라벨(L6)이 함께 해소된다.
+  const searchPartnerOptions = (q: string): Promise<PartnerOption[]> =>
+    searchPartners(q, { activeOnly: true })
 
   const handlePartnerOptionChange = (option: PartnerOption | null) => {
     if (!option) {
       setPartner(null)
       return
     }
-    handleSelectPartner({
-      businessRegistrationNumber: option.bizNo ?? option.partnerCode,
-      companyName: option.name,
-      representativeName: null,
-      contactPhone: option.phone ?? null,
-      address: null,
-      groupName: null,
-      note: null,
-    })
+    // 새 선택 — edit snapshot(id/code)은 폐기하고 선택 옵션 값으로 정합 유지.
+    setPartnerIdSnapshot('')
+    setPartnerCodeSnapshot('')
+    setPartner(option)
+    setPartnerName(option.name)
+    // bizNo 미제공 시 빈 값 유지 — partnerCode 를 사업자번호로 대체 기입하지 않는다 (L6).
+    setPartnerBusinessNo(option.bizNo ?? '')
+    // 검색 응답은 주소 미제공 — 기존 시맨틱대로 재선택 시 초기화 (수기 입력 유도).
+    setPartnerAddress('')
   }
 
   const updateLine = (index: number, patch: Partial<DraftLine>) => {
@@ -361,9 +389,21 @@ export function TaxInvoiceFormPage() {
 
   const buildBody = (): CreateTaxInvoiceRequest | null => {
     setTopError('')
-    if (!partnerIdSnapshot && !partner) {
+    const partnerId = resolveTaxInvoicePartnerId(
+      partner?.id,
+      partnerIdSnapshot,
+      Boolean(partner),
+    )
+    // [#825 재수렴 CM-a] 실 partnerCode — 새 선택은 옵션의 실 코드, edit 재선택 없음은
+    // BE 보존 snapshot. bizNo 를 코드로 전송하지 않는다.
+    const partnerCode = resolveTaxInvoicePartnerCode(
+      partner?.partnerCode,
+      partnerCodeSnapshot,
+      Boolean(partner),
+    )
+    if (!partnerId) {
       setTopError(
-        '거래처를 선택하세요. (목록에서 검색 후 클릭하면 사업자번호/주소가 자동 입력됩니다)',
+        '선택한 거래처의 식별자를 확인할 수 없습니다. 거래처를 다시 검색해 선택하세요.',
       )
       return null
     }
@@ -391,10 +431,8 @@ export function TaxInvoiceFormPage() {
       memo: l.memo.trim() || undefined,
     }))
     return {
-      // search PartnerSummary 에는 partnerId 필드가 없어 — 운영 환경에선 search BE 보강 필요.
-      // 본 mock 환경에서는 partnerIdSnapshot (edit) 우선, 신규 시 partner.businessRegistrationNumber
-      // 를 placeholder 로 보내지 않고 빈 채로 두면 BE 가 422 → topError 노출.
-      partnerId: partnerIdSnapshot || partner?.businessRegistrationNumber || '',
+      partnerId,
+      partnerCode: partnerCode ?? undefined,
       partnerBusinessNo: partnerBusinessNo.trim() || undefined,
       partnerName: partnerName.trim(),
       partnerAddress: partnerAddress.trim() || undefined,
@@ -500,15 +538,8 @@ export function TaxInvoiceFormPage() {
         <div style={{ marginBottom: 16 }}>
           <PartnerAutocomplete
             label="거래처 검색"
-            placeholder="거래처명 또는 사업자번호"
-            value={partner
-              ? {
-                  partnerCode: partner.businessRegistrationNumber,
-                  name: partner.companyName,
-                  bizNo: partner.businessRegistrationNumber,
-                  phone: partner.contactPhone ?? undefined,
-                }
-              : null}
+            placeholder="거래처명 또는 코드, 사업자번호"
+            value={partner}
             onChange={handlePartnerOptionChange}
             searchPartners={searchPartnerOptions}
             disabled={Boolean(isReadOnly)}

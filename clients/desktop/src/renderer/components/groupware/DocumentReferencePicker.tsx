@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react'
-import { Input, Select, Spinner } from '@samhan/design-system'
+import { Input, Select, Spinner, splitHighlightMatches } from '@samhan/design-system'
 import {
   APPROVAL_REFERENCE_DOC_TYPE_LABEL,
   normalizeDocumentReferenceOption,
@@ -69,6 +69,21 @@ function optionAriaLabel(option: DocumentReferenceOption): string {
   return `${typeLabel} ${option.refDocNo ?? '-'} ${option.summary ?? ''} ${formatAmount(option.amount)}원`
 }
 
+function HighlightedReferenceValue({ value, query }: { value: string; query: string }) {
+  return (
+    <>
+      {splitHighlightMatches(value, query).map((part, index) =>
+        part.matched ? (
+          // [#825 R1 L4] design-system matchMark 토큰 미러 — 브라우저 기본 노랑 <mark> 방지.
+          <mark className={styles['matchMark']} key={`match-${index}`}>{part.text}</mark>
+        ) : (
+          <span key={`text-${index}`}>{part.text}</span>
+        ),
+      )}
+    </>
+  )
+}
+
 export function DocumentReferencePicker({
   value,
   onChange,
@@ -83,10 +98,20 @@ export function DocumentReferencePicker({
   const [query, setQuery] = useState(value.refDocType === 'PARTNER_LEDGER'
     ? value.refPartnerName ?? value.refPartnerCode ?? ''
     : value.refDocNo ?? '')
-  const [options, setOptions] = useState<DocumentReferenceOption[]>([])
+  /**
+   * [#825 R1 L5] 후보와 "후보를 만든 응답 시점 검색어(resolvedQuery)"를 한 상태로 원자 갱신
+   * — AsyncAutocomplete resolvedQuery 하드닝 이식. 하이라이트가 라이브 query(디바운스 창의
+   * draft)를 참조하면 이전 응답 후보에 새 입력이 오강조되므로, 강조는 항상 resolvedQuery 기준.
+   */
+  const [searchState, setSearchState] = useState<{
+    options: DocumentReferenceOption[]
+    resolvedQuery: string
+  }>({ options: [], resolvedQuery: '' })
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
   const [activeIndex, setActiveIndex] = useState(-1)
+
+  const { options, resolvedQuery } = searchState
 
   useEffect(() => {
     setSelectedType(value.refDocType)
@@ -102,7 +127,7 @@ export function DocumentReferencePicker({
     window.clearTimeout(debounceRef.current)
     const keyword = query.trim()
     if (!keyword || disabled) {
-      setOptions([])
+      setSearchState({ options: [], resolvedQuery: '' })
       setOpen(false)
       setLoading(false)
       return
@@ -116,12 +141,13 @@ export function DocumentReferencePicker({
       searchByType(selectedType, keyword, 10)
         .then((result) => {
           const nextOptions = result.map((row) => normalizeDocumentReferenceOption(selectedType, row))
-          setOptions(nextOptions)
+          // [#825 R1 L5] 후보와 그 후보를 만든 keyword 를 함께 교체 — 하이라이트 오강조 방지.
+          setSearchState({ options: nextOptions, resolvedQuery: keyword })
           setOpen(nextOptions.length > 0)
           setActiveIndex(nextOptions.length > 0 ? 0 : -1)
         })
         .catch(() => {
-          setOptions([])
+          setSearchState({ options: [], resolvedQuery: '' })
           setOpen(false)
           setActiveIndex(-1)
         })
@@ -133,7 +159,7 @@ export function DocumentReferencePicker({
   const selectOption = (option: DocumentReferenceOption) => {
     suppressNextSearchRef.current = true
     setQuery(option.type === 'PARTNER_LEDGER' ? option.partnerName ?? option.partnerCode ?? '' : option.refDocNo ?? '')
-    setOptions([])
+    setSearchState({ options: [], resolvedQuery: '' })
     setOpen(false)
     setActiveIndex(-1)
     onChange({
@@ -149,7 +175,7 @@ export function DocumentReferencePicker({
   const handleTypeChange = (type: ApprovalReferenceDocType) => {
     setSelectedType(type)
     setQuery('')
-    setOptions([])
+    setSearchState({ options: [], resolvedQuery: '' })
     setOpen(false)
     setActiveIndex(-1)
     onChange(emptyValue(type, value.refPeriod))
@@ -279,9 +305,12 @@ export function DocumentReferencePicker({
                 {option.type === 'PARTNER_LEDGER' ? (
                   <>
                     <span className={styles['strongEllipsis']}>
-                      {option.partnerName ?? '-'}
+                      {/* [#825 R1 L5] 강조는 응답 시점 resolvedQuery 기준 — 디바운스 창 오강조 방지 */}
+                      <HighlightedReferenceValue value={option.partnerName ?? '-'} query={resolvedQuery} />
                     </span>
-                    <span className={styles['numeric']}>{option.partnerCode ?? '-'}</span>
+                    <span className={styles['numeric']}>
+                      <HighlightedReferenceValue value={option.partnerCode ?? '-'} query={resolvedQuery} />
+                    </span>
                     <span>{APPROVAL_REFERENCE_DOC_TYPE_LABEL[option.type]}</span>
                   </>
                 ) : (
