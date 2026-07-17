@@ -4,9 +4,31 @@
 
 ---
 
-## 🟢 2026-07-17 (집PC 새벽) — #809 **R1~R9 적대검증 완주 · main 머지 완료** ✅
+## 🟢 2026-07-17 — #810 **입금자명↔거래처 자동 매핑 · main 머지 완료** ✅
 
-> **다음 세션 첫 읽기.** #809 완결 — 다음은 대기 슬라이스 큐(#810 입금매핑부터).
+> **다음 세션 첫 읽기.** #810 완결(main `1865cf255`) — 다음은 #826.
+
+### 완료
+- **PR #829 머지**(main `1865cf255`·squash) · **#810 close** · CI + QA E2E green.
+- **3라운드 다모델 적대검증**(R1 OPUS 22 · R2 CODEX 22 · R3 OPUS 11 + CODEX ~14) — R2·R3에서 **fix가 회귀 낳는 사이클**로 비수렴 → 개발책임자 **결정 B**(R3 한 라운드 더) · **결정 A**(핵심 fix·엣지 후속분리) 로 bound 수렴.
+- 검증: BE genuine **1653/0** · FE typecheck 0·vitest **810** · 라이브QA(실 :8080·**V60 실적용**·`docs/qa/810-depositor-mapping/`) · CI+QA E2E green.
+- **후속 이슈 분리**: **#830**(멀티인스턴스 revision 채번) · **#831**(pre-#810 회계 도메인 lookup UNAVAILABLE→NOT_FOUND 붕괴 계열 — ⚠️**tax invoice businessNo=null 확정 HIGH 포함·우선순위 주목**) · **#832**(mock parity·감사 표시 정밀도·BOM 정규화).
+
+### 🔑 핵심 교훈
+- **fix가 회귀 낳는 사이클** — resilience/엣지 깊은 슬라이스는 fix가 새 결함(V58→V60 CHECK 3회 · lookup fix→**거래유실 HIGH**). PM이 **비수렴을 조기 보고**하고 개발책임자가 bound(결정 A) → 무한 iterate 방지 [[feedback_pm_regulate_slice_effort]].
+- **2라운드 캐논의 가치** — OPUS 라운드+라이브QA가 놓친 **MASTER 권한상실·거래유실**을 CODEX 독립검증이 포착.
+- **defect-family sweep** — lookup 3분류를 일부 경로만 적용 시 잔여 붕괴(matchPartner·toResponse) → 전 경로 sweep 필수 [[feedback_defect_family_sweep_fix]].
+- **X-Is-System-Master 신뢰경계** — 게이트웨이 remove-then-set 단일권위라 내부 게이트 재사용 안전(공격표면 확장 0).
+
+### ⚙️ 환경 (DESKTOP-8SO2GTL 집PC)
+- Docker 스택 가동(게이트웨이 :8080 · **accounting :8087 = V60** · auth = V87 · postgres :5432). 렌더러 QA :5212 가동.
+- codex `gpt-5.6-sol`/`gpt-5.6-luna` 정상 · CLI 0.144.4.
+
+---
+
+## 🟢 2026-07-17 (집PC 새벽) — #809 **R1~R9 적대검증 완주 · main 머지 완료** ✅ (이전 슬라이스)
+
+> #809 완결. #810 도 완결(상단).
 
 ### 완료
 - **PR #820 머지**(main `b0881ea94`) · #809·#821·#822 close · CI 36/36 green.
@@ -23,7 +45,7 @@
 - **WIP 브랜치 `wip/809-r8-fix2-incomplete` 삭제 대기** — obsolete(머지 완료). 자동모드 classifier가 브랜치 삭제 차단(사용자 미명명) → 사용자가 `git push origin --delete wip/809-r8-fix2-incomplete` 또는 GitHub UI로 삭제 권장. `feat/809-partner-product-price-memory` 도 머지됨(삭제 가능).
 
 ### 🔵 다음 대기 슬라이스 큐 (개발책임자 확정·순차)
-**#810**(입금매핑·결정 6건) → **#826**(주문서 통합·슬6 이식) → **#827**(레거시 GAS·🔴Google 자격 블로커) → **#825**(전역 입력 UX·결정 5건) → **#824**(품목행 공급가액·부가세) → **#823**(매출배분 거래처 검증) → 전표 거래처 필수화 → **#828**(role=row orphan) → #773 잔여 · #816 후속.
+~~#810(입금매핑)✅머지~~ → **#826**(주문서 통합·슬6 이식) → **#827**(레거시 GAS·🔴Google 자격 블로커) → **#825**(전역 입력 UX·결정 5건) → **#824**(품목행 공급가액·부가세) → **#823**(매출배분 거래처 검증) → 전표 거래처 필수화 → **#828**(role=row orphan) → #773 잔여 · #816 후속 · **#810 후속(#830·#831·#832)**.
 
 ### ⚙️ 환경 (DESKTOP-8SO2GTL 집PC · 세션 종료 시점)
 - Docker 스택 가동 중(게이트웨이 :8080·slip :18086·postgres :5432). slip-service = R9 fix 배포본(f77363ed8 코드).
