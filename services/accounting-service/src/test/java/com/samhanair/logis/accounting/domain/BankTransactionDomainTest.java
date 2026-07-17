@@ -73,4 +73,34 @@ class BankTransactionDomainTest {
                 BankTxnSource.CSV_IMPORT,
                 "DOMAIN-BANK-001");
     }
+
+    @Test
+    @DisplayName("매칭 provenance는 출처·매핑 근거를 저장하고 clearPartner가 함께 해제한다")
+    void storesAndClearsPartnerProvenance() {
+        UUID partnerId = UUID.randomUUID();
+        UUID mappingId = UUID.randomUUID();
+        BankTransaction transaction = deposit()
+                .applyPartnerMatch(partnerId, PartnerMatchSource.DEPOSITOR_MAPPING, mappingId,
+                        null, "SYSTEM", "원본 거래처", "원본 거래처");
+
+        assertThat(transaction.getPartnerMatchSource()).isEqualTo(PartnerMatchSource.DEPOSITOR_MAPPING);
+        assertThat(transaction.getMatchedMappingId()).isEqualTo(mappingId);
+        assertThat(transaction.getMatchedMappingRawName()).isEqualTo("원본 거래처");
+
+        transaction.clearPartner();
+
+        assertThat(transaction.getMatchedPartnerId()).isNull();
+        assertThat(transaction.getPartnerMatchSource()).isNull();
+        assertThat(transaction.getMatchedMappingId()).isNull();
+        assertThat(transaction.getMatchedMappingRawName()).isNull();
+    }
+
+    @Test
+    @DisplayName("DEPOSITOR_MAPPING은 두 snapshot 모두 있어야 한다")
+    void depositorMappingRequiresBothSnapshots() {
+        assertThatThrownBy(() -> deposit().applyPartnerMatch(
+                UUID.randomUUID(), PartnerMatchSource.DEPOSITOR_MAPPING, UUID.randomUUID(),
+                null, "SYSTEM", "원본", null))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
 }

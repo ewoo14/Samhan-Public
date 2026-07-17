@@ -1143,11 +1143,43 @@ describe('mock CODEF account selection BC3 contract', () => {
         cardRefs: saved.data.cardRefs,
         loanRefs: saved.data.loanRefs,
       },
-    }) as MockEnvelope<{ fetchedCount: number; importedCount: number; duplicateSkippedCount: number; matchedCount: number }>
+    }) as MockEnvelope<{
+      fetchedCount: number
+      importedCount: number
+      duplicateSkippedCount: number
+      matchedCount: number
+      staleSkippedCount: number
+      staleNormalizedNames: string[]
+      unavailableSkippedCount: number
+      unavailableNames: string[]
+    }>
 
     expect(saved.data).toEqual(scopePayload)
     expect(loaded.data).toEqual(scopePayload)
     expect(imported.data.fetchedCount).toBe(4)
+    // #810 R3 (L2-M1) additive 계약 — stale(영구)과 unavailable(일시장애 재시도 대상) 필드가
+    // 항상 존재한다. mock 은 일시장애 경로가 없어 0/빈 배열 기본값이다.
+    expect(imported.data.staleSkippedCount).toBe(0)
+    expect(imported.data.staleNormalizedNames).toEqual([])
+    expect(imported.data.unavailableSkippedCount).toBe(0)
+    expect(imported.data.unavailableNames).toEqual([])
+  })
+
+  it('CSV import 응답도 stale·unavailable additive 계약 필드를 포함한다 (#810 R3 L2-M1)', () => {
+    const bankAccountLabel = `국민 계약필드 ${Date.now()}`
+    const imported = mockRequest({
+      method: 'POST',
+      url: '/accounting/bank-transactions/import',
+      data: { bankAccountLabel },
+    }) as MockEnvelope<Record<string, unknown>>
+
+    expect(imported.data).toMatchObject({
+      staleSkippedCount: 0,
+      staleNormalizedNames: [],
+      unavailableSkippedCount: 0,
+      unavailableNames: [],
+    })
+    expect(Number(imported.data.totalRows)).toBeGreaterThan(0)
   })
 
   it('scope 미저장 조회는 200 envelope + empty scope 를 반환한다', () => {
@@ -1803,7 +1835,337 @@ describe('mock bank transaction matching contract', () => {
   })
 })
 
+describe('mock depositor mapping contract', () => {
+  it('매핑 CRUD는 정규화 key 충돌과 soft delete 이력을 실제 상태로 처리한다', () => {
+    const suffix = String(Date.now())
+    const rawName = `  ac\tme ${suffix}  `
+    const normalizedName = `AC ME ${suffix}`
+    const created = mockRequest({
+      method: 'POST',
+      url: '/accounting/deposit-mappings',
+      data: { rawName, partnerCode: '1234567890', reason: '초기 자동 매핑' },
+    }) as MockEnvelope<Record<string, unknown>>
+
+    expect(created.data).toMatchObject({
+      rawName: rawName.trim(),
+      normalizedName,
+      partnerCode: '1234567890',
+      partnerName: '엘에이시스템에어',
+      active: true,
+    })
+    expect(created.data).not.toHaveProperty('id')
+
+    const duplicate = mockRequest({
+      method: 'POST',
+      url: '/accounting/deposit-mappings',
+      data: { rawName: `AC  ME ${suffix}`, partnerCode: '2345678901' },
+    }) as { __mockStatus: number; body: { code: string } }
+    expect(duplicate.__mockStatus).toBe(409)
+    expect(duplicate.body.code).toBe('CONFLICT')
+
+    // BE 계약(#810): update/delete 는 경로변수가 아닌 `?normalizedName=` 쿼리파라미터.
+    const updated = mockRequest({
+      method: 'PUT',
+      url: `/accounting/deposit-mappings?normalizedName=${encodeURIComponent(normalizedName)}`,
+      data: { rawName: `Acme Updated ${suffix}`, partnerCode: '2345678901', reason: '거래처 변경' },
+    }) as MockEnvelope<Record<string, unknown>>
+    expect(updated.data).toMatchObject({
+      normalizedName: `ACME UPDATED ${suffix}`,
+      partnerCode: '2345678901',
+      partnerName: '강남에어솔루션',
+    })
+
+    const history = mockRequest({
+      method: 'GET',
+      url: '/accounting/deposit-mappings/history',
+      params: { normalizedName: `ACME UPDATED ${suffix}` },
+    }) as MockEnvelope<Array<Record<string, unknown>>>
+    expect(history.data.length).toBeGreaterThan(0)
+    expect(history.data[0]).toEqual(expect.objectContaining({ actor: expect.any(String), entryKey: expect.any(String) }))
+    // #810 R3 (L4-M2): BE recordBatch 대칭 — 한 작업(update)의 전 필드행이 revisionNo 1개와
+    // changedAt 1개를 공유한다(필드별 회차 분리 금지). fieldName 은 BE mapping.* 필드셋(L4-L1).
+    const updateRows = history.data.filter((row) => row.revisionNo === 2)
+    expect(new Set(updateRows.map((row) => row.fieldName))).toEqual(new Set([
+      'mapping.rawName', 'mapping.normalizedName', 'mapping.partnerCode', 'mapping.reason',
+    ]))
+    expect(new Set(updateRows.map((row) => row.changedAt)).size).toBe(1)
+    expect(updateRows.find((row) => row.fieldName === 'mapping.reason')).toMatchObject({ newValue: '거래처 변경' })
+    // rename 후에도 entity 이력이 절단되지 않는다 — 생성 배치(rev 1, reason 기본 포함 4행)가
+    // 새 키 조회에 포함된다(BE entityId 역추적 대칭).
+    const createRows = history.data.filter((row) => row.revisionNo === 1)
+    expect(createRows.map((row) => String(row.fieldName)).sort()).toEqual([
+      'mapping.normalizedName', 'mapping.partnerCode', 'mapping.rawName', 'mapping.reason',
+    ])
+    expect(createRows.find((row) => row.fieldName === 'mapping.reason')).toMatchObject({ newValue: '초기 자동 매핑' })
+
+    const deleted = mockRequest({
+      method: 'DELETE',
+      url: `/accounting/deposit-mappings?normalizedName=${encodeURIComponent(`ACME UPDATED ${suffix}`)}`,
+      params: { reason: '더 이상 사용하지 않음' },
+    }) as MockEnvelope<null>
+    expect(deleted.data).toBeNull()
+
+    // #810 R3 (L4-L1): 삭제 이력은 mock 전용 'active' 행이 아니라 BE 표현 —
+    // rawName·partnerCode(old→null) + reason 한 배치. normalizedName 은 불변이라 행이 없다.
+    const afterDelete = mockRequest({
+      method: 'GET',
+      url: '/accounting/deposit-mappings/history',
+      params: { normalizedName: `ACME UPDATED ${suffix}` },
+    }) as MockEnvelope<Array<Record<string, unknown>>>
+    const deleteRows = afterDelete.data.filter((row) => row.revisionNo === 3)
+    expect(deleteRows.map((row) => String(row.fieldName)).sort()).toEqual([
+      'mapping.partnerCode', 'mapping.rawName', 'mapping.reason',
+    ])
+    expect(deleteRows.find((row) => row.fieldName === 'mapping.rawName')).toMatchObject({ newValue: null })
+    expect(deleteRows.find((row) => row.fieldName === 'mapping.reason')).toMatchObject({ newValue: '더 이상 사용하지 않음' })
+    expect(afterDelete.data.some((row) => row.fieldName === 'active')).toBe(false)
+
+    const listed = mockRequest({
+      method: 'GET',
+      url: '/accounting/deposit-mappings',
+    }) as MockEnvelope<Array<Record<string, unknown>>>
+    expect(listed.data.some((row) => row.normalizedName === `ACME UPDATED ${suffix}`)).toBe(false)
+  })
+
+  // #810 R3 (L4-M1): 같은 키의 삭제+재생성 시 revisionNo 는 entity 단위 채번이라 전역 비단조 —
+  // BE(와 mock)는 changedAt desc 로 반환하고 FE 는 이 순서를 재정렬 없이 신뢰해야 한다.
+  it('삭제+재생성 이력은 changedAt desc 순서이고 신 entity rev 1이 구 entity rev 2보다 앞이다', () => {
+    const suffix = String(Date.now())
+    const key = `REBIRTH ${suffix}`
+    mockRequest({
+      method: 'POST',
+      url: '/accounting/deposit-mappings',
+      data: { rawName: `Rebirth ${suffix}`, partnerCode: '1234567890' },
+    })
+    mockRequest({
+      method: 'DELETE',
+      url: `/accounting/deposit-mappings?normalizedName=${encodeURIComponent(key)}`,
+    })
+    mockRequest({
+      method: 'POST',
+      url: '/accounting/deposit-mappings',
+      data: { rawName: `Rebirth ${suffix}`, partnerCode: '2345678901' },
+    })
+
+    const history = mockRequest({
+      method: 'GET',
+      url: '/accounting/deposit-mappings/history',
+      params: { normalizedName: key },
+    }) as MockEnvelope<Array<Record<string, unknown>>>
+
+    // 응답이 changedAt desc(최신 작업 먼저)로 정렬되어 있다.
+    const times = history.data.map((row) => String(row.changedAt))
+    expect([...times].sort().reverse()).toEqual(times)
+
+    const recreateIndex = history.data.findIndex((row) =>
+      row.fieldName === 'mapping.partnerCode' && row.newValue === '2345678901')
+    const deleteIndex = history.data.findIndex((row) =>
+      row.fieldName === 'mapping.partnerCode' && row.newValue === null && row.oldValue === '1234567890')
+    expect(recreateIndex).toBeGreaterThanOrEqual(0)
+    expect(deleteIndex).toBeGreaterThanOrEqual(0)
+    // 최신 작업(재생성)이 구 entity 삭제 행보다 앞 — 회차 크기(1 < 2)와 무관하게 시간순.
+    expect(recreateIndex).toBeLessThan(deleteIndex)
+    expect(history.data[recreateIndex]).toMatchObject({ revisionNo: 1 })
+    expect(history.data[deleteIndex]).toMatchObject({ revisionNo: 2 })
+
+    // #810 R3 (S4-M3): entryKey 계약 — 삭제+재생성으로 entity 가 2개여도(구 조합 키
+    // revisionNo+changedAt+fieldName 이 충돌 가능한 시나리오) 전 행 유일·비어있지 않은
+    // opaque 문자열이며, UUID 형태가 아니다(사용자 비노출 가드).
+    const entryKeys = history.data.map((row) => String(row.entryKey))
+    expect(entryKeys.every((key) => key.length > 0 && key !== 'undefined')).toBe(true)
+    expect(new Set(entryKeys).size).toBe(history.data.length)
+    const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+    expect(entryKeys.some((key) => UUID_PATTERN.test(key))).toBe(false)
+
+    // entryKey 안정성 — 같은 조회를 반복해도 행별 키가 변하지 않는다(생성 시 1회 채번).
+    const historyAgain = mockRequest({
+      method: 'GET',
+      url: '/accounting/deposit-mappings/history',
+      params: { normalizedName: key },
+    }) as MockEnvelope<Array<Record<string, unknown>>>
+    expect(historyAgain.data.map((row) => String(row.entryKey))).toEqual(entryKeys)
+  })
+
+  it('통장거래 provenance를 반환하고 두 해제 endpoint의 의미를 분리한다', () => {
+    const autoRow = mockRequest({
+      method: 'GET',
+      url: '/accounting/bank-transactions',
+      params: { bankAccountLabel: '국민 123-456' },
+    }) as MockEnvelope<Array<Record<string, unknown>>>
+    expect(autoRow.data.find((row) => row.externalRef === 'mock-bank-20260623-001')).toMatchObject({
+      partnerMatchSource: 'DEPOSITOR_MAPPING',
+      appliedMappingRawName: '삼한상사',
+      appliedMappingNormalizedName: '삼한상사',
+    })
+
+    const naturalKey = {
+      bankAccountLabel: '국민 123-456',
+      transactedAt: '2026-06-23T09:10:00',
+      amount: '1500000',
+      externalRef: 'mock-bank-20260623-001',
+    }
+    const clearedOnly = mockRequest({
+      method: 'PATCH',
+      url: '/accounting/bank-transactions/match-partner/clear',
+      data: naturalKey,
+    }) as MockEnvelope<Record<string, unknown>>
+    expect(clearedOnly.data).toMatchObject({
+      matchedPartnerCode: null,
+      partnerMatchSource: null,
+    })
+
+    const mappingStillExists = mockRequest({
+      method: 'GET',
+      url: '/accounting/deposit-mappings',
+    }) as MockEnvelope<Array<Record<string, unknown>>>
+    expect(mappingStillExists.data.some((row) => row.normalizedName === '삼한상사')).toBe(true)
+
+    const deletedMapping = mockRequest({
+      method: 'PATCH',
+      url: '/accounting/bank-transactions/match-partner/clear-and-delete-mapping',
+      data: {
+        bankAccountLabel: '국민 123-456',
+        transactedAt: '2026-06-24T10:05:00',
+        amount: '2500000',
+        externalRef: 'mock-bank-20260624-004',
+      },
+    }) as MockEnvelope<Record<string, unknown>>
+    expect(deletedMapping.data).toMatchObject({
+      matchedPartnerCode: null,
+      partnerMatchSource: null,
+    })
+    const mappingAfterDelete = mockRequest({
+      method: 'GET',
+      url: '/accounting/deposit-mappings',
+    }) as MockEnvelope<Array<Record<string, unknown>>>
+    expect(mappingAfterDelete.data.some((row) => row.normalizedName === '삼한상사')).toBe(false)
+  })
+
+  // 정규화 공유 계약 — BE DepositorNameNormalizerTest(services/accounting-service
+  // .../util/DepositorNameNormalizerTest.java)와 동일 입력셋을 mock 공개 API 로 검증한다.
+  // 특수문자는 escape 변형 사고를 막기 위해 String.fromCharCode 로 명시 구성한다.
+  // BOM(U+FEFF)은 JS/Java 공백 판정이 달라 공통 케이스에서 제외한다 — 정렬 방향은 개발책임자 확인 사항(#810).
+  it('mock 정규화는 BE DepositorNameNormalizer와 동일 입력셋에서 같은 key를 만든다 (BOM 제외 공통 케이스)', () => {
+    const suffix = String(Date.now())
+    const TAB = String.fromCharCode(0x09)
+    const LF = String.fromCharCode(0x0a)
+    const FILE_SEPARATOR = String.fromCharCode(0x1c) // Java isWhitespace 전용(정보 구분자)
+    const NBSP = String.fromCharCode(0xa0)
+    const EM_SPACE = String.fromCharCode(0x2003)
+    const FIGURE_SPACE = String.fromCharCode(0x2007)
+    const NARROW_NBSP = String.fromCharCode(0x202f)
+    const IDEOGRAPHIC_SPACE = String.fromCharCode(0x3000)
+
+    // BE 케이스 1: NBSP/tab/em space/개행/전각 공백 축약 + 대문자화 → 'HAN RIVER CO'
+    const spaced = mockRequest({
+      method: 'POST',
+      url: '/accounting/deposit-mappings',
+      data: {
+        rawName: NBSP + '  Han' + TAB + EM_SPACE + ' River' + LF + IDEOGRAPHIC_SPACE + ' Co' + suffix + '  ',
+        partnerCode: '1234567890',
+      },
+    }) as MockEnvelope<Record<string, unknown>>
+    expect(spaced.data.normalizedName).toBe('HAN RIVER CO' + suffix)
+
+    // BE 케이스 2: 괄호·특수문자·전각 문자는 제거하지 않는다 → '(주) ＡＢＣ·CO.,LTD'
+    const preserved = mockRequest({
+      method: 'POST',
+      url: '/accounting/deposit-mappings',
+      data: { rawName: '  (주) ＡＢＣ·Co.,Ltd' + suffix + '  ', partnerCode: '1234567890' },
+    }) as MockEnvelope<Record<string, unknown>>
+    expect(preserved.data.normalizedName).toBe('(주) ＡＢＣ·CO.,LTD' + suffix)
+
+    // Java Character.isWhitespace 는 정보 구분자(U+001C~U+001F)도 공백으로 본다 — mock parity.
+    const separator = mockRequest({
+      method: 'POST',
+      url: '/accounting/deposit-mappings',
+      data: { rawName: 'Han' + FILE_SEPARATOR + 'Separator' + suffix, partnerCode: '1234567890' },
+    }) as MockEnvelope<Record<string, unknown>>
+    expect(separator.data.normalizedName).toBe('HAN SEPARATOR' + suffix)
+
+    // BE 케이스 3: 공백 전용 입력은 빈 key — 생성 API 는 400 으로 거부한다.
+    const blankOnly = mockRequest({
+      method: 'POST',
+      url: '/accounting/deposit-mappings',
+      data: { rawName: FIGURE_SPACE + NARROW_NBSP, partnerCode: '1234567890' },
+    }) as { __mockStatus: number; body: { code: string } }
+    expect(blankOnly.__mockStatus).toBe(400)
+  })
+
+  // 계약 pin(#810 L2-M1/L3-M1): 실제 자동매핑 대상일 때 두 권한을 요구하고,
+  // 무매핑 대상은 BE deleteByIdIfPermitted(null)과 같이 거래만 해제한다.
+  it('clear-and-delete-mapping은 무매핑 대상을 권한검사 없이 200으로 해제한다', () => {
+    const perms = [
+      { pageCode: 'accounting.bank-matching', view: true, edit: true },
+      { pageCode: 'accounting.deposit-mapping', view: true, edit: false },
+    ]
+    const encoded = Buffer.from(JSON.stringify(perms), 'utf8').toString('base64')
+    vi.stubGlobal('window', { location: { search: `?mockPerms=${encodeURIComponent(encoded)}`, hash: '' } })
+    try {
+      const naturalKey = {
+        bankAccountLabel: '국민 123-456',
+        transactedAt: '2026-06-23T09:10:00',
+        amount: '1500000',
+        externalRef: 'mock-bank-20260623-001',
+      }
+      const denied = mockRequest({
+        method: 'PATCH',
+        url: '/accounting/bank-transactions/match-partner/clear-and-delete-mapping',
+        data: naturalKey,
+      }) as MockEnvelope<Record<string, unknown>>
+      expect(denied.data).toMatchObject({ matchedPartnerCode: null })
+
+      // 대조군: 같은 권한으로 일반 해제(clear)는 bank-matching:update 만 요구하므로 통과한다
+      // — 위 403 이 deposit-mapping:delete 게이트에서 났음을 증명.
+      const cleared = mockRequest({
+        method: 'PATCH',
+        url: '/accounting/bank-transactions/match-partner/clear',
+        data: naturalKey,
+      }) as MockEnvelope<Record<string, unknown>>
+      expect(cleared.data).toMatchObject({ matchedPartnerCode: null })
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+})
+
 describe('mock permission matrix contract', () => {
+  it('입금자명 매핑은 V87처럼 MASTER/MANAGER/ACCOUNTANT CRUD만 허용한다', () => {
+    const manager = mockRequest({
+      method: 'GET',
+      url: '/auth/admin/permissions/account/mock-account-manager',
+    }) as MockEnvelope<Record<string, Record<string, boolean>>>
+    const sales = mockRequest({
+      method: 'GET',
+      url: '/auth/admin/permissions/account/mock-account-sales',
+    }) as MockEnvelope<Record<string, Record<string, boolean>>>
+    const accountant = mockRequest({
+      method: 'GET',
+      url: '/auth/admin/permissions/account/mock-account-accountant',
+    }) as MockEnvelope<Record<string, Record<string, boolean>>>
+
+    const expected = {
+      view: true,
+      create: true,
+      update: true,
+      delete: true,
+      restore: false,
+      download: false,
+      print: false,
+    }
+    expect(manager.data['accounting.deposit-mapping']).toEqual(expected)
+    expect(accountant.data['accounting.deposit-mapping']).toEqual(expected)
+    expect(sales.data['accounting.deposit-mapping']).toEqual({
+      view: false,
+      create: false,
+      update: false,
+      delete: false,
+      restore: false,
+      download: false,
+      print: false,
+    })
+  })
+
   it('입금 매칭 기본 권한은 auth seed role_page_permissions 와 일치한다', () => {
     const manager = mockRequest({
       method: 'GET',

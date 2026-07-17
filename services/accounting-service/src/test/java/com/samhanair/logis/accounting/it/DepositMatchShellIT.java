@@ -78,6 +78,7 @@ class DepositMatchShellIT extends AbstractPostgresIT {
     @Autowired private MockMvc mockMvc;
     @Autowired private ObjectMapper objectMapper;
     @Autowired private AccountingAuditLogRepository auditLogRepository;
+    @Autowired private org.springframework.jdbc.core.JdbcTemplate jdbcTemplate;
 
     /** SP-09-4 신규 KFTC 오픈뱅킹 client 격리. */
     @MockBean private KftcClient kftcClient;
@@ -337,7 +338,62 @@ class DepositMatchShellIT extends AbstractPostgresIT {
                 // 거래처 매칭 성공 + 세금계산서 매칭 없으면 UNMATCHED (세금계산서는 mock DB 없음)
                 // matchedPartnerCode 는 설정됨 — unmatchedCount >= 0 검증
                 .andExpect(jsonPath("$.data.results[0].matchedPartnerCode").value("SS-001"))
-                .andExpect(jsonPath("$.data.results[1].status").value("UNMATCHED"));
+                .andExpect(jsonPath("$.data.results[1].status").value("UNMATCHED"))
+                // #810 R3-CODEX (S1-M1) 대조: "정상 미존재" UNMATCHED 는 장애 보류로 집계되지 않는다.
+                .andExpect(jsonPath("$.data.unavailableSkippedCount").value(0));
+    }
+
+    // ─── 11. #810 R3: 거래처 조회 일시 장애 행격리 ────────────────────────
+
+    @Test
+    @DisplayName("#810 R3: 거래처 조회 일시 장애는 배치를 중단하지 않고 해당 행만 UNMATCHED로 격리한다")
+    void testUnavailableLookupIsolatesRowsAndContinuesBatch() throws Exception {
+        // 매핑 경로 장애: (주)삼성상사 매핑의 target 조회 UNAVAILABLE.
+        UUID mappedPartnerId = UUID.randomUUID();
+        jdbcTemplate.update("""
+                INSERT INTO bank_depositor_partner_mapping
+                    (raw_name, normalized_name, partner_id, created_by, is_deleted)
+                VALUES (?, ?, ?, 'it', FALSE)
+                """, "(주)삼성상사", "(주)삼성상사", mappedPartnerId);
+        when(partnerLookupClient.findByPartnerIdResult(mappedPartnerId))
+                .thenReturn(PartnerLookupClient.LookupResult.unavailable());
+        // 정확일치 경로 장애: 나머지 입금자명 코드 조회도 전부 UNAVAILABLE.
+        when(partnerLookupClient.findByPartnerCodeResult(anyString()))
+                .thenReturn(PartnerLookupClient.LookupResult.unavailable());
+        when(kftcClient.fetchDeposits(any(), any(), anyString(), anyString()))
+                .thenReturn(mockDeposits5());
+
+        String body = objectMapper.writeValueAsString(Map.of(
+                "from", "2026-05-01",
+                "to", "2026-05-07",
+                "accountFinNo", "000-1234-5678",
+                "submitMethod", "DRY_RUN"
+        ));
+        Integer journalsBefore = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM journals WHERE source_type = 'KFTC_DEPOSIT'", Integer.class);
+
+        // R2 전면중단(500)이 아니라 200 완주 — 5행 모두 UNMATCHED 격리(재실행 시 재시도).
+        // #810 R3-CODEX (S1-M1): 조회 장애 보류를 "정상 미존재" UNMATCHED 와 구분해
+        // unavailableSkippedCount 로 집계한다(계약 pin). 매핑 경로(삼성상사)와 정확일치
+        // 경로(나머지 4행) 모두 disposition 이 보존되어야 5가 된다.
+        mockMvc.perform(post("/accounting/deposits/fetch-and-match")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", "ACCOUNTANT")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalCount").value(5))
+                .andExpect(jsonPath("$.data.matchedCount").value(0))
+                .andExpect(jsonPath("$.data.unmatchedCount").value(5))
+                .andExpect(jsonPath("$.data.unavailableSkippedCount").value(5))
+                .andExpect(jsonPath("$.data.unavailableDepositorNames.length()").value(5))
+                .andExpect(jsonPath("$.data.results[0].status").value("UNMATCHED"))
+                .andExpect(jsonPath("$.data.results[0].matchedPartnerCode").doesNotExist());
+
+        // 장애 행은 분개 draft 를 만들지 않는다 (전역 카운트 대신 본 테스트 전후 delta 로 단언).
+        Integer journalsAfter = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM journals WHERE source_type = 'KFTC_DEPOSIT'", Integer.class);
+        assertThat(journalsAfter).isEqualTo(journalsBefore);
     }
 
     // ─── 10. audit log REQUIRES_NEW bean 존재 확인 ──────────────────────

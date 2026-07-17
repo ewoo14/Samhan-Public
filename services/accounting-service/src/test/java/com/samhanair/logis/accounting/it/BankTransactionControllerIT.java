@@ -22,6 +22,7 @@ import com.samhanair.logis.accounting.client.ProductClient;
 import com.samhanair.logis.accounting.client.SlipQueryClient;
 import com.samhanair.logis.accounting.client.SlipServiceClient;
 import com.samhanair.logis.accounting.domain.BankTransaction;
+import com.samhanair.logis.accounting.domain.PartnerMatchSource;
 import com.samhanair.logis.accounting.repository.BankTransactionRepository;
 import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.security.permission.DynamicPermissionClient;
@@ -89,6 +90,8 @@ class BankTransactionControllerIT extends AbstractPostgresIT {
     @BeforeEach
     void setUp() {
         jdbcTemplate.update("DELETE FROM bank_transaction");
+        jdbcTemplate.update("DELETE FROM bank_depositor_partner_mapping");
+        jdbcTemplate.update("DELETE FROM accounting_audit_logs WHERE field_name LIKE 'mapping.%'");
         lenient().when(partnerLookupClient.findByPartnerIdsBatch(any())).thenReturn(Map.of());
     }
 
@@ -462,6 +465,263 @@ class BankTransactionControllerIT extends AbstractPostgresIT {
         assertThat(transaction.getMatchedPartnerId()).isEqualTo(PARTNER_2_ID);
     }
 
+    @Test
+    @DisplayName("#810 R1: deposit-mapping DELETE 없이 clear-and-delete-mapping은 403이고 거래 해제도 롤백된다")
+    void clearAndDeleteMapping_deniesWithoutDepositMappingDeleteAndRollsBack() throws Exception {
+        seedActiveMapping("삼한테스트상사", PARTNER_ID);
+        when(partnerLookupClient.findByPartnerId(PARTNER_ID)).thenReturn(Optional.of(PARTNER));
+        importCsv(ms949Csv()).andExpect(status().isOk());
+        BankTransaction matched = repository.findByExternalRefAndIsDeletedFalse("BANK-001").orElseThrow();
+        assertThat(matched.getPartnerMatchSource()).isEqualTo(PartnerMatchSource.DEPOSITOR_MAPPING);
+
+        denyRequirePermission("accounting.deposit-mapping", PermissionAction.DELETE);
+
+        clearAndDeleteMapping("BANK-001")
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+
+        BankTransaction after = repository.findByExternalRefAndIsDeletedFalse("BANK-001").orElseThrow();
+        assertThat(after.getMatchedPartnerId()).isEqualTo(PARTNER_ID);
+        assertThat(after.getPartnerMatchSource()).isEqualTo(PartnerMatchSource.DEPOSITOR_MAPPING);
+        Integer activeMappings = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM bank_depositor_partner_mapping WHERE is_deleted = FALSE",
+                Integer.class);
+        assertThat(activeMappings).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("#810 R1: 양쪽 권한 보유 시 clear-and-delete-mapping은 거래 해제와 매핑 soft delete를 함께 수행한다")
+    void clearAndDeleteMapping_clearsTransactionAndSoftDeletesMappingWithBothPermissions() throws Exception {
+        seedActiveMapping("삼한테스트상사", PARTNER_ID);
+        when(partnerLookupClient.findByPartnerId(PARTNER_ID)).thenReturn(Optional.of(PARTNER));
+        importCsv(ms949Csv()).andExpect(status().isOk());
+
+        clearAndDeleteMapping("BANK-001")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.matchedPartnerId").doesNotExist());
+
+        BankTransaction after = repository.findByExternalRefAndIsDeletedFalse("BANK-001").orElseThrow();
+        assertThat(after.getMatchedPartnerId()).isNull();
+        assertThat(after.getPartnerMatchSource()).isNull();
+        Integer activeMappings = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM bank_depositor_partner_mapping WHERE is_deleted = FALSE",
+                Integer.class);
+        assertThat(activeMappings).isZero();
+    }
+
+    @Test
+    @DisplayName("MASTER 실 HTTP: X-Is-System-Master=true이면 clear-and-delete가 200이고 매핑도 삭제된다")
+    void systemMaster_clearAndDeleteBypassesInternalMappingPermission() throws Exception {
+        seedActiveMapping("삼한테스트상사", PARTNER_ID);
+        when(partnerLookupClient.findByPartnerId(PARTNER_ID)).thenReturn(Optional.of(PARTNER));
+        importCsv(ms949Csv()).andExpect(status().isOk());
+
+        clearAndDeleteMappingWithSystemMaster("BANK-001")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.matchedPartnerId").doesNotExist());
+
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM bank_depositor_partner_mapping WHERE is_deleted = FALSE", Integer.class))
+                .isZero();
+        assertThat(repository.findByExternalRefAndIsDeletedFalse("BANK-001").orElseThrow()
+                .getMatchedPartnerId()).isNull();
+    }
+
+    @Test
+    @DisplayName("MASTER 실 HTTP: 수동 입금 매칭은 deposit mapping upsert를 학습한다")
+    void systemMaster_manualDepositMatchLearnsMapping() throws Exception {
+        insertNativeWithCounterparty("DEPOSIT", "CSV_IMPORT", "7000.00", "learn-master-001", "마스터학습상사");
+        when(partnerLookupClient.findByPartnerCode("P-2026-0001")).thenReturn(Optional.of(PARTNER));
+
+        matchPartnerWithSystemMaster("learn-master-001", "P-2026-0001")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.matchedPartnerCode").value("P-2026-0001"));
+
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT COUNT(*) FROM bank_depositor_partner_mapping
+                 WHERE normalized_name = '마스터학습상사' AND is_deleted = FALSE
+                """, Integer.class)).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("#810 R1: 수동지정 학습은 입금+입금성 source에 한정한다 (출금·CODEF_CARD 학습 금지)")
+    void matchPartner_learnsOnlyForDepositAndDepositSources() throws Exception {
+        insertNativeWithCounterparty("WITHDRAWAL", "CSV_IMPORT", "3000.00", "learn-wd-001", "출금상대처");
+        insertNativeWithCounterparty("DEPOSIT", "CODEF_CARD", "4000.00", "learn-card-001", "카드상대처");
+        insertNativeWithCounterparty("DEPOSIT", "CSV_IMPORT", "5000.00", "learn-dep-001", "입금상대처");
+        when(partnerLookupClient.findByPartnerCode("P-2026-0001")).thenReturn(Optional.of(PARTNER));
+
+        matchPartner("learn-wd-001", "P-2026-0001").andExpect(status().isOk());
+        matchPartner("learn-card-001", "P-2026-0001").andExpect(status().isOk());
+        matchPartner("learn-dep-001", "P-2026-0001").andExpect(status().isOk());
+
+        Integer withdrawalLearned = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM bank_depositor_partner_mapping WHERE normalized_name = '출금상대처'",
+                Integer.class);
+        Integer cardLearned = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM bank_depositor_partner_mapping WHERE normalized_name = '카드상대처'",
+                Integer.class);
+        Integer depositLearned = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM bank_depositor_partner_mapping WHERE normalized_name = '입금상대처' AND is_deleted = FALSE",
+                Integer.class);
+        assertThat(withdrawalLearned).isZero();
+        assertThat(cardLearned).isZero();
+        assertThat(depositLearned).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("#810 R1: 학습 실패(정규화 팽창 120자 초과)는 best-effort로 격리되고 수동 매칭은 커밋된다")
+    void matchPartner_learnFailureDoesNotRollBackManualMatch() throws Exception {
+        // 'ß'는 Locale.ROOT 대문자화에서 'SS'로 팽창 — raw 100자(컬럼 120 이내) → 정규화 200자 > 120.
+        String expandingName = "ß".repeat(100);
+        insertNativeWithCounterparty("DEPOSIT", "CSV_IMPORT", "6000.00", "learn-fail-001", expandingName);
+        when(partnerLookupClient.findByPartnerCode("P-2026-0001")).thenReturn(Optional.of(PARTNER));
+
+        matchPartner("learn-fail-001", "P-2026-0001")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.matchedPartnerCode").value("P-2026-0001"));
+
+        BankTransaction after = repository.findByExternalRefAndIsDeletedFalse("learn-fail-001").orElseThrow();
+        assertThat(after.getMatchedPartnerId()).isEqualTo(PARTNER_ID);
+        Integer learned = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM bank_depositor_partner_mapping", Integer.class);
+        assertThat(learned).isZero();
+    }
+
+    @Test
+    @DisplayName("#810 R3-CODEX: 거래처 조회 일시 장애 행도 거래는 저장되고 매칭만 보류되며 수동 매칭으로 해소된다")
+    void importCsv_persistsUnavailableRowUnmatchedAndResolvesByManualMatch() throws Exception {
+        seedActiveMapping("삼한테스트상사", PARTNER_ID);
+        when(partnerLookupClient.findByPartnerIdResult(PARTNER_ID))
+                .thenReturn(PartnerLookupClient.LookupResult.unavailable());
+
+        // 1행(삼한테스트상사 입금)은 조회 장애로 "매칭만" 보류 — 거래 자체는 저장되고 배치는 계속된다.
+        importCsv(ms949Csv())
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalRows").value(2))
+                .andExpect(jsonPath("$.data.importedCount").value(2))
+                .andExpect(jsonPath("$.data.duplicateSkippedCount").value(0))
+                .andExpect(jsonPath("$.data.staleSkippedCount").value(0))
+                .andExpect(jsonPath("$.data.unavailableSkippedCount").value(1))
+                .andExpect(jsonPath("$.data.unavailableNames[0]").value("삼한테스트상사"));
+
+        // S1-H1 회귀: 구 동작(저장 전 skip)은 거래를 영구 유실시켰다 — 이제 미매칭으로 영속화된다.
+        BankTransaction held = repository.findByExternalRefAndIsDeletedFalse("BANK-001").orElseThrow();
+        assertThat(held.getMatchedPartnerId()).isNull();
+        assertThat(held.getPartnerMatchSource()).isNull();
+        assertThat(repository.findByExternalRefAndIsDeletedFalse("BANK-002")).isPresent();
+
+        // 재업로드해도 이중 적재되지 않는다(중복 skip) — 유실도 중복도 없다.
+        importCsv(ms949Csv())
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.importedCount").value(0))
+                .andExpect(jsonPath("$.data.duplicateSkippedCount").value(2))
+                .andExpect(jsonPath("$.data.unavailableSkippedCount").value(0));
+
+        // 장애 복구 후 수동 매칭으로 해소(왕복) — 저장돼 있던 보류 거래가 매칭된다.
+        when(partnerLookupClient.findByPartnerCode("P-2026-0001")).thenReturn(Optional.of(PARTNER));
+        matchPartner("BANK-001", "P-2026-0001")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.matchedPartnerCode").value("P-2026-0001"));
+
+        BankTransaction resolved = repository.findByExternalRefAndIsDeletedFalse("BANK-001").orElseThrow();
+        assertThat(resolved.getMatchedPartnerId()).isEqualTo(PARTNER_ID);
+        assertThat(resolved.getPartnerMatchSource()).isEqualTo(PartnerMatchSource.MANUAL);
+    }
+
+    @Test
+    @DisplayName("#810 R3: 수동지정 거래처 조회 일시 장애는 404가 아닌 재시도 오류(500)로 구분된다")
+    void matchPartner_returnsRetryableErrorWhenLookupUnavailable() throws Exception {
+        importCsv(ms949Csv()).andExpect(status().isOk());
+        when(partnerLookupClient.findByPartnerCodeResult("P-2026-0001"))
+                .thenReturn(PartnerLookupClient.LookupResult.unavailable());
+
+        matchPartner("BANK-001", "P-2026-0001")
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.code").value("INTERNAL_ERROR"))
+                .andExpect(jsonPath("$.message")
+                        .value(org.hamcrest.Matchers.containsString("일시적으로")));
+
+        // 오진(404→중복등록 유도)과 달리 거래는 그대로 미매칭으로 남는다.
+        BankTransaction after = repository.findByExternalRefAndIsDeletedFalse("BANK-001").orElseThrow();
+        assertThat(after.getMatchedPartnerId()).isNull();
+    }
+
+    @Test
+    @DisplayName("#810 R1: 매핑 stale(비활성 거래처)은 import 응답에 보류 건수와 정규화 키로 표면화된다")
+    void importCsv_surfacesStaleMappingHoldInResponse() throws Exception {
+        seedActiveMapping("삼한테스트상사", PARTNER_ID);
+        when(partnerLookupClient.findByPartnerId(PARTNER_ID)).thenReturn(Optional.of(new PartnerSummary(
+                PARTNER_ID, "P-2026-0001", "삼한테스트상사", null, null, null, "SUSPENDED")));
+
+        importCsv(ms949Csv())
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.importedCount").value(2))
+                .andExpect(jsonPath("$.data.staleSkippedCount").value(1))
+                .andExpect(jsonPath("$.data.staleNormalizedNames[0]").value("삼한테스트상사"));
+
+        BankTransaction row = repository.findByExternalRefAndIsDeletedFalse("BANK-001").orElseThrow();
+        assertThat(row.getMatchedPartnerId()).isNull();
+        assertThat(row.getPartnerMatchSource()).isNull();
+    }
+
+    private void seedActiveMapping(String rawName, UUID partnerId) {
+        jdbcTemplate.update("""
+                INSERT INTO bank_depositor_partner_mapping
+                    (raw_name, normalized_name, partner_id, created_by, is_deleted)
+                VALUES (?, ?, ?, 'it', FALSE)
+                """, rawName, rawName, partnerId);
+    }
+
+    private void insertNativeWithCounterparty(String txnType, String source, String amount,
+                                              String externalRef, String counterpartyName) {
+        jdbcTemplate.update("""
+                INSERT INTO bank_transaction (
+                    id, transacted_at, txn_type, amount, description, bank_account_label,
+                    counterparty_name, source, external_ref, match_status, created_at, created_by, is_deleted
+                ) VALUES (
+                    ?, TIMESTAMP '2026-06-23 09:00:00', ?, ?::numeric, '학습게이트', ?,
+                    ?, ?, ?, 'UNREFLECTED', NOW(), 'it', FALSE
+                )
+                """, UUID.randomUUID(), txnType, amount, BANK_ACCOUNT_LABEL, counterpartyName, source, externalRef);
+    }
+
+    private org.springframework.test.web.servlet.ResultActions clearAndDeleteMapping(String externalRef)
+            throws Exception {
+        BankTransaction txn = repository.findByExternalRefAndIsDeletedFalse(externalRef).orElseThrow();
+        return mockMvc.perform(patch(BASE_URL + "/match-partner/clear-and-delete-mapping")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {
+                          "bankAccountLabel": "%s",
+                          "transactedAt": "%s",
+                          "amount": %s,
+                          "externalRef": "%s"
+                        }
+                        """.formatted(BANK_ACCOUNT_LABEL, txn.getTransactedAt(),
+                        txn.getAmount().toPlainString(), externalRef))
+                .header("X-User-Id", UUID.randomUUID().toString())
+                .header("X-User-Role", "ACCOUNTANT"));
+    }
+
+    private org.springframework.test.web.servlet.ResultActions clearAndDeleteMappingWithSystemMaster(String externalRef)
+            throws Exception {
+        BankTransaction txn = repository.findByExternalRefAndIsDeletedFalse(externalRef).orElseThrow();
+        return mockMvc.perform(patch(BASE_URL + "/match-partner/clear-and-delete-mapping")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {
+                          "bankAccountLabel": "%s",
+                          "transactedAt": "%s",
+                          "amount": %s,
+                          "externalRef": "%s"
+                        }
+                        """.formatted(BANK_ACCOUNT_LABEL, txn.getTransactedAt(),
+                        txn.getAmount().toPlainString(), externalRef))
+                .header("X-User-Id", UUID.randomUUID().toString())
+                .header("X-Is-System-Master", "true"));
+    }
+
     private org.springframework.test.web.servlet.ResultActions importCsv(MockMultipartFile file) throws Exception {
         return mockMvc.perform(multipart(BASE_URL + "/import")
                 .file(file)
@@ -495,6 +755,25 @@ class BankTransactionControllerIT extends AbstractPostgresIT {
                         txn.getAmount().toPlainString(), externalRef, partnerCode))
                 .header("X-User-Id", UUID.randomUUID().toString())
                 .header("X-User-Role", "ACCOUNTANT"));
+    }
+
+    private org.springframework.test.web.servlet.ResultActions matchPartnerWithSystemMaster(
+            String externalRef, String partnerCode) throws Exception {
+        BankTransaction txn = repository.findByExternalRefAndIsDeletedFalse(externalRef).orElseThrow();
+        return mockMvc.perform(patch(BASE_URL + "/match-partner")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                        {
+                          "bankAccountLabel": "%s",
+                          "transactedAt": "%s",
+                          "amount": %s,
+                          "externalRef": "%s",
+                          "partnerCode": "%s"
+                        }
+                        """.formatted(BANK_ACCOUNT_LABEL, txn.getTransactedAt(),
+                        txn.getAmount().toPlainString(), externalRef, partnerCode))
+                .header("X-User-Id", UUID.randomUUID().toString())
+                .header("X-Is-System-Master", "true"));
     }
 
     private org.springframework.test.web.servlet.ResultActions clearPartner(String externalRef)

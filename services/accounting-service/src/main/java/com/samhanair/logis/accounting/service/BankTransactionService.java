@@ -8,6 +8,7 @@ import com.samhanair.logis.accounting.domain.BankTransaction;
 import com.samhanair.logis.accounting.domain.BankTxnSource;
 import com.samhanair.logis.accounting.domain.BankTxnType;
 import com.samhanair.logis.accounting.domain.MatchStatus;
+import com.samhanair.logis.accounting.domain.PartnerMatchSource;
 import com.samhanair.logis.accounting.repository.BankTransactionRepository;
 import com.samhanair.logis.accounting.web.dto.BankTransactionImportMapping;
 import com.samhanair.logis.accounting.web.dto.BankTransactionImportResult;
@@ -36,6 +37,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -44,6 +46,7 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.io.input.BOMInputStream;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
@@ -52,6 +55,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 /** 통장 입출금 거래 import/조회 서비스. */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional
@@ -86,6 +90,8 @@ public class BankTransactionService {
 
     private final BankTransactionRepository repository;
     private final PartnerLookupClient partnerLookupClient;
+    private final DepositorMappingService depositorMappingService;
+    private final PartnerMatchAuditRecorder partnerMatchAuditRecorder;
 
     /**
      * 범용 CSV 컬럼 매핑으로 통장 거래를 import 한다.
@@ -121,6 +127,10 @@ public class BankTransactionService {
 
         int imported = 0;
         int duplicateSkipped = 0;
+        int staleSkipped = 0;
+        int unavailableSkipped = 0;
+        LinkedHashSet<String> staleNormalizedNames = new LinkedHashSet<>();
+        LinkedHashSet<String> unavailableNames = new LinkedHashSet<>();
         for (String[] row : dataRows) {
             if (isAllBlank(row)) {
                 continue;
@@ -130,10 +140,40 @@ public class BankTransactionService {
                 duplicateSkipped++;
                 continue;
             }
-            repository.save(transaction);
+            DepositorMappingService.MappingResolution resolution = depositorMappingService.resolveDeposit(
+                    transaction.getCounterpartyName(), transaction.getTxnType(), BankTxnSource.CSV_IMPORT);
+            if (resolution.isMatched()) {
+                var mappingEntity = resolution.mapping();
+                transaction.applyPartnerMatch(
+                        resolution.partner().partnerId(), PartnerMatchSource.DEPOSITOR_MAPPING,
+                        mappingEntity.getId(), LocalDateTime.now(), "SYSTEM",
+                        mappingEntity.getRawName(), mappingEntity.getNormalizedName());
+            } else if (resolution.isStale()) {
+                // #810 적대검증 R1 (L4-M1): stale 매핑 보류를 서버 로그에만 두지 않고 응답 집계로 표면화.
+                staleSkipped++;
+                staleNormalizedNames.add(resolution.mapping().getNormalizedName());
+            } else if (resolution.isUnavailable()) {
+                // #810 R3-CODEX (S1-H1): 조회 일시 장애라도 거래 자체는 항상 저장하고 "매칭만" 보류한다.
+                // R3 의 저장-전 continue 는 은행거래를 영구 유실시켰다(일시장애 후 재import 하지 않으면
+                // 소실 — 응답은 '보류'라지만 실제 거래가 부재). R2 stale-write 방지 의도는 "잘못된 매칭
+                // write 금지"이지 "거래 미저장"이 아니다. 여기서는 applyPartnerMatch 를 하지 않아
+                // partnerMatchSource=null(미매칭)로 영속화하고, 이후 장애 복구 시 수동 매칭
+                // (matchPartner)으로 해소한다. 배치는 계속(poison-pill 행격리 유지).
+                unavailableSkipped++;
+                unavailableNames.add(resolution.mapping().getNormalizedName());
+                log.warn("CSV import 거래처 조회 일시 장애 — 매칭 보류(거래는 미매칭으로 저장) normalizedName={} externalRef={}",
+                        resolution.mapping().getNormalizedName(), transaction.getExternalRef());
+            }
+            BankTransaction saved = repository.save(transaction);
+            if (saved.getPartnerMatchSource() == PartnerMatchSource.DEPOSITOR_MAPPING) {
+                partnerMatchAuditRecorder.record(saved, null, null, null, null, null,
+                        null, "SYSTEM", "DEPOSITOR_MAPPING");
+            }
             imported++;
         }
-        return new BankTransactionImportResult(dataRows.size(), imported, duplicateSkipped);
+        return new BankTransactionImportResult(dataRows.size(), imported, duplicateSkipped,
+                staleSkipped, List.copyOf(staleNormalizedNames),
+                unavailableSkipped, List.copyOf(unavailableNames));
     }
 
     /**
@@ -207,6 +247,17 @@ public class BankTransactionService {
      * {@code bankAccountLabel + transactedAt + amount + externalRef} 자연키와 {@code partnerCode} 만 사용한다.
      */
     public BankTransactionResponse matchPartner(BankTransactionMatchPartnerRequest request) {
+        return matchPartner(request, null, false);
+    }
+
+    /** 거래처를 수동 지정하고 권한이 있으면 입금자명 매핑을 학습한다. */
+    public BankTransactionResponse matchPartner(BankTransactionMatchPartnerRequest request, UUID actorId) {
+        return matchPartner(request, actorId, false);
+    }
+
+    /** X-Is-System-Master가 인증된 내부 요청은 학습 권한 게이트를 전역 권한으로 통과한다. */
+    public BankTransactionResponse matchPartner(BankTransactionMatchPartnerRequest request, UUID actorId,
+                                                boolean isSystemMaster) {
         if (request == null) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "요청 본문은 필수입니다.");
         }
@@ -216,16 +267,57 @@ public class BankTransactionService {
 
         BankTransaction transaction = findUniqueByNaturalKey(request.bankAccountLabel(),
                 request.transactedAt(), request.amount(), request.externalRef());
-        PartnerSummary partner = partnerLookupClient.findByPartnerCode(request.partnerCode().trim())
-                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
-                        "등록된 거래처를 찾을 수 없습니다: " + request.partnerCode().trim()));
+        // #810 적대검증 R3 (L2-M2): FOUND/NOT_FOUND/UNAVAILABLE 3분류 — 일시 장애를 404 로
+        // 붕괴시키면 실존 거래처가 "없음"으로 오진되어 중복 등록을 유발한다. UNAVAILABLE 은
+        // 명확한 재시도 오류로 구분한다. (isActiveStatus 는 수동 매칭에서 검사하지 않는다 —
+        // 과거 정산을 위해 SUSPENDED 거래처 수동 지정을 허용.)
+        PartnerLookupClient.LookupResult lookup = lookupByPartnerCode(request.partnerCode().trim());
+        if (lookup.isUnavailable()) {
+            throw new BusinessException(ErrorCode.INTERNAL_ERROR,
+                    "거래처 조회가 일시적으로 unavailable 상태입니다. 잠시 후 다시 시도해 주세요: "
+                            + request.partnerCode().trim());
+        }
+        if (!lookup.isFound()) {
+            throw new BusinessException(ErrorCode.NOT_FOUND,
+                    "등록된 거래처를 찾을 수 없습니다: " + request.partnerCode().trim());
+        }
+        PartnerSummary partner = lookup.partner();
         if (partner.partnerId() == null) {
             throw new BusinessException(ErrorCode.INVALID_INPUT,
                     "거래처 내부 식별자를 해석할 수 없습니다: " + request.partnerCode().trim());
         }
 
-        transaction.matchPartner(partner.partnerId());
+        UUID oldPartnerId = transaction.getMatchedPartnerId();
+        PartnerMatchSource oldSource = transaction.getPartnerMatchSource();
+        UUID oldMappingId = transaction.getMatchedMappingId();
+        String oldRawName = transaction.getMatchedMappingRawName();
+        String oldNormalizedName = transaction.getMatchedMappingNormalizedName();
+        transaction.applyPartnerMatch(partner.partnerId(), PartnerMatchSource.MANUAL, null,
+                LocalDateTime.now(), actorStorage(actorId), null, null);
+        learnDepositMappingIfEligible(transaction, partner, actorId, isSystemMaster);
+        partnerMatchAuditRecorder.record(transaction, oldPartnerId, oldSource, oldMappingId,
+                oldRawName, oldNormalizedName, actorId, actorName(actorId), "MANUAL_MATCH");
         return BankTransactionResponse.of(transaction, displayOf(partner), null);
+    }
+
+    /**
+     * 수동 매칭의 입금자명 매핑 학습 게이트 — #810 적대검증 R1 (L1-M1/L5-L4/L6-M4).
+     *
+     * <p>spec §C에 따라 {@code txnType=DEPOSIT} + 입금성 source(CSV/CODEF_BANK/KFTC)에서만 학습한다.
+     * 출금·카드(CODEF_CARD) 수동 매칭이 오염 매핑을 학습해 후속 입금이 오귀속되는 것을 차단한다.
+     * 학습 자체의 best-effort 격리(정규화 검증 실패 시 학습만 생략)는
+     * {@link DepositorMappingService#learnMappingIfPermitted} 내부에서 수행한다 — 별도 빈의
+     * {@code @Transactional} 경계 밖에서 catch 하면 참여 트랜잭션이 이미 rollback-only 로 마킹되어
+     * 수동 매칭 커밋까지 실패(UnexpectedRollbackException)하기 때문이다.
+     */
+    private void learnDepositMappingIfEligible(BankTransaction transaction, PartnerSummary partner, UUID actorId,
+                                               boolean isSystemMaster) {
+        if (transaction.getTxnType() != BankTxnType.DEPOSIT
+                || !depositorMappingService.isDepositSource(transaction.getSource())) {
+            return;
+        }
+        depositorMappingService.learnMappingIfPermitted(
+                transaction.getCounterpartyName(), partner, actorId, actorName(actorId), isSystemMaster);
     }
 
     /**
@@ -234,13 +326,66 @@ public class BankTransactionService {
      * <p>회계반영/강제 상태는 도메인 가드에서 거부하고 409 로 변환한다.
      */
     public BankTransactionResponse clearPartner(BankTransactionMatchPartnerClearRequest request) {
+        return clearPartner(request, null);
+    }
+
+    /** 거래의 거래처와 provenance만 해제한다. 매핑 row는 유지한다. */
+    public BankTransactionResponse clearPartner(BankTransactionMatchPartnerClearRequest request, UUID actorId) {
         if (request == null) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "요청 본문은 필수입니다.");
         }
         BankTransaction transaction = findUniqueByNaturalKey(request.bankAccountLabel(),
                 request.transactedAt(), request.amount(), request.externalRef());
+        UUID oldPartnerId = transaction.getMatchedPartnerId();
+        PartnerMatchSource oldSource = transaction.getPartnerMatchSource();
+        UUID oldMappingId = transaction.getMatchedMappingId();
+        String oldRawName = transaction.getMatchedMappingRawName();
+        String oldNormalizedName = transaction.getMatchedMappingNormalizedName();
         transaction.clearPartner();
+        partnerMatchAuditRecorder.record(transaction, oldPartnerId, oldSource, oldMappingId,
+                oldRawName, oldNormalizedName, actorId, actorName(actorId), "MANUAL_CLEAR");
         return BankTransactionResponse.of(transaction, null, null);
+    }
+
+    /**
+     * 거래를 해제한 뒤 자동 적용에 사용된 매핑까지 별도로 soft delete한다.
+     *
+     * <p>#810 적대검증 R1 (L2-H1/L2-M1): 컨트롤러의 {@code bank-matching:UPDATE}에 더해
+     * {@link DepositorMappingService#deleteByIdIfPermitted}가 {@code deposit-mapping:DELETE}
+     * 계정 권한을 검증한다. 권한 미보유 시 403이며 같은 트랜잭션의 거래 해제도 롤백된다.
+     */
+    public BankTransactionResponse clearPartnerAndDeleteMapping(
+            BankTransactionMatchPartnerClearRequest request, UUID actorId) {
+        return clearPartnerAndDeleteMapping(request, actorId, false);
+    }
+
+    /** 거래 해제와 매핑 삭제를 MASTER 플래그와 함께 수행한다. */
+    public BankTransactionResponse clearPartnerAndDeleteMapping(
+            BankTransactionMatchPartnerClearRequest request, UUID actorId, boolean isSystemMaster) {
+        BankTransaction transaction = findUniqueByNaturalKey(request.bankAccountLabel(),
+                request.transactedAt(), request.amount(), request.externalRef());
+        UUID mappingId = transaction.getMatchedMappingId();
+        BankTransactionResponse response = clearPartner(request, actorId);
+        depositorMappingService.deleteByIdIfPermitted(mappingId, actorId, actorName(actorId), "ADMIN_DELETE",
+                isSystemMaster);
+        return response;
+    }
+
+    /**
+     * 거래처 코드 조회의 FOUND/NOT_FOUND/UNAVAILABLE 결과를 보존하는 조회 헬퍼.
+     *
+     * <p>Result 메서드가 null 을 반환하는 환경(기존 Optional 변형만 stub 한 테스트 mock)에서는
+     * Optional 변형으로 폴백한다 — {@link DepositorMappingService}·{@link CodefImportService}
+     * 와 동일한 규약.
+     */
+    private PartnerLookupClient.LookupResult lookupByPartnerCode(String partnerCode) {
+        PartnerLookupClient.LookupResult result = partnerLookupClient.findByPartnerCodeResult(partnerCode);
+        if (result != null) {
+            return result;
+        }
+        return partnerLookupClient.findByPartnerCode(partnerCode)
+                .map(PartnerLookupClient.LookupResult::found)
+                .orElseGet(PartnerLookupClient.LookupResult::notFound);
     }
 
     private PartnerDisplay displayOfPartner(BankTransaction row, Map<UUID, PartnerSummary> partners) {
@@ -364,6 +509,7 @@ public class BankTransactionService {
                 : generatedExternalRef(bankAccountLabel, transactedAt, type, amount, balanceAfter, description,
                         counterpartyName, counterpartyAccount);
 
+        // 매핑 자동 적용은 중복 skip 판정 이후 importCsv 루프에서 수행한다(stale 집계 정확성).
         return BankTransaction.importRow(
                 transactedAt,
                 type,
@@ -375,6 +521,14 @@ public class BankTransactionService {
                 bankAccountLabel,
                 BankTxnSource.CSV_IMPORT,
                 externalRef);
+    }
+
+    private static String actorStorage(UUID actorId) {
+        return actorId == null ? "SYSTEM" : actorId.toString();
+    }
+
+    private static String actorName(UUID actorId) {
+        return actorId == null ? "SYSTEM" : "사용자";
     }
 
     private boolean isDuplicate(BankTransaction transaction) {

@@ -23,6 +23,7 @@ import {
 import type { Account, JournalStatus } from '@samhan/design-system'
 import { extractApiErrorResponseMessage } from './apiError'
 import { toOrderPathId } from '../utils/orderNo'
+import { collabHeaders } from '../auth/collabHeaders'
 
 export type { Account } from '@samhan/design-system'
 export type Page<T> = PageResponse<T>
@@ -2202,6 +2203,7 @@ export async function deleteCashReceipt(id: string): Promise<void> {
 export type BankTxnType = 'DEPOSIT' | 'WITHDRAWAL'
 export type BankTxnSource = 'CSV_IMPORT' | 'CODEF_BANK' | 'CODEF_CARD' | 'CODEF_LOAN'
 export type BankMatchStatus = 'UNREFLECTED' | 'REFLECTED' | 'FORCED'
+export type BankPartnerMatchSource = 'MANUAL' | 'DEPOSITOR_MAPPING' | 'PARTNER_CODE_EXACT'
 
 export const BANK_TXN_TYPE_LABEL: Record<BankTxnType, string> = {
   DEPOSIT: '입금',
@@ -2240,6 +2242,12 @@ export interface BankTransactionRow {
   matchedPartnerCode?: string | null
   matchedBizNo?: string | null
   matchedPartnerName?: string | null
+  /** 거래처 자동/수동 매칭 근거. 미매칭이면 null. */
+  partnerMatchSource?: BankPartnerMatchSource | null
+  /** 자동 입금자명 매칭에 사용된 원본명. 화면 부가설명 전용. */
+  appliedMappingRawName?: string | null
+  /** 자동 입금자명 매칭에 사용된 정규화 business key. 화면에는 필요 시에만 표시한다. */
+  appliedMappingNormalizedName?: string | null
   cashReceiptSlipNo?: string | null
 }
 
@@ -2280,6 +2288,15 @@ export interface BankTransactionImportResult {
   totalRows: number
   importedCount: number
   duplicateSkippedCount: number
+  staleSkippedCount: number
+  staleNormalizedNames: string[]
+  /**
+   * 거래처 조회 일시 장애(UNAVAILABLE)로 저장 없이 skip 한 건수(#810 R3 L2-M1) —
+   * stale(영구·재선택 필요)과 별개인 재시도 대상. 미저장이라 다음 import 재시도에서 재적재·재매칭된다.
+   */
+  unavailableSkippedCount: number
+  /** unavailable skip 근거 이름 — 매핑 정규화 키(중복 제거). */
+  unavailableNames: string[]
 }
 
 export interface MatchBankTransactionPartnerRequest {
@@ -2295,6 +2312,55 @@ export interface ClearBankTransactionMatchRequest {
   transactedAt: string
   amount: string | number
   externalRef: string
+}
+
+export interface DepositorMappingResponse {
+  rawName: string
+  normalizedName: string
+  /**
+   * 거래처 코드 — 거래처 master 미조회(삭제/유실/일시장애) 시에도 BE 가 매핑에 저장된
+   * partnerCodeSnapshot 을 반환할 수 있어 stale 매핑에서도 non-null 일 수 있다.
+   * stale 여부는 partnerCode null 검사가 아니라 staleTarget 으로 판정한다(#810 R3 L4-L2 주석 정정).
+   */
+  partnerCode: string | null
+  /** 거래처명 — 거래처 master 미조회(삭제/유실/일시장애) 시 null. */
+  partnerName: string | null
+  /**
+   * 거래처 master 상태(ACTIVE/SUSPENDED/TERMINATED). 거래처 미존재 시 null.
+   * 거래처 서비스 일시장애로 조회 자체가 실패하면 'UNAVAILABLE'(이때 staleTarget=false —
+   * #810 R3 계약 pin: FE 는 "거래처 조회 불가(일시)"로 표시하고 재선택을 강요하지 않는다).
+   */
+  targetStatus: string | null
+  /**
+   * 거래처가 없거나 ACTIVE 가 아니어서 재선택이 필요한 stale target 여부.
+   * 일시 조회 불가(targetStatus='UNAVAILABLE')는 stale 이 아니므로 false 다.
+   */
+  staleTarget: boolean
+  modifiedAt: string
+  actor: string
+  active: boolean
+}
+
+export interface DepositorMappingHistoryResponse {
+  /**
+   * 이력 행 식별용 opaque 키(#810 R3 S4-M3 계약 pin) — BE 가 채번하는 안정(같은 행=같은 값)
+   * 문자열이며 UUID 가 아니다. FE 는 의미를 파싱하지 않고 React rowKey 로만 쓴다.
+   * revisionNo+changedAt+fieldName 조합은 서로 다른 entity(같은 키 삭제+재생성)가
+   * 같은 회차·시각·필드를 가질 수 있어 행 키로 쓰지 않는다.
+   */
+  entryKey: string
+  fieldName: string
+  oldValue: string | null
+  newValue: string | null
+  actor: string
+  changedAt: string
+  revisionNo: number
+}
+
+export interface DepositorMappingRequest {
+  rawName: string
+  partnerCode: string
+  reason?: string
 }
 
 export async function listBankTransactions(
@@ -2382,8 +2448,112 @@ export async function clearBankTransactionMatch(
   const res = await apiClient.patch<ApiEnvelope<BankTransactionRow>>(
     '/accounting/bank-transactions/match-partner/clear',
     request,
+    { headers: await collabHeaders() },
   )
   return res.data.data
+}
+
+/** 거래를 해제하고 학습된 입금자명 매핑도 함께 삭제한다. */
+export async function clearBankTransactionMatchAndDeleteMapping(
+  request: ClearBankTransactionMatchRequest,
+): Promise<BankTransactionRow> {
+  try {
+    const res = await apiClient.patch<ApiEnvelope<BankTransactionRow>>(
+      '/accounting/bank-transactions/match-partner/clear-and-delete-mapping',
+      request,
+      { headers: await collabHeaders() },
+    )
+    return res.data.data
+  } catch (err) {
+    const message = extractApiErrorResponseMessage(err)
+    if (message) {
+      throw new Error(message)
+    }
+    throw err
+  }
+}
+
+export async function listDepositorMappings(): Promise<DepositorMappingResponse[]> {
+  const res = await apiClient.get<ApiEnvelope<DepositorMappingResponse[]>>(
+    '/accounting/deposit-mappings',
+    { headers: await collabHeaders() },
+  )
+  return res.data.data ?? []
+}
+
+export async function listDepositorMappingHistory(
+  normalizedName: string,
+): Promise<DepositorMappingHistoryResponse[]> {
+  const res = await apiClient.get<ApiEnvelope<DepositorMappingHistoryResponse[]>>(
+    '/accounting/deposit-mappings/history',
+    { params: { normalizedName }, headers: await collabHeaders() },
+  )
+  return res.data.data ?? []
+}
+
+export async function createDepositorMapping(
+  request: DepositorMappingRequest,
+): Promise<DepositorMappingResponse> {
+  try {
+    const res = await apiClient.post<ApiEnvelope<DepositorMappingResponse>>(
+      '/accounting/deposit-mappings',
+      request,
+      { headers: await collabHeaders() },
+    )
+    return res.data.data
+  } catch (err) {
+    const message = extractApiErrorResponseMessage(err)
+    if (message) {
+      throw new Error(message)
+    }
+    throw err
+  }
+}
+
+/**
+ * 매핑 수정 — BE 계약(#810)에 따라 정규화 key 는 경로변수가 아닌
+ * `?normalizedName=` 쿼리파라미터로 전달한다(경로 %2F 인코딩 함정 제거).
+ */
+export async function updateDepositorMapping(
+  normalizedName: string,
+  request: DepositorMappingRequest,
+): Promise<DepositorMappingResponse> {
+  try {
+    const res = await apiClient.put<ApiEnvelope<DepositorMappingResponse>>(
+      `/accounting/deposit-mappings?normalizedName=${encodeURIComponent(normalizedName)}`,
+      request,
+      { headers: await collabHeaders() },
+    )
+    return res.data.data
+  } catch (err) {
+    const message = extractApiErrorResponseMessage(err)
+    if (message) {
+      throw new Error(message)
+    }
+    throw err
+  }
+}
+
+/**
+ * 매핑 삭제(soft delete) — BE 계약(#810)에 따라 정규화 key 는
+ * `?normalizedName=` 쿼리파라미터로 전달한다.
+ */
+export async function deleteDepositorMapping(
+  normalizedName: string,
+  reason?: string,
+): Promise<void> {
+  try {
+    await apiClient.delete<ApiEnvelope<null>>(
+      `/accounting/deposit-mappings?normalizedName=${encodeURIComponent(normalizedName)}`,
+      { params: reason ? { reason } : undefined, headers: await collabHeaders() },
+    )
+  } catch (err) {
+    const message = extractApiErrorResponseMessage(err)
+    if (message) {
+      throw new Error(message)
+    }
+    throw err
+  }
 }
 
 // --------------------------------------------------------------------------

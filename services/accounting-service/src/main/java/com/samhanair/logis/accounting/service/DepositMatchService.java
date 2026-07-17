@@ -11,6 +11,7 @@ import com.samhanair.logis.accounting.domain.JournalLine;
 import com.samhanair.logis.accounting.domain.JournalSourceType;
 import com.samhanair.logis.accounting.domain.TaxInvoice;
 import com.samhanair.logis.accounting.domain.TaxInvoiceStatus;
+import com.samhanair.logis.accounting.domain.PartnerMatchSource;
 import com.samhanair.logis.accounting.repository.JournalRepository;
 import com.samhanair.logis.accounting.repository.TaxInvoiceRepository;
 import com.samhanair.logis.common.exception.BusinessException;
@@ -21,8 +22,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
@@ -61,7 +62,6 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class DepositMatchService {
 
     /** SP-D2 — 입금 매칭 페이지 코드. */
@@ -69,11 +69,40 @@ public class DepositMatchService {
 
     private final KftcClient kftcClient;
     private final PartnerLookupClient partnerLookupClient;
+    private final DepositorMappingService depositorMappingService;
     private final TaxInvoiceRepository taxInvoiceRepository;
     private final JournalRepository journalRepository;
     private final JournalNumberService journalNumberService;
     private final DepositMatchAuditRecorder auditRecorder;
     private final DynamicPermissionClient dynamicPermissionClient;
+
+    /** production Spring context가 사용하는 전체 의존성 생성자. */
+    @Autowired
+    public DepositMatchService(KftcClient kftcClient, PartnerLookupClient partnerLookupClient,
+                               DepositorMappingService depositorMappingService,
+                               TaxInvoiceRepository taxInvoiceRepository, JournalRepository journalRepository,
+                               JournalNumberService journalNumberService,
+                               DepositMatchAuditRecorder auditRecorder,
+                               DynamicPermissionClient dynamicPermissionClient) {
+        this.kftcClient = kftcClient;
+        this.partnerLookupClient = partnerLookupClient;
+        this.depositorMappingService = depositorMappingService;
+        this.taxInvoiceRepository = taxInvoiceRepository;
+        this.journalRepository = journalRepository;
+        this.journalNumberService = journalNumberService;
+        this.auditRecorder = auditRecorder;
+        this.dynamicPermissionClient = dynamicPermissionClient;
+    }
+
+    /** 기존 단위 테스트·수동 생성 호출 호환용 생성자. production은 resolver bean을 주입한다. */
+    public DepositMatchService(KftcClient kftcClient, PartnerLookupClient partnerLookupClient,
+                               TaxInvoiceRepository taxInvoiceRepository, JournalRepository journalRepository,
+                               JournalNumberService journalNumberService,
+                               DepositMatchAuditRecorder auditRecorder,
+                               DynamicPermissionClient dynamicPermissionClient) {
+        this(kftcClient, partnerLookupClient, null, taxInvoiceRepository, journalRepository,
+                journalNumberService, auditRecorder, dynamicPermissionClient);
+    }
 
     /**
      * 입금 거래 조회 + 자동 매칭 + 분개 draft 생성.
@@ -162,13 +191,49 @@ public class DepositMatchService {
      */
     private DepositMatchResult matchAndCreateJournal(KftcDepositRecord deposit, UUID actorId) {
         // 거래처 매칭 시도 (입금자명 → partnerCode)
-        Optional<PartnerSummary> partnerOpt = resolvePartnerForCounterparty(deposit.depositorName());
+        DepositorMappingService.MappingResolution mappingResolution = depositorMappingService == null
+                ? DepositorMappingService.MappingResolution.none()
+                : depositorMappingService.resolveDeposit(
+                        deposit.depositorName(), com.samhanair.logis.accounting.domain.BankTxnType.DEPOSIT,
+                        com.samhanair.logis.accounting.domain.BankTxnSource.KFTC);
+        Optional<PartnerSummary> partnerOpt;
+        PartnerMatchSource matchSource = null;
+        // #810 R3-CODEX (S1-M1): 조회 일시 장애(UNAVAILABLE)는 "정상 미존재"와 구분해 단건 결과에
+        // 보존한다 — 응답의 unavailableSkippedCount 집계 근거. KFTC 경로는 기존 bank_transaction
+        // 매칭이라 거래 생성이 없으므로(유실 대상 없음) 매칭만 보류되고 재실행 시 재시도된다.
+        boolean lookupUnavailable = false;
+        String mappingRawName = mappingResolution.mapping() == null
+                ? null : mappingResolution.mapping().getRawName();
+        String mappingNormalizedName = mappingResolution.mapping() == null
+                ? null : mappingResolution.mapping().getNormalizedName();
+        if (mappingResolution.isMatched()) {
+            partnerOpt = Optional.of(mappingResolution.partner());
+            matchSource = PartnerMatchSource.DEPOSITOR_MAPPING;
+        } else if (mappingResolution.isStale()) {
+            partnerOpt = Optional.empty();
+        } else if (mappingResolution.isUnavailable()) {
+            // #810 적대검증 R3 (L2-M1): 조회 일시 장애 행은 배치를 중단하지 않고 UNMATCHED 로
+            // 격리한다(행격리 — poison-pill 해소). 정확일치 폴백도 하지 않아 오배정을 막고,
+            // UNMATCHED 는 아무것도 저장하지 않으므로 fetch-and-match 재실행 시 재시도된다.
+            log.warn("[SP-09-4] 거래처 조회 일시 장애 — depositorName={} 행 UNMATCHED 격리(재시도 대상)",
+                    deposit.depositorName());
+            partnerOpt = Optional.empty();
+            lookupUnavailable = true;
+        } else {
+            ExactPartnerLookup exact = resolveExactPartnerForCounterparty(deposit.depositorName());
+            partnerOpt = exact.partner();
+            lookupUnavailable = exact.unavailable();
+            if (partnerOpt.isPresent()) {
+                matchSource = PartnerMatchSource.PARTNER_CODE_EXACT;
+            }
+        }
 
         if (partnerOpt.isEmpty()) {
             log.debug("[SP-09-4] 거래처 미매칭 — depositorName={}", deposit.depositorName());
             return new DepositMatchResult(
                     deposit.depositorName(), deposit.amount(), deposit.transactionDate(),
-                    null, null, null, DepositMatchStatus.UNMATCHED);
+                    null, null, null, DepositMatchStatus.UNMATCHED,
+                    null, mappingRawName, mappingNormalizedName, lookupUnavailable);
         }
 
         PartnerSummary partner = partnerOpt.get();
@@ -181,7 +246,8 @@ public class DepositMatchService {
                     partner.partnerCode(), deposit.amount());
             return new DepositMatchResult(
                     deposit.depositorName(), deposit.amount(), deposit.transactionDate(),
-                    partner.partnerCode(), null, null, DepositMatchStatus.UNMATCHED);
+                    partner.partnerCode(), null, null, DepositMatchStatus.UNMATCHED,
+                    matchSource, mappingRawName, mappingNormalizedName);
         }
 
         TaxInvoice invoice = invoiceOpt.get();
@@ -199,7 +265,8 @@ public class DepositMatchService {
                 partner.partnerCode(),
                 invoice.getTaxInvoiceNo(),
                 journalDraftId,
-                DepositMatchStatus.MATCHED
+                DepositMatchStatus.MATCHED,
+                matchSource, mappingRawName, mappingNormalizedName
         );
     }
 
@@ -228,20 +295,39 @@ public class DepositMatchService {
                 .findFirst();
     }
 
+    // #810 적대검증 R1 (L4-L1): 호출자 0건 + DEPOSIT/KFTC 하드코딩으로 카드 경로 재사용 함정이던
+    // resolvePartnerForCounterparty(public)는 제거했다. 경로별 resolver는 각 서비스가
+    // DepositorMappingService.resolveDeposit(txnType/source 인자)을 직접 사용한다.
+
     /**
-     * 거래처 표시명/코드를 기준으로 PartnerSummary 를 해석한다.
+     * KFTC 입금자명의 legacy partnerCode 정확일치 폴백.
      *
-     * <p>KFTC 입금 매칭과 CODEF 은행·카드 import 가 같은 거래처 lookup 규칙을 사용하도록 공개한 재사용 지점이다.
-     * 현 BC1 에서는 기존 정책대로 counterparty 값을 partnerCode 로 간주한다.
+     * <p>#810 적대검증 R3 (L2-M1): 조회 일시 장애(UNAVAILABLE)는 throw 하지 않고 empty 로
+     * 반환해 해당 행만 UNMATCHED 격리한다 — 배치는 계속되고 재실행 시 재시도된다.
      *
-     * @param counterpartyName 입금자명 또는 카드 가맹점명
-     * @return 거래처 요약. 미매칭 또는 blank 입력이면 empty
+     * <p>#810 R3-CODEX (S1-M1): 격리 시 disposition 을 함께 반환해 호출부가 "정상 미존재"와
+     * "조회 장애"를 구분·집계할 수 있게 한다.
      */
-    public Optional<PartnerSummary> resolvePartnerForCounterparty(String counterpartyName) {
+    private ExactPartnerLookup resolveExactPartnerForCounterparty(String counterpartyName) {
         if (counterpartyName == null || counterpartyName.isBlank()) {
-            return Optional.empty();
+            return new ExactPartnerLookup(Optional.empty(), false);
         }
-        return partnerLookupClient.findByPartnerCode(counterpartyName.trim());
+        PartnerLookupClient.LookupResult result = partnerLookupClient.findByPartnerCodeResult(counterpartyName.trim());
+        if (result == null) {
+            return new ExactPartnerLookup(partnerLookupClient.findByPartnerCode(counterpartyName.trim())
+                    .filter(PartnerSummary::isActiveStatus), false);
+        }
+        if (result.isUnavailable()) {
+            log.warn("[SP-09-4] 거래처 코드 조회 일시 장애 — counterparty={} 행 UNMATCHED 격리(재시도 대상)",
+                    counterpartyName.trim());
+            return new ExactPartnerLookup(Optional.empty(), true);
+        }
+        return new ExactPartnerLookup(result.isFound() && result.partner().isActiveStatus()
+                ? Optional.of(result.partner()) : Optional.empty(), false);
+    }
+
+    /** 정확일치 폴백 결과와 조회 장애 disposition 을 함께 전달하는 내부 모델 — #810 R3-CODEX (S1-M1). */
+    private record ExactPartnerLookup(Optional<PartnerSummary> partner, boolean unavailable) {
     }
 
     /**
