@@ -4,9 +4,29 @@
 
 ---
 
-## 🟢 2026-07-17 — #810 **입금자명↔거래처 자동 매핑 · main 머지 완료** ✅
+## 🟢 2026-07-17 — #825 슬1 **거래처 자동완성 ④ 매치 하이라이트 · main 머지 완료** ✅
 
-> **다음 세션 첫 읽기.** #810 완결(main `1865cf255`) — 다음은 #826.
+> **다음 세션 첫 읽기.** #825 슬1 완결(main `766d9f622`) — #825 에픽 슬2~7 계속.
+
+### 완료 (이번 세션 연속)
+- **#826 주문서 통합 = cutover-defer**(결정 A) — 정찰 결과 native-fold 런북 **cutover Step A+B**와 동일(dev `accounting.orders`=0·파이프라인 차단·되돌릴수없음). 메커니즘(#522) 이미 머지. Phase11 cutover 백로그(이슈 open 유지).
+- **#825 전역입력UX 에픽 착수** — 정찰 재프레이밍: 거래처 자동완성 foundation(PartnerAutocomplete 3필드+partnerId·searchAdmin 4필드) **이미 존재**. **슬1(④ 매치 하이라이트 foundation + 거래처 free-text 전수 감사 41행 3종) merged**(PR #833·`766d9f622`).
+- 워크플로우: OPUS 기획→CODEX SOL 기획검수(BLOCKING3→재-bound)→CODEX LUNA 구현→OPUS 적대검증(4렌즈)→CODEX SOL 적대검증(2세션)→**CI 회귀 근본fix**(ac-2/ac-3 debounce 불변식). 검증: DS vitest 61·desktop 810·ac-2/ac-3 Playwright 14·라이브QA·CI+QA E2E green.
+- ⚠️ **머지 전 재수렴 누락(개발책임자 "재수렴 리뷰 한거 맞아?" 지적)** → **소급 재수렴(OPUS handleChange·OPUS 종합잔여·CODEX SOL 3렌즈) 수행**. baseline diff(`git show 766d9f622` 부모 대비) 확증 결과 **슬1 순변경 기준 0 신규 HIGH/MED**(두 렌즈 `[NEW] MED` 는 pre-existing 오판·항목 A는 슬1이 stale 창 단축=개선). 잔여 pre-existing LOW 5건(stale-key·false-empty·activeIndex·aria-controls·terminal-error) → **이슈 #834 등록**(개발책임자 처분 "이슈 등록 후 슬2 먼저"). 슬1 자체 변경엔 결함 없음 확정.
+
+### 🔑 핵심 교훈
+- 🚨 **머지 전 재수렴 의무·CI green≠수렴·[NEW] baseline diff 확증** [[feedback_reconvergence_before_merge]] — 검증 fix(상태머신·CI/늦은포착 fix 포함) 후 좁은 재검증으로 머지 금지·재수렴 라운드 1회. 적대 [NEW]/심각도는 baseline git diff로 pre-existing 확증 후 disposition(PM 검증 전 경보·무마 둘 다 금지).
+- **design-system 변경=Playwright mock 스위트 필수** [[feedback_design_system_playwright_mock_suite]] — vitest 61·정적 적대검증 4렌즈·타깃 하이라이트QA 전부 green이어도 ac-2/ac-3 행동회귀(debounce/키보드/개폐)를 **CI mock gate만 포착**. 정적+vitest로 수렴선언 금지.
+- **CODEX 라운드 fix = CODEX 모델**(개발책임자 지적 정정) — OPUS 라운드 fix=OPUS(frontend-engineer), CODEX 라운드 fix=CODEX LUNA. 잘못 배치 시 중단·원복·재배치.
+
+### 🔵 #825 에픽 잔여 슬라이스 (순차·감사표가 슬2 진실원)
+**슬2 거래처 표준화 전개** = 다음 착수((a)9화면·ACCOUNTANT `partners.search` lookup 계약 신설)·**#834 DS 하드닝 5건 흡수 검토**·슬3 품목 자동완성·슬4 칩 복수선택·**슬5 ① null-semantics(회계 무결성·착수 전 개발책임자 재확인)**·슬6 쪽지 수신자 칩(⑤)·슬7 주문 병합 UX(③). 기존결함: TaxInvoiceForm bizNo→partnerId payload.
+
+---
+
+## 🟢 2026-07-17 — #810 **입금자명↔거래처 자동 매핑 · main 머지 완료** ✅ (직전)
+
+> #810 완결(main `1865cf255`).
 
 ### 완료
 - **PR #829 머지**(main `1865cf255`·squash) · **#810 close** · CI + QA E2E green.
