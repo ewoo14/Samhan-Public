@@ -61,6 +61,7 @@
 - [CI 테스트 필터 allowlist false-green](feedback_ci_test_filter_false_green.md) — ci.yml `--tests` allowlist 누락 패키지 미실행. 신규 패키지 등재 필수
 - [gradle test 캐시 false-green](feedback_gradle_test_cache_false_green.md) — UP-TO-DATE/FROM-CACHE=미실행, 검증은 --rerun-tasks --no-build-cache 로 genuine 강제
 - [🚨 병렬 에이전트 공유자원 경합 3변종](feedback_parallel_agent_gradle_shared_tree_contention.md) — ①gradle 트리(build 경합→transient false-fail·권위=CI on exact SHA) ②git checkout(잘못된 SHA 산출물→QA 결론 오염) ③**공유 라이브 DB 쓰기**(타 차원 프로브가 QA 단언 오염→false-RED, 반대로 진짜 결함 무마 위험도 대칭). **라이브 쓰기 차원은 직렬화·읽기만 병렬**·차원별 전용 거래처/품목·스펙 단언은 자기 창구간 diff(전역 카운트 금지)·라이브 FAIL 은 단독 재실행 재현 후 확정 (2026-07-09 #688 · 2026-07-12 #796 · **2026-07-16 #809 R6**)
+- [🚨 라이브QA 공유 실데이터 write 위험·읽기전용/throwaway 격리](feedback_qa_live_shared_data_readonly.md) — 라이브QA가 실 공유 템플릿/마스터/설정에 write 금지(읽기전용 or 전용 throwaway). DB 직접 수술 전 soft-delete replace-set 모델(is_deleted·update=old soft-delete+new insert·`WHERE is_deleted=false` 유니크) 이해 필수 — "중복 행"=대개 [비활성 이력]+[활성 현재], hard-delete 전 활성 판별. 오염 시 즉시 완전복구+정직 고지 (2026-07-18 #825 슬4: 결재양식 실템플릿 write→soft-delete 오진→활성 필드 삭제→un-soft-delete 복원)
 - [stacked PR CI false-green](feedback_stacked_pr_ci_false_green.md) — base=feat/… BE 미트리거, base 머지 후 base=main 재생성
 - [RestClient 계약테스트 false-green](feedback_restclient_contract_test_false_green.md) — 다운스트림 선검증, @MockBean 우회 금지, 4체크
 - [권한 enforcement 실HTTP 회귀](feedback_enforcement_real_http_test.md) — @MockBean mock 시 false-green, MockRestServiceServer/실HTTP

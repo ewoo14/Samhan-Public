@@ -18,4 +18,9 @@ metadata:
 4. **pre-existing 확증 LOW** = 개발책임자 disposition(이슈 등록/후속 슬롯 흡수). **슬라이스 도입 HIGH/MED** = 현 PR 내 fix + 재수렴.
 5. **🚨 2-model 재수렴 = 한 모델 '수렴' 선언을 단독 신뢰 금지**(2026-07-18 #825 슬2 실증): OPUS 재수렴이 "0 confirmed·수렴 완료"로 판정한 코드를 **CODEX SOL이 매 라운드 실엣지를 반복 포착**(partnerCode 길이 계약·CM-b 빈draft 우회·동명 거래처 가드 우회). 반대로 CODEX가 `[NEW] MED` 오판한 것을 baseline diff로 반증하기도 함. → **양 모델 모두 돌리고**(OPUS+CODEX), 어느 하나의 "수렴/미수렴" 단독 판정 금지. 6라운드까지 갈 수 있으니 narrow 엣지는 [[feedback_pm_regulate_slice_effort]]로 바운드하며 수렴(내 fix가 낳은 신규결함도 재수렴이 포착 — AA·autoFocus·mock갭).
 
-→ [[feedback_design_system_playwright_mock_suite]](이 사건의 CI 포착 계기)·[[feedback_pm_regulate_slice_effort]](BATCH disposition·재수렴 1회)·[[feedback_canonical_workflow]](0수렴까지 반복)·[[feedback_recon_grep_false_negative]](검증 없는 단언 금지)·[[feedback_no_fake_data_ever]](정직 보고).
+6. **🚨 0수렴 = "양측 새 지적 0"(any-severity) — 신규 HIGH/MED 0 ≠ 수렴**(2026-07-18 #825 슬4 실증): CODEX SOL R2 fix 후 OPUS 재수렴이 "**신규 HIGH/MED 0**"이나 **LOW 2건 지적**. PM(나)이 LOW를 "비차단·개발책임자 처분"으로 뭉뚱그리고 **머지 승인 선언** → 개발책임자 "재수렴 0도 아닌데 왜 머지?" 지적. 캐논 기준은 `feedback_canonical_workflow` "어느 라운드든 1건이라도 지적되면(false-positive 의심이어도) ①명시 disposition ②full 재수렴(양측 새 지적 0) ③PM 종합 후에만 머지" = **심각도 무관 0**. **적용**: 재수렴이 LOW라도 내면 → (a)fix 하거나 (b)개발책임자 명시 disposition(수용) 받은 뒤 (c)재수렴이 진짜 "양측 새 지적 0" 확인해야 머지. **PM 임의로 LOW를 '처분 대상'이라 적고 머지 예정 선언 금지**(그 처분 권한은 개발책임자). 이번엔 LOW 2건 fix(통합테스트 커버·mock 프레이밍)→최종 OPUS 재수렴 0건 확인 후 머지.
+
+### 2-model 실증 사례 (#825 슬4)
+OPUS R1이 "결재작성 prefill 정상"이라 판정한 것을 **CODEX SOL R2가 HIGH로 반증** — effect(`GroupwareApprovalCreatePage`)의 무조건 `setApprovers([])`가 조회 isLoading→done 전환 시 사용자 추가 결재자를 덮어씀(version 가드는 async default-load만 보호·동기 clear 무방비). baseline 확증 pre-existing이나 §5 acceptance 소관이라 현 PR fix(templateCode 실제 변경 시에만 reset). → 5단계 이종 모델(OPUS↔CODEX SOL) 교차의 실질 가치.
+
+→ [[feedback_design_system_playwright_mock_suite]](이 사건의 CI 포착 계기)·[[feedback_pm_regulate_slice_effort]](BATCH disposition·재수렴 1회)·[[feedback_canonical_workflow]](0수렴까지 반복·양측 새 지적 0)·[[feedback_recon_grep_false_negative]](검증 없는 단언 금지)·[[feedback_no_fake_data_ever]](정직 보고)·[[feedback_qa_live_shared_data_readonly]](라이브QA 공유 실데이터).

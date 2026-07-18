@@ -4,23 +4,27 @@
 
 ---
 
-## 🟡 2026-07-18 — #825 슬4 **칩 복수선택 표준 컴포넌트 · 착수-가(구현 대기)** ◀ 다음 세션 여기부터
+## 🟢 2026-07-18 — #825 슬4 **칩 복수선택 표준 컴포넌트 · main 머지 완료** ✅ ◀ 다음 세션 첫 읽기
 
-> **다음 세션 첫 읽기 + 시작점.** 슬4 = **기획·기획검수 완료·구현 미착수**. 개발책임자 "착수-가에서 휴지" 결정(2026-07-18). **CODEX LUNA 5.6 구현부터 이어받기.**
+> 슬4 완결(main `e88ad904a`·PR #844 squash·원격 브랜치 삭제). **#825 에픽 OPEN 유지**(슬5~7 잔여).
 
-### 상태
-- **PR #844**(OPEN)·브랜치 `feat/825-s4-chip-multiselect`(spec+memory만·구현 코드 0·clean). **spec = 계약**: `docs/specs/825-s4-chip-multiselect-spec.md`.
-- **워크플로우 진행**: OPUS 기획 → CODEX SOL 기획검수(**7 BLOCKING 전량 반영**) → ⏸ **CODEX LUNA 구현 대기** → OPUS/CODEX 적대검증 → 재수렴 → 머지.
+### 완료
+- **신규 design-system**: `MultiSelectAutocomplete<TOption,TSelected>`(AsyncAutocomplete+TagChip 조합·delta onAdd/onRemove·선택필터·max·refocus·opaque DOM id) · `FreeTextChipInput`(문자열 칩·trim/대소문자dedup·IME·onBlur flush) — 칩 memory supersede(D-S4-02).
+- **3화면 리팩터**: 결재작성(prefill 가드·approverIds 순서·renderChip testid)·결재선설정(GROUP/USER delta·pending 차단)·결재양식(SELECT 옵션 CSV→FreeTextChip·optionsJson round-trip).
+- **워크플로우**: OPUS 기획→CODEX SOL 기획검수(7 BLOCKING)→CODEX LUNA 구현→**OPUS R1**(HIGH 1·MED 8 fix+라이브QA 3/3)→**CODEX SOL R2**(prefill HIGH 포착·fix)→**OPUS 재수렴×2**(LOW 2 fix)→**양측 새 지적 0 수렴**→PM 종합→CI 38/38 green→머지.
+- **검증**: DS vitest 109·desktop vitest 850·ac-5 mock 게이트·라이브QA(실서버 A/B/D 3/3·실 UUID 미노출).
 
-### 이어받기 지침 (fresh 재디스패치)
-1. `git pull` + `sync-claude-memory.ps1` 먼저(칩 memory supersede 반영 확인).
-2. `feat/825-s4-chip-multiselect` 체크아웃 → **CODEX LUNA 구현** 디스패치(spec 100%·아래 7 BLOCKING 준수).
-3. **7 BLOCKING(spec §1·§5 계약)**: ①신규 컴포넌트=칩 memory supersede(조합 패키지·D-S4-02) ②Async props passthrough+getChipProps ③멀티 ARIA=선택 key 검색결과서 **필터**(base 무변경) ④ApprovalLineConfig=**서버 delta**(onAdd POST/onRemove 저장id DELETE·pending 차단) ⑤결재작성 **prefill 경합·배열순서=approverIds payload** 보존 ⑥free-text=**FreeTextChipInput**(optionsJson JSON배열·IME·dedup 분리) ⑦**행동 무회귀 매트릭스**(§5).
-4. 스코프: MultiSelectAutocomplete + FreeTextChipInput 신규 + 결재작성·결재선설정 리팩터 + 결재양식 신규. **CODEF=슬5 이관·세금계산서 묶음발행=(c) 후속**.
-5. **최대 리스크=리팩터 무회귀**(결재작성 prefill·순서·결재선설정 delta/pending·co-edit) → 공유 base(AsyncAutocomplete/TagChip) 전 소비처 회귀 게이트 + 라이브 QA + 2-model 재수렴.
+### 🔑 핵심 교훈 (메모리 박제)
+- **2-model 재수렴의 실증** — OPUS R1이 "결재작성 prefill 정상"이라 본 것을 **CODEX SOL R2가 HIGH로 반증**(effect 무조건 setApprovers([])가 로딩 중 사용자 추가 결재자 덮음). [[feedback_reconvergence_before_merge]].
+- 🚨 **재수렴 0수렴 = "양측 새 지적 0"(any-severity)** — 신규 HIGH/MED 0이어도 **LOW 지적이 있으면 아직 수렴 아님**. 개발책임자 "재수렴 0 아닌데 왜 머지?" 지적 → LOW도 fix/명시 disposition 후 재수렴 0 확인해야 머지. [[feedback_reconvergence_before_merge]] 갱신.
+- 🚨 **라이브QA 공유 실데이터 쓰기 위험** — 결재양식 테스트가 실 템플릿 write→PM이 soft-delete replace-set을 "중복 버그"로 오진해 활성 필드 hard-delete→일시 파손→복원. **공유 실데이터 쓰기 라이브QA=읽기전용/throwaway 격리·soft-delete 모델 이해 후 DB 수술.** [[feedback_qa_live_shared_data_readonly]].
 
-### 개발책임자 결정 (PR #844 §0)
-D-S4-01 인라인·D-S4-02 리팩터+신규(칩 memory supersede)·D-S4-03 FreeTextChipInput·D-S4-04 세금계산서(c) 후속·D-S4-05 CODEF 슬5 이관.
+### 🔵 개발책임자 처분 대기 (슬4 스코프 외 LOW·비차단)
+- **S4** 결재양식 빈 SELECT 첫 옵션 미확정 저장(onBlur commit이 완화·실 data-loss 아님) · **S5** optionsJson 1000자 총량 FE 가드 부재(pre-existing).
+
+### 🔵 다음 큐 (개발책임자 우선순위 확인)
+- **#825 에픽 잔여**: **슬5 ① null-semantics**(CodefImportScope 빈범주→전체 materialize·**회계 무결성·착수 전 개발책임자 재확인**)·슬6 쪽지 수신자 칩·슬7 주문 병합 UX.
+- **#845 문서 양식 디자이너 에픽**(브레인스토밍 완료·설계서 `docs/specs/document-form-designer-epic-design.md`·main `4e6d854e1`) — **DS-1 Foundation**(스키마+렌더러+기본 템플릿 seed+결재 문서 렌더러 전환·출력 무변경)부터. 개발책임자가 "슬4 이후" 지시.
 
 ---
 
