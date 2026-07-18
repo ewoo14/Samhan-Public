@@ -4,6 +4,28 @@
 
 ---
 
+## 🟢 2026-07-18 — #825 슬3 **품목 자동완성 표준화 foundation · main 머지 완료** ✅
+
+> **다음 세션 첫 읽기.** #825 슬3 완결(main `8287c85b3`·PR #841) — #825 에픽 슬4~7 계속.
+
+### 완료 (foundation)
+- **AsyncAutocomplete DOM/ARIA 식별자 ↔ getKey 분리**(D-S3-01·신규 방어심층화) — `optionDomId(index)=${listId}-opt-${idx}`(opaque·접두사 `ds-aac-list-` 보존). `<li id>`·`aria-activedescendant`가 index 기반 → **getKey(UUID/업무키) DOM 유출 근본 차단**. React key/선택/pick/keyboard 보존. **공유 base 변경**이나 Partner(슬1/슬2)+5소비처 무회귀.
+- **splitHighlightMatches 공용 hoist**(Partner→AsyncAutocomplete·단일 export) + **ProductAutocomplete 하이라이트**(modelName/productName·matchMark AA). 이미-PA(SlipForm·EstimateCatalog) 자동상속.
+- **워크플로우**: OPUS 기획→CODEX SOL 기획검수(6 BLOCKING)→CODEX LUNA 구현→OPUS 5-agent→CODEX SOL 3-session→**0수렴(양 모델 신규 HIGH/MED 0 독립 일치)**→PM 종합→CI green→머지.
+- **검증**: DS vitest 76·desktop vitest 836·5소비처 무회귀(ac-2/3/4·journal·groupware·#809 접두사)·**라이브 QA DOM UUID 미노출 실증**(-opt-N·assertNoUuidInDom).
+
+### 🔑 핵심 교훈
+- **2-model 재수렴**([[feedback_reconvergence_before_merge]]) — OPUS "in-scope 0"을 CODEX가 LOW 3 포착(matchBadge 모바일·getKey 테스트·라이브QA 스코핑). 양 모델 신규 HIGH/MED 0 일치로 수렴.
+- **공유 base 변경=전 소비처 무회귀 게이트** — AsyncAutocomplete 변경이라 5 직접소비처 회귀 스위트 필수.
+
+### 🔵 후속 바운드 (슬3 스코프 외)
+#842(WarehouseAutocomplete DOM UUID·별도 컴포넌트)·#843(matchBadge 모바일 ellipsis 클립·공유 CSS).
+
+### 🔵 #825 에픽 잔여 (슬4~7)
+**슬4 칩 복수선택**(TagChip+AsyncAutocomplete·[[feedback_chip_ui_multi_input]])·**슬5 ① null-semantics(회계 무결성·착수 전 개발책임자 재확인)**·슬6 쪽지 수신자 칩(⑤)·슬7 주문 병합 UX(③). + 품목 (a)/(c)전환 후속(D-S3-03/05).
+
+---
+
 ## 🟢 2026-07-18 — #825 슬2 **거래처 입력 표준화 + ACCOUNTANT lookup · main 머지 완료** ✅
 
 > **다음 세션 첫 읽기.** #825 슬2 완결(PR #835) — #825 에픽 슬3~7 계속.
