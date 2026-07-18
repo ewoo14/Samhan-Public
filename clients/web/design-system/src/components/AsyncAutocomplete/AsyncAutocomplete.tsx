@@ -30,7 +30,11 @@ export interface AsyncAutocompleteProps<T> {
   onChange: (item: T | null) => void
   /** 비동기 검색 함수 (호출자 주입). */
   search: (q: string) => Promise<T[]>
-  /** React key / aria-activedescendant id / 선택 동일성 비교 키. */
+  /**
+   * React key + 선택 동일성 비교 전용 키.
+   * 각 후보에서 유일해야 하며, 중복 시 React key 충돌과 선택 상태 오판이
+   * 발생하므로 소비자가 유일성을 보장한다. DOM/ARIA id에는 사용하지 않는다.
+   */
   getKey: (item: T) => string
   /** 입력란 표시값 + blur exact-match 기준. */
   getInputLabel: (item: T) => string
@@ -99,6 +103,8 @@ function AsyncAutocompleteInner<T>(
 ) {
   const reactId = useId()
   const listId = `ds-aac-list-${reactId}`
+  /** DOM/ARIA 식별자는 도메인 키와 분리한 후보 index 기반 opaque id다. */
+  const optionDomId = (index: number) => `${listId}-opt-${index}`
 
   // 사용자 입력 임시 값 (포커스 중 + 검색 중)
   const [draft, setDraft] = useState<string>('')
@@ -451,7 +457,7 @@ function AsyncAutocompleteInner<T>(
           aria-controls={open ? listId : undefined}
           aria-activedescendant={
             open && activeIndex >= 0 && candidates[activeIndex]
-              ? `${listId}-${getKey(candidates[activeIndex]!)}`
+              ? optionDomId(activeIndex)
               : undefined
           }
           role="combobox"
@@ -511,19 +517,23 @@ function AsyncAutocompleteInner<T>(
           >
             {candidates.map((item, idx) => {
               const key = getKey(item)
+              // 선택 여부는 getKey 비교 "단일 계산"을 시각 class(optionSelected)와
+              // aria-selected 가 공유한다 — 두 분기가 각자 비교하면 한쪽만
+              // 참조비교(value === item)로 회귀하는 드리프트가 가능하다 (#825 CODEX LOW).
+              const isSelected = value ? getKey(value) === key : false
               return (
                 <li
                   key={key}
-                  id={`${listId}-${key}`}
+                  id={optionDomId(idx)}
                   className={[
                     styles['option'],
-                    value && getKey(value) === key ? styles['optionSelected'] : null,
+                    isSelected ? styles['optionSelected'] : null,
                     idx === activeIndex ? styles['optionActive'] : null,
                   ]
                     .filter(Boolean)
                     .join(' ')}
                   role="option"
-                  aria-selected={value ? getKey(value) === key : false}
+                  aria-selected={isSelected}
                   onMouseDown={(e) => {
                     e.preventDefault()
                     pick(item)
