@@ -8,7 +8,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { isAxiosError } from 'axios'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { AsyncAutocomplete, Button, Card, FormField, Input, Select, Spinner, TagChip } from '@samhan/design-system'
+import { Button, Card, FormField, Input, MultiSelectAutocomplete, Select, Spinner, TagChip } from '@samhan/design-system'
 import { createGroupwareApproval } from '../api/groupwareApproval'
 import {
   searchApprovers,
@@ -276,6 +276,8 @@ export function GroupwareApprovalCreatePage() {
   const [files, setFiles] = useState<FileDraft[]>([])
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const approverEditVersionRef = useRef(0)
+  const approverTemplateCodeRef = useRef('')
+  const defaultApproverEditVersionRef = useRef(0)
 
   usePageTitle('결재 작성')
 
@@ -326,8 +328,14 @@ export function GroupwareApprovalCreatePage() {
 
   useEffect(() => {
     let cancelled = false
-    const capturedEditVersion = approverEditVersionRef.current
-    setApprovers([])
+    if (approverTemplateCodeRef.current !== selectedTemplateCode) {
+      approverTemplateCodeRef.current = selectedTemplateCode
+      // 템플릿 전환만 기존 결재선을 초기화한다. 조회 상태 전환은 로딩 중 사용자 편집을 보존한다.
+      defaultApproverEditVersionRef.current = approverEditVersionRef.current
+      setApprovers([])
+    }
+    // 템플릿 전환 시점 이후 편집이 있으면 늦게 도착한 기본 결재자로 덮어쓰지 않는다.
+    const capturedEditVersion = defaultApproverEditVersionRef.current
     if (configRoles.length > 0 || approvalLineStructureQuery.isLoading || approvalLineStructureQuery.isError) {
       return () => {
         cancelled = true
@@ -420,9 +428,12 @@ export function GroupwareApprovalCreatePage() {
     setApprovers((current) => addApproverOption(current, item))
   }
 
-  const removeApprover = (index: number) => {
+  const removeApprover = (approver: ApproverOption) => {
     approverEditVersionRef.current += 1
-    setApprovers((current) => removeApproverAt(current, index))
+    setApprovers((current) => {
+      const index = current.findIndex((item) => item.userId === approver.userId)
+      return index < 0 ? current : removeApproverAt(current, index)
+    })
   }
 
   if (templatesQuery.isLoading) {
@@ -503,11 +514,13 @@ export function GroupwareApprovalCreatePage() {
             />
 
             <div data-testid="groupware-approval-create-approvers" style={{ display: 'grid', gap: 8 }}>
-              <AsyncAutocomplete<ApproverOption>
-                value={null}
-                onChange={addApprover}
+              <MultiSelectAutocomplete<ApproverOption, ApproverOption>
+                selected={approvers}
+                onAdd={addApprover}
+                onRemove={removeApprover}
                 search={searchApprovers}
-                getKey={(option) => option.userId}
+                getOptionKey={(option) => option.userId}
+                getSelectedKey={(option) => option.userId}
                 getInputLabel={(option) => option.name}
                 renderOption={(option) => (
                   <span>
@@ -526,26 +539,21 @@ export function GroupwareApprovalCreatePage() {
                 placeholder="결재자 이름 검색"
                 minChars={2}
                 required={requireManualApprover}
+                renderChip={(approver, index, onRemove) => (
+                  <TagChip
+                    label={String(index + 1)}
+                    value={approverLabel(approver)}
+                    removeLabel={approverLabel(approver)}
+                    onRemove={onRemove}
+                    data-testid="approver-chip"
+                  />
+                )}
               />
               <p style={{ margin: 0, fontSize: 12, color: 'var(--color-neutral-500)' }}>
                 {requireManualApprover
                   ? '설정된 결재선이 없는 유형입니다. 사원 이름을 검색해 결재 순서대로 추가합니다.'
                   : '중앙 결재선 뒤에 추가할 결재자가 있을 때만 사원 이름을 검색해 추가합니다.'}
               </p>
-              {approvers.length > 0 ? (
-                <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-                  {approvers.map((approver, index) => (
-                    <TagChip
-                      key={`${approver.userId}-${index}`}
-                      label={String(index + 1)}
-                      value={approverLabel(approver)}
-                      removeLabel={approverLabel(approver)}
-                      onRemove={() => removeApprover(index)}
-                      data-testid="approver-chip"
-                    />
-                  ))}
-                </div>
-              ) : null}
             </div>
           </section>
 

@@ -16,7 +16,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { AsyncAutocomplete, Button, Card, DragHandle, Input, Modal, Select, Spinner, TagChip } from '@samhan/design-system'
+import { Button, Card, DragHandle, Input, Modal, MultiSelectAutocomplete, Select, Spinner, TagChip } from '@samhan/design-system'
 import {
   DOC_TYPES,
   STEP_TYPE_LABEL,
@@ -514,7 +514,7 @@ export function ApprovalLineConfigPage() {
                           onRemoveApprover={(approverId) => {
                             // 낙관 add 진행 중(pending-* id)인 칩 제거 시 비-UUID 로 DELETE → 400 회피.
                             // 서버 응답 도착(onSuccess)으로 실 id 치환된 뒤에만 삭제 허용.
-                            if (approverId.startsWith('pending-')) return
+                            if (!canDeleteApprover(approverId)) return
                             removeApproverMutation.mutate({ roleId: role.id, approverId })
                           }}
                           onRename={(label) =>
@@ -781,11 +781,13 @@ function ApprovalRoleApproverChips({
 }) {
   return (
     <div style={{ display: 'grid', gap: 8, minWidth: 280 }}>
-      <AsyncAutocomplete<ApprovalLineApproverOption>
-        value={null}
-        onChange={(option) => notifyApprovalRoleApproverSelected(role, option, onAddApprover)}
+      <MultiSelectAutocomplete<ApprovalLineApproverOption, ApprovalLineApprover>
+        selected={role.approvers}
+        onAdd={(option) => notifyApprovalRoleApproverSelected(role, option, onAddApprover)}
+        onRemove={(approver) => onRemoveApprover(approver.id)}
         search={searchApproverOptions}
-        getKey={(option) => `${option.type}:${option.refId}`}
+        getOptionKey={(option) => `${option.type}:${option.refId}`}
+        getSelectedKey={(approver) => `${approver.type}:${approver.refId}`}
         getInputLabel={(option) => option.displayName}
         renderOption={(option) => (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
@@ -799,23 +801,19 @@ function ApprovalRoleApproverChips({
         placeholder="그룹 또는 사원 검색"
         minChars={1}
         disabled={saving}
+        renderChip={(approver, _index, onRemove) => (
+          <TagChip
+            label={approver.type === 'GROUP' ? '그룹' : '사원'}
+            value={approver.displayName}
+            removeLabel={approver.displayName}
+            onRemove={onRemove}
+            data-testid="approval-role-approver-chip"
+          />
+        )}
       />
-      {role.approvers.length > 0 ? (
-        <div style={{ display: 'flex', gap: 'var(--space-2)', flexWrap: 'wrap' }}>
-          {role.approvers.map((approver) => (
-            <TagChip
-              key={approver.id}
-              label={approver.type === 'GROUP' ? '그룹' : '사원'}
-              value={approver.displayName}
-              removeLabel={approver.displayName}
-              onRemove={() => onRemoveApprover(approver.id)}
-              data-testid="approval-role-approver-chip"
-            />
-          ))}
-        </div>
-      ) : (
+      {role.approvers.length === 0 ? (
         <span style={{ color: 'var(--color-neutral-400)', fontSize: 12 }}>미지정</span>
-      )}
+      ) : null}
     </div>
   )
 }
@@ -1031,6 +1029,20 @@ export function optimisticallyRemoveApprovalLineApprover(
   return current?.map((role) => role.id === roleId
     ? { ...role, approvers: role.approvers.filter((approver) => approver.id !== approverId) }
     : role)
+}
+
+/**
+ * 결재자 칩 제거 가능 여부.
+ *
+ * <p>낙관적 add 로 붙인 임시 결재자는 서버가 아직 실 id 를 발급하지 않아 `pending-*` id 를
+ * 갖는다. 이 상태에서 제거하면 비-UUID 를 DELETE 로 보내 400 이 발생하므로, 서버 응답으로
+ * 실 id 가 치환된 뒤에만(= pending-* 가 아닐 때만) 삭제를 허용한다.
+ *
+ * @param approverId 결재자 칩 id
+ * @returns pending-* 이면 false, 그 외 true
+ */
+export function canDeleteApprover(approverId: string): boolean {
+  return !approverId.startsWith('pending-')
 }
 
 export function optimisticallyAddApprovalLineStep(

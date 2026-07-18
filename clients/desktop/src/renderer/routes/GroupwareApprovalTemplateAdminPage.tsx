@@ -3,7 +3,7 @@
  *
  * 템플릿 UUID 는 DataTable key/API path 전용이다. 화면에는 code/name/field label 만 노출한다.
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { isAxiosError } from 'axios'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -11,11 +11,13 @@ import {
   Button,
   Card,
   DataTable,
+  FreeTextChipInput,
   FormField,
   Input,
   Select,
   Spinner,
   type DataTableColumn,
+  type FreeTextChipInputHandle,
 } from '@samhan/design-system'
 import {
   APPROVAL_FIELD_TYPE_LABEL,
@@ -36,7 +38,7 @@ interface TemplateFieldDraft {
   fieldType: ApprovalFieldType
   required: boolean
   displayOrder: number
-  optionsText: string
+  options: string[]
   placeholder: string
 }
 
@@ -58,7 +60,7 @@ function emptyFieldDraft(index: number): TemplateFieldDraft {
     fieldType: 'TEXT',
     required: false,
     displayOrder: index + 1,
-    optionsText: '',
+    options: [],
     placeholder: '',
   }
 }
@@ -87,7 +89,7 @@ function draftFromTemplate(template: ApprovalTemplate): TemplateDraft {
       fieldType: field.fieldType,
       required: field.required,
       displayOrder: field.displayOrder,
-      optionsText: field.options.join(', '),
+      options: [...field.options],
       placeholder: field.placeholder ?? '',
     })),
   }
@@ -106,10 +108,7 @@ function draftToInput(draft: TemplateDraft): ApprovalTemplateInput {
       fieldType: field.fieldType,
       required: field.required,
       displayOrder: Number.isFinite(field.displayOrder) ? field.displayOrder : index + 1,
-      options: field.optionsText
-        .split(',')
-        .map((option) => option.trim())
-        .filter((option) => option.length > 0),
+      options: field.options,
       placeholder: field.placeholder,
     })),
   }
@@ -130,6 +129,18 @@ export function GroupwareApprovalTemplateAdminPage() {
   const [draft, setDraft] = useState<TemplateDraft>(() => emptyDraft())
   const [notice, setNotice] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+
+  // SELECT 필드의 FreeTextChipInput 명령형 핸들 — 저장 직전 미확정 draft 확정용(H1 data-loss 방지).
+  const chipHandlesRef = useRef(new Map<number, FreeTextChipInputHandle>())
+  const setChipHandle = useCallback((index: number, handle: FreeTextChipInputHandle | null) => {
+    if (handle) chipHandlesRef.current.set(index, handle)
+    else chipHandlesRef.current.delete(index)
+  }, [])
+  // 저장 버튼 mousedown(= click 직전 별도 discrete 이벤트)에서 flush 한다. onChange 로 인한
+  // draft state 갱신이 이후 click→mutate 렌더에 반영되어 stale options 저장을 막는다.
+  const flushChipDrafts = useCallback(() => {
+    chipHandlesRef.current.forEach((handle) => handle.flush())
+  }, [])
 
   usePageTitle('결재 양식')
 
@@ -261,7 +272,7 @@ export function GroupwareApprovalTemplateAdminPage() {
     || draft.fields.some((field) =>
       !field.fieldKey.trim()
       || !field.label.trim()
-      || (field.fieldType === 'SELECT' && field.optionsText.split(',').filter((option) => option.trim()).length === 0),
+      || (field.fieldType === 'SELECT' && field.options.length === 0),
     )
 
   if (templatesQuery.isLoading) {
@@ -428,12 +439,12 @@ export function GroupwareApprovalTemplateAdminPage() {
                   필수
                 </label>
                 {field.fieldType === 'SELECT' ? (
-                  <Input
-                    label="옵션"
-                    value={field.optionsText}
-                    onChange={(event) => updateField(index, { optionsText: event.target.value })}
-                    placeholder="연차, 반차"
-                    inputSize="sm"
+                  <FreeTextChipInput
+                    ref={(handle) => setChipHandle(index, handle)}
+                    value={field.options}
+                    onChange={(options) => updateField(index, { options })}
+                    ariaLabel="선택 옵션"
+                    placeholder="옵션 입력 후 Enter 또는 쉼표"
                   />
                 ) : (
                   <Input
@@ -473,6 +484,7 @@ export function GroupwareApprovalTemplateAdminPage() {
               type="button"
               variant="primary"
               size="sm"
+              onMouseDown={flushChipDrafts}
               onClick={() => saveMutation.mutate()}
               disabled={!canWrite || invalid || saveMutation.isPending}
               loading={saveMutation.isPending}

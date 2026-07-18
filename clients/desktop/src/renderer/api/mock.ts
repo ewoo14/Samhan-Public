@@ -47,6 +47,7 @@ declare global {
   interface Window {
     __SAMHAN_MOCK_LAST_ADD_VEHICLE_GROUP_BODY__?: AddVehicleGroupPayload
     __SAMHAN_MOCK_LAST_DISPATCH_BODY__?: { groupIds?: string[] }
+    __SAMHAN_MOCK_LAST_GROUPWARE_APPROVAL_CREATE_BODY__?: { approverIds: string[] }
     __SAMHAN_MOCK_SLIP_COEDIT?: Record<string, string[]>
     __SAMHAN_MOCK_SLIP_COEDIT_SEED?: Record<string, string[]>
   }
@@ -10690,6 +10691,10 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       const title = String(body.title ?? '').trim()
       const requesterId = String(body.requesterId ?? '').trim()
       const approverIds = Array.isArray(body.approverIds) ? body.approverIds : []
+      // Axios mock adapter는 네트워크 요청을 만들지 않으므로 QA가 실제 handler 수신 순서를 관찰할 수 있게 보존한다.
+      ;(globalThis as unknown as Window).__SAMHAN_MOCK_LAST_GROUPWARE_APPROVAL_CREATE_BODY__ = {
+        approverIds: [...approverIds],
+      }
       if (!requesterId || !title) {
         return mockError(400, 'INVALID_INPUT', '요청자와 제목은 필수입니다.')
       }
@@ -15116,7 +15121,10 @@ function mockParseOptionsJson(value: unknown): string[] {
   try {
     const parsed = JSON.parse(value) as unknown
     if (!Array.isArray(parsed)) return []
-    return parsed.map((item) => String(item).trim()).filter((item) => item.length > 0)
+    // BE parity는 대소문자 변종 dedup 미적용뿐이다. trim·빈값 제거는 FE 입력단 뒤의 mock 로컬 방어다.
+    return parsed
+      .map((item) => String(item).trim())
+      .filter((item) => item.length > 0)
   } catch {
     return []
   }
