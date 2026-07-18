@@ -4,7 +4,31 @@
 
 ---
 
-## 🟢 2026-07-18 — #845 DS-1 **문서 양식 렌더러 Foundation · main 머지 완료** ✅ ◀ 다음 세션 첫 읽기
+## 🟢 2026-07-18 — #845 DS-2 **문서 양식 템플릿 영속·활성 렌더 · main 머지 완료** ✅ ◀ 다음 세션 첫 읽기
+
+> DS-2 완결(main `3bb6661af`·PR #847 squash). **#845 문서 디자이너 에픽 OPEN 유지**(DS-3 편집기·DS-4 잔여).
+
+### 완료
+- **BE(groupware V10)**: `document_templates` JSONB aggregate(BaseEntity 7-audit·`@Version lock_version`·`schema_version`·DRAFT/ACTIVE·**docType별 active 1개** partial unique·이름 partial unique)·CRUD/activate/deactivate/active-조회 controller(**권한=기존 `groupware.approval-templates` 재사용**·에픽 DFD-07)·activate 원자(bulk 강등 id<>target+lock/audit+flush·409)·`ApprovalLineAdminResponse.documentType` 노출·`approval_lines.document_type` V10 backfill(길이가드)·strict Jackson deserializer(coercion parity)·구조검증(FE parseDocumentTemplate 불변식 corpus parity).
+- **FE**: `ApprovalDocView`가 **docType 활성 레이아웃 조회→적용**(없음/오류→GROUPWARE_DEFAULT·**출력 100% 무변경**). `key={id}`/`key={docType}` 2단 동기 remount·staleTime:0·refetchOnMount·1회 결정 latch.
+- **워크플로우**: OPUS 기획→CODEX SOL 기획검수 **4라운드 GO**(V78 오류·에픽이탈·revision/@Version·schema_version·backfill crash 교정)→CODEX LUNA 구현→**OPUS R1 [CRITICAL] 활성 레이아웃 폐기**(라이브 재현·fix)→**CODEX SOL R2 [BLOCKING] staleTime·A→B 캐시**(fix=**CODEX LUNA**)→**양측 재수렴 0**→**최종 OPUS 교차검증 0**→PM 종합→CI 33/33 green→머지.
+- **검증**: BE :groupware-service:test 141(`--rerun-tasks` genuine)·FE vitest 933·라이브QA(실 V10·실 Postgres·실 렌더·no-active→DEFAULT·SPARSE 활성→반영 스샷).
+
+### 🔑 핵심 교훈 (메모리 박제)
+- 🚨 **2-model이 CI green 뒤 CRITICAL/BLOCKING 포착** — R1 CRITICAL(활성 레이아웃 항상 폐기·presence-only 테스트 false-green)·R2 BLOCKING(5분 staleTime stale·A→B 캐시 전환). 단일모델+CI green으론 놓쳤을 것. [[feedback_react_query_freshness_route_param_reset]].
+- 🚨 **freshness-critical React Query staleTime:0+refetchOnMount·route-param state=key-remount·"기능 적용됨"=고유 구별출력 단언(presence=false-green)·캐시회귀=공유 QueryClient.**
+- 🚨 **개발책임자 지시(2026-07-18): 코덱스 라운드 리뷰=SOL / 실제 fix=LUNA**(SOL=리뷰어·LUNA=구현자 분리). [[feedback_canonical_workflow]] 5단계 갱신.
+
+### 🔵 개발책임자 처분 대기 (DS-2 스코프 외·선재/양성·비차단)
+- **[선재] `documentTypeFor` `GROUPWARE_${code}`(≤70자) > `ApprovalLineBase.document_type VARCHAR(40)`** — code 31자+ 결재 생성 시 오버플로(입력템플릿 도메인·기존 코드·별건 등록 대상). **[양성] legacy `code="DEFAULT"`→`GROUPWARE_DEFAULT` sentinel backfill**(예약 docType→active 조회 null→DEFAULT 수렴·현 DB 0건·V10 불변). **[선재 infra] generic Playwright 잡 `qa-e2e.yml:52 || true`**(DS-2 무관·mock hard gate 580/580이 FE 게이트 권위).
+
+### 🔵 다음 큐 (개발책임자 우선순위 확인)
+- **#845 DS-3 편집기 MVP + 관리 UI**(3-pane 캔버스·문서 WYSIWYG·다중 명명 템플릿 관리 화면) — DS-2가 BE 영속+렌더러 연결 완료했으므로 편집기가 활성 레이아웃을 저작. **과거 결재문서 재인쇄 pin 여부**=DS-3 착수 전 무결성 결정(spec §7·[[feedback_integrity_domain_policy_preconfirm]]).
+- **#825 슬5 ① null-semantics**(CodefImportScope·**회계 무결성·착수 전 개발책임자 재확인**)·슬6·슬7.
+
+---
+
+## 🟢 2026-07-18 — #845 DS-1 **문서 양식 렌더러 Foundation · main 머지 완료** ✅
 
 > DS-1 완결(main `a236e6628`·PR #846 squash·원격 브랜치 삭제). **#845 문서 디자이너 에픽 OPEN 유지**(DS-2~4 잔여).
 
