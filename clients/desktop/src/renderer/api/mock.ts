@@ -10162,6 +10162,16 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     )
   }
 
+  // GET /groupware/document-templates/active?docType= — 렌더러용 활성 문서양식(인증-only).
+  // 활성 시드가 있으면 유효 TemplateEnvelope DTO, 없으면 data:null → 렌더러 DEFAULT fallback.
+  // 핸들러가 있어야 mock 모드에서 실 네트워크로 fallthrough 하지 않는다.
+  if (method === 'GET' && url.match(/\/(?:admin\/)?groupware\/document-templates\/active(?:\?.*)?$/)) {
+    const urlObj = new URL(url.startsWith('http') ? url : `http://mock${url}`)
+    const docType = String(config.params?.['docType'] ?? urlObj.searchParams.get('docType') ?? '').trim()
+    if (!docType) return envelope(null)
+    return envelope(MOCK_DOCUMENT_TEMPLATES[docType] ?? null)
+  }
+
   const groupwareApprovalTemplateDetailMatch = url.match(
     /\/admin\/groupware\/approval-templates\/([^/?]+)(?:\?.*)?$/,
   )
@@ -10752,6 +10762,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
         content: typeof body.content === 'string' && body.content.trim() ? body.content : null,
         templateId: template?.id ?? null,
         templateName: template?.name ?? null,
+        documentType: template?.code ? `GROUPWARE_${template.code}` : null,
         fieldValues: { ...fieldValues },
         status: 'PENDING',
         steps,
@@ -14840,6 +14851,64 @@ function mockInstantiateApprovalLineSteps(
   })
 }
 
+/** 렌더러용 활성 문서양식(DS-2) mock DTO — client 의 normalize()/parseDocumentTemplate 이 재검증한다. */
+interface MockDocumentTemplateDto {
+  id: string
+  status: 'ACTIVE' | 'DRAFT'
+  revision: number
+  docType: string
+  name: string
+  schemaVersion: number
+  document: {
+    paper: 'A4_PORTRAIT'
+    bands: Array<{ key: string; kind: 'HEADER' | 'BODY' | 'FOOTER'; elements: Array<{ key: string; type: string }> }>
+  }
+}
+
+/**
+ * docType별 활성 문서양식 시드. `GROUPWARE_EXPENSE_REPORT` 는 GROUPWARE_DEFAULT 구조를 그대로
+ * 복제한 활성 양식(=DS-2 "DEFAULT-복제" 출력 무변경 데모)이라 mock 결재문서 인쇄 출력이 바뀌지
+ * 않으면서 "활성 있음" 경로를 실증한다. 시드에 없는 docType 은 data:null → DEFAULT fallback.
+ */
+const MOCK_DOCUMENT_TEMPLATES: Record<string, MockDocumentTemplateDto> = {
+  GROUPWARE_EXPENSE_REPORT: {
+    id: '77777777-eeee-4eee-8eee-000000000001',
+    status: 'ACTIVE',
+    revision: 1,
+    docType: 'GROUPWARE_EXPENSE_REPORT',
+    name: '지출결의서 기본 문서양식',
+    schemaVersion: 1,
+    document: {
+      paper: 'A4_PORTRAIT',
+      bands: [
+        {
+          key: 'approval-header',
+          kind: 'HEADER',
+          elements: [
+            { key: 'approval-title', type: 'TITLE' },
+            { key: 'approval-meta', type: 'META_ROWS' },
+            { key: 'approval-grid', type: 'APPROVAL_GRID' },
+          ],
+        },
+        {
+          key: 'approval-body',
+          kind: 'BODY',
+          elements: [
+            { key: 'approval-content', type: 'CONTENT_PARAGRAPHS' },
+            { key: 'approval-fields', type: 'FIELD_TABLE' },
+            { key: 'approval-attachments', type: 'ATTACHMENT_TABLE' },
+          ],
+        },
+        {
+          key: 'approval-footer',
+          kind: 'FOOTER',
+          elements: [{ key: 'approval-closing', type: 'CLOSING' }],
+        },
+      ],
+    },
+  },
+}
+
 const MOCK_GROUPWARE_APPROVALS: ApprovalLineAdminResponse[] = [
   {
     approvalId: '77777777-aaaa-4aaa-8aaa-000000000001',
@@ -14850,6 +14919,7 @@ const MOCK_GROUPWARE_APPROVALS: ApprovalLineAdminResponse[] = [
     content: '아로로지스 외주 배차 정산 내역 승인 요청입니다.',
     templateId: '77777777-dddd-4ddd-8ddd-000000000001',
     templateName: '지출결의서',
+    documentType: 'GROUPWARE_EXPENSE_REPORT',
     fieldValues: {
       expenseItem: '아로로지스 외주 배차',
       amount: '1840000',
@@ -14890,6 +14960,7 @@ const MOCK_GROUPWARE_APPROVALS: ApprovalLineAdminResponse[] = [
     content: '분류 라벨과 포장재 구매 건입니다.',
     templateId: '77777777-dddd-4ddd-8ddd-000000000001',
     templateName: '지출결의서',
+    documentType: 'GROUPWARE_EXPENSE_REPORT',
     fieldValues: {
       expenseItem: '창고 소모품',
       amount: '320000',
@@ -14930,6 +15001,7 @@ const MOCK_GROUPWARE_APPROVALS: ApprovalLineAdminResponse[] = [
     content: '거래처 요청에 따른 운송비 예외 승인 건입니다.',
     templateId: null,
     templateName: null,
+    documentType: null,
     fieldValues: {},
     status: 'APPROVED',
     steps: [
