@@ -4,7 +4,29 @@
 
 ---
 
-## 🟢 2026-07-18 — #825 슬4 **칩 복수선택 표준 컴포넌트 · main 머지 완료** ✅ ◀ 다음 세션 첫 읽기
+## 🟢 2026-07-18 — #845 DS-1 **문서 양식 렌더러 Foundation · main 머지 완료** ✅ ◀ 다음 세션 첫 읽기
+
+> DS-1 완결(main `a236e6628`·PR #846 squash·원격 브랜치 삭제). **#845 문서 디자이너 에픽 OPEN 유지**(DS-2~4 잔여).
+
+### 완료
+- 결재문서 인쇄/미리보기 렌더를 **코드→데이터(템플릿) 정의**로 전환하는 뼈대(FE 전용). 스키마+parser(discriminated union·불변식·GROUPWARE_DEFAULT fallback)·2단계 compiler(PrintLayoutProps 동형)·**독립 frozen 골든 게이트**(18 fixture 바이트동일·new===frozen===golden·vitest -u 무력)·기본 템플릿 상수·ApprovalDocView 전환. **strangler=global.css/PrintLayout/@page 무변경 → 출력 100% 무변경.**
+- **워크플로우**: OPUS 기획→CODEX SOL 기획검수 **4라운드 GO**→CODEX LUNA 구현→OPUS R1(HIGH 1 ac-845 CI-Playwright·MED 2 fix)→CODEX SOL R2(신규 HIGH/MED 0·LOW 2 fix)→**OPUS 재수렴 양측 새 지적 0**→PM 종합→CI 33 green→머지.
+- **검증**: desktop vitest 893·ac-845 Playwright CI RED→GREEN·라이브 렌더 실증(스샷 3장).
+
+### 🔑 핵심 교훈 (메모리 박제)
+- 🚨 **구현이 Playwright/E2E 게이트 스펙 생성 시 PM이 CI 게이트 green을 적대검증 전 확인** — "playwright 실행 금지" 지시로 미검증→push 후 CI Desktop Playwright RED(ac-845가 지어낸 id→mock 404→page.route no-op 트랩). DevOps 적대검증이 `gh pr checks`로 포착. [[feedback_verify_playwright_gate_before_adversarial]].
+- **2-model 기획검수 가치** — CODEX SOL 4라운드가 spec을 대폭 정밀화(2단계 compiler·독립 frozen 오라클·runtime parser·pixel 게이트 CSS-무변경 논거).
+
+### 🔵 개발책임자 처분 대기 (DS-2 대비 LOW)
+docType `GROUPWARE_DEFAULT` sentinel 충돌·resolver shallow document 참조·build:print-renderer CI 미검증·frozen hash 가드·ac-845 스샷 baseline(수동 sanity).
+
+### 🔵 다음 큐 (개발책임자 우선순위)
+- **#845 DS-2 템플릿 관리**(다중 명명·버전·DB 저장·권한 MASTER·MANAGER) — DS-1 스키마/parser를 DB 영속으로 이관(재정의 불필요·위 LOW 처리).
+- **#825 슬5 ① null-semantics**(CODEF·**회계 무결성·착수 전 개발책임자 재확인**)·슬6·슬7.
+
+---
+
+## 🟢 2026-07-18 — #825 슬4 **칩 복수선택 표준 컴포넌트 · main 머지 완료** ✅
 
 > 슬4 완결(main `e88ad904a`·PR #844 squash·원격 브랜치 삭제). **#825 에픽 OPEN 유지**(슬5~7 잔여).
 
