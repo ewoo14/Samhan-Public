@@ -13,6 +13,7 @@ import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
 import com.samhanair.logis.security.InternalAuthProperties;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -138,9 +139,10 @@ class SlipServiceClientTest {
     }
 
     @Test
-    void getSlipLine_200은_slipType까지_역직렬화() {
+    void getSlipLine_200은_partnerId까지_역직렬화() {
         UUID slipId = UUID.randomUUID();
         UUID lineId = UUID.randomUUID();
+        UUID partnerId = UUID.randomUUID();
         server.expect(requestTo("http://slip-service/internal/slips/lines/" + lineId))
                 .andExpect(method(HttpMethod.GET))
                 .andExpect(header("X-Internal-Token", TOKEN))
@@ -149,6 +151,9 @@ class SlipServiceClientTest {
                           "slipId": "%s",
                           "slipNo": "OUT-2026-05-0042",
                           "lineId": "%s",
+                          "partnerId": "%s",
+                          "partnerCode": "P-SNAPSHOT-001",
+                          "partnerName": "스냅샷 거래처",
                           "productName": "P",
                           "quantity": 10,
                           "unitPrice": 150000,
@@ -156,11 +161,108 @@ class SlipServiceClientTest {
                           "slipStatus": "CONFIRMED",
                           "slipType": "OUTBOUND"
                         }
-                        """.formatted(slipId, lineId), MediaType.APPLICATION_JSON));
+                        """.formatted(slipId, lineId, partnerId), MediaType.APPLICATION_JSON));
 
         SlipLineSnapshot snapshot = client.getSlipLine(lineId);
 
+        assertThat(snapshot.partnerId()).isEqualTo(partnerId);
+        assertThat(snapshot.partnerCode()).isEqualTo("P-SNAPSHOT-001");
+        assertThat(snapshot.partnerName()).isEqualTo("스냅샷 거래처");
         assertThat(snapshot.slipType()).isEqualTo("OUTBOUND");
+        server.verify();
+    }
+
+    @Test
+    void getSlipLine_legacy응답의_partnerCode_partnerName_누락은_null로_파싱한다() {
+        UUID lineId = UUID.randomUUID();
+        UUID partnerId = UUID.randomUUID();
+        server.expect(requestTo("http://slip-service/internal/slips/lines/" + lineId))
+                .andRespond(withSuccess("""
+                        {
+                          "slipId": "%s",
+                          "slipNo": "OUT-2026-05-0042",
+                          "lineId": "%s",
+                          "partnerId": "%s",
+                          "productName": "P",
+                          "quantity": 10,
+                          "unitPrice": 150000,
+                          "lineTotal": 1500000,
+                          "slipStatus": "CONFIRMED",
+                          "slipType": "OUTBOUND"
+                        }
+                        """.formatted(UUID.randomUUID(), lineId, partnerId), MediaType.APPLICATION_JSON));
+
+        SlipLineSnapshot snapshot = client.getSlipLine(lineId);
+
+        assertThat(snapshot.partnerId()).isEqualTo(partnerId);
+        assertThat(snapshot.partnerCode()).isNull();
+        assertThat(snapshot.partnerName()).isNull();
+        server.verify();
+    }
+
+    @Test
+    void getSlipLine_producer추가필드는_무시하고_파싱한다() {
+        UUID lineId = UUID.randomUUID();
+        UUID partnerId = UUID.randomUUID();
+        server.expect(requestTo("http://slip-service/internal/slips/lines/" + lineId))
+                .andRespond(withSuccess("""
+                        {
+                          "slipId": "%s",
+                          "slipNo": "OUT-2026-05-0042",
+                          "lineId": "%s",
+                          "partnerId": "%s",
+                          "partnerCode": "P-UNKNOWN-FIELD",
+                          "partnerName": "알 수 없는 필드 거래처",
+                          "productName": "P",
+                          "quantity": 10,
+                          "unitPrice": 150000,
+                          "lineTotal": 1500000,
+                          "slipStatus": "CONFIRMED",
+                          "slipType": "OUTBOUND",
+                          "producerOnlyField": "rolling-safe"
+                        }
+                        """.formatted(UUID.randomUUID(), lineId, partnerId), MediaType.APPLICATION_JSON));
+
+        assertThat(client.getSlipLine(lineId).partnerId()).isEqualTo(partnerId);
+        server.verify();
+    }
+
+    @Test
+    void getSlipLines_목록의_partnerId를_파싱한다() {
+        UUID slipId = UUID.randomUUID();
+        UUID lineId = UUID.randomUUID();
+        UUID partnerId = UUID.randomUUID();
+        server.expect(requestTo("http://slip-service/internal/slips/" + slipId + "/lines"))
+                .andExpect(method(HttpMethod.GET))
+                .andExpect(header("X-Internal-Token", TOKEN))
+                .andRespond(withSuccess("""
+                        [
+                          {
+                            "slipId": "%s",
+                            "slipNo": "OUT-2026-05-0042",
+                          "lineId": "%s",
+                          "partnerId": "%s",
+                          "partnerCode": "P-SNAPSHOT-LIST",
+                          "partnerName": "목록 거래처",
+                          "productName": "P",
+                            "quantity": 10,
+                            "unitPrice": 150000,
+                            "lineTotal": 1500000,
+                            "slipStatus": "CONFIRMED",
+                            "slipType": "OUTBOUND"
+                          }
+                        ]
+                        """.formatted(slipId, lineId, partnerId), MediaType.APPLICATION_JSON));
+
+        List<SlipLineSnapshot> snapshots = client.getSlipLines(slipId);
+        assertThat(snapshots)
+                .singleElement()
+                .extracting(SlipLineSnapshot::partnerId)
+                .isEqualTo(partnerId);
+        assertThat(snapshots)
+                .singleElement()
+                .extracting(SlipLineSnapshot::partnerCode, SlipLineSnapshot::partnerName)
+                .containsExactly("P-SNAPSHOT-LIST", "목록 거래처");
         server.verify();
     }
 }

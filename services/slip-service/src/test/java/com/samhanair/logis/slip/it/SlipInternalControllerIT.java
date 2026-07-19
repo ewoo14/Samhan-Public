@@ -20,6 +20,7 @@ import com.samhanair.logis.slip.delivery.sms.SmsResult;
 import com.samhanair.logis.slip.domain.SignatureAuditAction;
 import com.samhanair.logis.slip.domain.SignatureSource;
 import com.samhanair.logis.slip.repository.SlipSignatureAuditRepository;
+import com.samhanair.logis.slip.repository.SlipRepository;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -37,6 +38,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -70,6 +72,7 @@ class SlipInternalControllerIT extends AbstractPostgresIT {
     @Autowired private MockMvc mockMvc;
     @Autowired private ObjectMapper objectMapper;
     @Autowired private SlipSignatureAuditRepository auditRepository;
+    @Autowired private SlipRepository slipRepository;
 
     @MockBean private InventoryClient inventoryClient;
     @MockBean private ProductClient productClient;
@@ -103,6 +106,8 @@ class SlipInternalControllerIT extends AbstractPostgresIT {
         // PartnerInternalClient 기본 mock — empty (개별 case 가 override)
         Mockito.lenient().when(partnerInternalClient.resolvePartnerId(ArgumentMatchers.anyString()))
                 .thenReturn(java.util.Optional.empty());
+        Mockito.lenient().when(partnerInternalClient.resolvePartnerCode(ArgumentMatchers.any()))
+                .thenReturn(java.util.Optional.of("P-TEST-SNAPSHOT"));
     }
 
     // ---------- POST /internal/slips/{slipId}/signatures ----------
@@ -253,6 +258,72 @@ class SlipInternalControllerIT extends AbstractPostgresIT {
                 .andExpect(status().isNotFound());
     }
 
+    @Test
+    void getSlipLineSnapshots_exposes_partnerId_for_single_and_list_shapes() throws Exception {
+        UUID partnerId = UUID.randomUUID();
+        String slipId = createInspectingSlipForPartner(partnerId);
+        UUID lineId = slipRepository.findById(UUID.fromString(slipId))
+                .orElseThrow()
+                .getLines()
+                .get(0)
+                .getId();
+
+        mockMvc.perform(get("/internal/slips/" + slipId + "/lines")
+                        .header("X-Internal-Token", INTERNAL_TOKEN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").doesNotExist())
+                .andExpect(jsonPath("$[0].slipId").value(slipId))
+                .andExpect(jsonPath("$[0].lineId").value(lineId.toString()))
+                .andExpect(jsonPath("$[0].partnerId").value(partnerId.toString()))
+                .andExpect(jsonPath("$[0].partnerCode").value("P-TEST-SNAPSHOT"))
+                .andExpect(jsonPath("$[0].partnerName").value("거래처"))
+                .andExpect(jsonPath("$[0].slipNo").exists());
+
+        mockMvc.perform(get("/internal/slips/lines/" + lineId)
+                        .header("X-Internal-Token", INTERNAL_TOKEN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data").doesNotExist())
+                .andExpect(jsonPath("$.slipId").value(slipId))
+                .andExpect(jsonPath("$.lineId").value(lineId.toString()))
+                .andExpect(jsonPath("$.partnerId").value(partnerId.toString()))
+                .andExpect(jsonPath("$.partnerCode").value("P-TEST-SNAPSHOT"))
+                .andExpect(jsonPath("$.partnerName").value("거래처"))
+                .andExpect(jsonPath("$.slipNo").exists());
+    }
+
+    /**
+     * OSIV=false 실운영 경계를 재현한다 — 클래스 {@code @Transactional} 이 시작하는 세션 밖에서도
+     * 두 accounting 내부 조회가 lazy 연관관계 초기화 없이 정상 응답해야 한다.
+     */
+    @Test
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    void getSlipLineSnapshots_withoutOuterTransaction_returnsPartnerIdForBothShapes() throws Exception {
+        UUID partnerId = UUID.randomUUID();
+        String slipId = createInspectingSlipForPartner(partnerId);
+
+        MvcResult listResult = mockMvc.perform(get("/internal/slips/" + slipId + "/lines")
+                        .header("X-Internal-Token", INTERNAL_TOKEN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].partnerId").value(partnerId.toString()))
+                .andExpect(jsonPath("$[0].partnerCode").value("P-TEST-SNAPSHOT"))
+                .andExpect(jsonPath("$[0].partnerName").value("거래처"))
+                .andExpect(jsonPath("$[0].slipId").value(slipId))
+                .andExpect(jsonPath("$[0].lineId").exists())
+                .andReturn();
+
+        String lineId = objectMapper.readTree(listResult.getResponse().getContentAsString())
+                .get(0).get("lineId").asText();
+
+        mockMvc.perform(get("/internal/slips/lines/" + lineId)
+                        .header("X-Internal-Token", INTERNAL_TOKEN))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.partnerId").value(partnerId.toString()))
+                .andExpect(jsonPath("$.partnerCode").value("P-TEST-SNAPSHOT"))
+                .andExpect(jsonPath("$.partnerName").value("거래처"))
+                .andExpect(jsonPath("$.slipId").value(slipId))
+                .andExpect(jsonPath("$.lineId").value(lineId));
+    }
+
     // ---------- GET /internal/slips/by-partner-code/{code}/recent (W10-4 종합 TM BE-1 채택) ----------
 
     @Test
@@ -365,6 +436,7 @@ class SlipInternalControllerIT extends AbstractPostgresIT {
         body.put("sourceWarehouseId", UUID.randomUUID().toString());
         body.put("destinationWarehouseId", UUID.randomUUID().toString());
         body.put("partnerId", partnerId.toString());
+        body.put("partnerCode", "P-TEST-SNAPSHOT");
         body.put("partnerName", "거래처");
         body.put("deliveryTag", "DAY");
         body.put("driverName", "기사");

@@ -18,7 +18,21 @@ export interface AllocationEditorRow {
   sourceAmount: number
   allocatedQty: number
   allocatedAmount: number
+  partnerId: string | null
+  partnerCode: string | null
+  partnerName: string | null
 }
+
+export interface AllocationPartner {
+  partnerId: string
+  partnerCode: string
+  partnerName: string
+}
+
+export type AllocationPartnerResolution =
+  | { status: 'valid'; partner: AllocationPartner }
+  | { status: 'missing'; message: string }
+  | { status: 'multiple'; message: string }
 
 export interface SlipLineAllocationEditorProps {
   sourceKind: AllocationSourceKind
@@ -35,9 +49,46 @@ const inputStyle: CSSProperties = {
   width: '100%',
 }
 
+function isNonBlank(value: string | null | undefined): value is string {
+  return value != null && value.trim().length > 0
+}
+
 export function getDefaultAllocationRows(sourceKind: AllocationSourceKind): AllocationEditorRow[] {
   void sourceKind
   return []
+}
+
+export function resolveAllocationPartner(rows: AllocationEditorRow[]): AllocationPartnerResolution {
+  if (rows.length === 0) {
+    return { status: 'missing', message: '배분할 원천 거래처를 확인할 수 없습니다.' }
+  }
+
+  const first = rows[0]
+  if (!first) {
+    return { status: 'missing', message: '원천 거래처를 확인할 수 없습니다.' }
+  }
+
+  if (rows.some((row) => !row.partnerId || !isNonBlank(row.partnerCode) || !isNonBlank(row.partnerName))) {
+    return { status: 'missing', message: '원천 전표의 거래처 정보가 없어 저장할 수 없습니다.' }
+  }
+
+  const partnerIds = new Set(rows.map((row) => row.partnerId).filter((id): id is string => Boolean(id)))
+  if (partnerIds.size > 1) {
+    return { status: 'multiple', message: '서로 다른 거래처의 원천은 한 전표에 함께 배분할 수 없습니다.' }
+  }
+
+  if (!first.partnerId || !isNonBlank(first.partnerCode) || !isNonBlank(first.partnerName) || partnerIds.size === 0) {
+    return { status: 'missing', message: '원천 전표의 거래처 정보가 없어 저장할 수 없습니다.' }
+  }
+
+  return {
+    status: 'valid',
+    partner: {
+      partnerId: first.partnerId,
+      partnerCode: first.partnerCode,
+      partnerName: first.partnerName,
+    },
+  }
 }
 
 function toEditorRows(summaries: SlipAllocationSourceSummary[]): AllocationEditorRow[] {
@@ -53,6 +104,9 @@ function toEditorRows(summaries: SlipAllocationSourceSummary[]): AllocationEdito
       sourceAmount: Number(line.lineTotal),
       allocatedQty: 0,
       allocatedAmount: 0,
+      partnerId: slip.partnerId,
+      partnerCode: slip.partnerCode,
+      partnerName: slip.partnerName,
     })),
   )
 }
