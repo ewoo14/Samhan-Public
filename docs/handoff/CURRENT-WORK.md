@@ -13,9 +13,12 @@
 > **배치 계획 (풀 캐논·PM 자율)**:
 > - **B1-A** ✅ 머지(main `60fb16c3d`·PR #857): #834·837·840 DS 자동완성 committed-selection 계약·stale/IME 가드·DocRef 세대. 기획검수 3R→R1(4-dim CLEAN·테스트 MED4)→R2(**2-모델 상보: IME 조합키 프로덕션 버그**)→재수렴 0→머지. 라이브QA=실 desktop committed 차단 4프레임.
 > - **B1-B** ✅ 머지(main `39d448a0e`·PR #858): #828(LineRow role=row orphan 제거·모바일 병합)·#842(Warehouse opaque/hasListbox)·#843(matchBadge sibling). 기획검수 3R→R1(4-dim CLEAN·dangling IDREF 3건 수리·모바일 테스트 MED1)→R2(**2-모델 상보: Warehouse IME 버그 + AccountCodeSelect defect-family sweep**)→재수렴 0→머지. 라이브QA=matchBadge 360px 비클립. IME 가드 4컴포넌트 완결.
-> - **B2 회계/거래처** ◀ 다음: #836(PartnersPage 403)·#838(거래처 교체 audit)·#839(partner_code 100)·#831(lookup UNAVAILABLE→NOT_FOUND·⚠️HIGH businessNo=null)·#832(mock parity).
+> - **B2 회계 BE** ✅ 머지(main `d075cfe47`·PR #859): #839(partner_code 4컬럼 50→100)·#838(세금계산서 거래처 교체 audit). SOL 기획검수 4R→LUNA→OPUS R1 5-agent CLEAN+라이브QA(audit DB 권위·86자 실 API)→SOL R2(**2-모델 상보: audit tx 원자성 HIGH**)→**개발책임자 결정 A**(원자 동작 수용=무감사 변경 차단 정본·문구만 정정)→머지. #839/#838 close.
+> - **B2-FE #836** ✅ 머지(main `7d2074a0c`·PR #860): PartnersPage ACCOUNTANT 4탭 신규등록/행클릭 403 가드. SOL 기획검수 R1 BLOCKING3→GO→LUNA→OPUS R1 5-agent CLEAN+라이브QA(dev_accountant/sales 실로그인)→SOL R2(**2-모델 상보 MED4**: 권한캐시 stale·버전이력 403·QA 오라클·스샷)→처분(F1 handleLogout removeQueries·F2 버전이력 partners.4tab.edit 가드 defect-family·F3/F4 QA)→OPUS+SOL 재수렴 CONVERGED→머지. #836 close.
+> - **B2-FE 잔여 #832** ◀ 다음: mock parity(status hydration·CODEF matchedCount)·감사이력 ordinal/세대 라벨. + **#831**(lookup UNAVAILABLE→NOT_FOUND·⚠️HIGH businessNo=null 정책 대기).
 > - **B3 실버그+infra**: #854(outbox self-invocation·회계 미영속·실버그)·#851(qa-e2e BE trigger).
 > - **잔여 feature**(번다운 후): #825 슬5(신규 입력만)·슬6·슬7·#845 DS-3/4·#824. 🔴블로커 #827·#773(Google clasp 대화형 OAuth).
+> - **deferred systemic(개발책임자 "타겟만" 결정)**: 권한 freshness 광역(401 만료경로 Electron 캐시 미제거·전역 staleTime:0)·회계 audit 진짜 best-effort 격리(REQUIRES_NEW·recordIfChanged 동일 catch 계열) — 별도 systemic 슬라이스. [[feedback_react_query_freshness_route_param_reset]].
 
 ---
 
