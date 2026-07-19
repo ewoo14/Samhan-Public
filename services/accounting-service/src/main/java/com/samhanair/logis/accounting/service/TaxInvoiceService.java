@@ -127,10 +127,14 @@ public class TaxInvoiceService {
      * supplyDate/description) 별로 audit_log 1행 + SSE broadcast. partnerId(UUID) 는 기존
      * 관례(인간가독 snapshot 필드만 기록)에 따라 audit diff 에 포함하지 않는다 — UUID 사용자
      * 비공개 가드. 거래처 교체는 partnerName diff 로 인간가독 포착된다.
+     * <p>B2: partnerId 값이 바뀌면 표시 문자열이 같아도 {@code taxInvoice.partner} 전용
+     * audit을 기록한다. 표시 문자열에는 거래처 상호와 코드만 넣고 내부 UUID는 넣지 않는다.
      */
     public TaxInvoiceDetailResponse update(UUID id, CreateTaxInvoiceRequest request) {
         TaxInvoice ti = findOrThrow(id);
         // diff snapshot — audit 비교용
+        UUID oldPartnerId = ti.getPartnerId();
+        String oldPartnerCode = ti.getPartnerCode();
         String oldPartnerName = ti.getPartnerName();
         String oldPartnerAddress = ti.getPartnerAddress();
         String oldSupplyDate = ti.getSupplyDate() == null ? null : ti.getSupplyDate().toString();
@@ -139,6 +143,7 @@ public class TaxInvoiceService {
         ti.updateBasic(request.partnerId(), request.partnerCode(), request.partnerBusinessNo(),
                 request.partnerName(), request.partnerAddress(), request.supplyDate(),
                 request.description());
+        boolean partnerChanged = !Objects.equals(oldPartnerId, ti.getPartnerId());
         /*
          * 라인 교체는 기존 라인 제거를 먼저 DB에 반영한 뒤 신규 라인을 추가한다.
          * Hibernate action queue 는 같은 flush 에서 INSERT 를 DELETE 보다 먼저 실행할 수 있어
@@ -159,6 +164,10 @@ public class TaxInvoiceService {
 
         if (auditRecorder != null) {
             UUID systemActor = new UUID(0L, 0L);
+            if (partnerChanged) {
+                recordPartnerChanged(ti.getId(), systemActor, "system",
+                        oldPartnerCode, oldPartnerName, ti.getPartnerCode(), ti.getPartnerName());
+            }
             recordIfChanged(ti.getId(), systemActor, "system", "taxInvoice.partnerName",
                     oldPartnerName, ti.getPartnerName());
             recordIfChanged(ti.getId(), systemActor, "system", "taxInvoice.partnerAddress",
@@ -169,6 +178,32 @@ public class TaxInvoiceService {
                     oldDescription, ti.getDescription());
         }
         return TaxInvoiceDetailResponse.of(ti);
+    }
+
+    /** 거래처 UUID 교체를 표시 가능한 snapshot으로 기록한다. 문자열이 같아도 교체 사실을 보존한다. */
+    private void recordPartnerChanged(UUID entityId, UUID actorId, String actorName,
+                                      String oldPartnerCode, String oldPartnerName,
+                                      String newPartnerCode, String newPartnerName) {
+        try {
+            auditRecorder.recordOverlayPatch(entityId, actorId, actorName, null,
+                    "taxInvoice.partner",
+                    partnerDisplayValue(oldPartnerName, oldPartnerCode),
+                    partnerDisplayValue(newPartnerName, newPartnerCode));
+        } catch (RuntimeException ex) {
+            // 원자 처리(개발책임자 결정 A·2026-07-20) — audit 기록은 같은 트랜잭션(REQUIRED)이라
+            // recordOverlayPatch 실패 시 tx 가 오염돼 커밋 시점에 거래처 교체까지 동반 롤백된다
+            // (무감사 거래처 교체 차단·회계 무결성 우선). 즉 best-effort(감사만 누락·mutation 성공)가
+            // 아니라 audit+mutation 동반 성공/실패다. 이 catch 는 즉시 예외 대신 커밋 시점
+            // UnexpectedRollbackException 으로 위임할 뿐 결과(원자)는 동일하며, 기존 recordIfChanged 와
+            // 같은 계열이다. (진짜 best-effort 격리는 shared audit 계층 REQUIRES_NEW 후속 검토 대상.)
+        }
+    }
+
+    /** 거래처 audit용 인간가독 표시값. 내부 UUID는 절대 포함하지 않는다. */
+    private static String partnerDisplayValue(String partnerName, String partnerCode) {
+        String displayName = partnerName == null || partnerName.isBlank() ? "상호 미등록" : partnerName;
+        String displayCode = partnerCode == null || partnerCode.isBlank() ? "코드 미등록" : partnerCode;
+        return displayName + " (" + displayCode + ")";
     }
 
     /** 변경된 경우만 audit row 1행 INSERT — UUID 비공개 가드 (actorName 표시). */
