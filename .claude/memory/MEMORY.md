@@ -18,6 +18,7 @@
 - [개발책임자 결정은 PR에 누적 기록](feedback_post_devlead_decisions_to_pr.md) — 결정·지시·정정을 그때그때 "📌 개발책임자 결정 기록" 코멘트로. 채팅에만 두지말것
 - [PM-Codex 진행 검증·10분 보고](feedback_pm_codex_progress_verification.md) — Codex 디스패치마다 산출물 즉시검증+주기 상태보고, 침묵금지
 - [🚨 리뷰 fix=현재 PR 내 처리](feedback_fix_in_current_pr_no_split.md) — 별도 PR/후속 이슈 분리 금지, 분리=타 서비스/타 슬라이스 범위만 (2026-07-04 #724). **범위 외 결함=PM 자율 이슈 등록 후 보고**(은폐방지·실측근거 필수·처분은 개발책임자·"같이 fix"면 범위점증→리뷰 재가동) (2026-07-15 #820 R4·#821)
+- [🚨 백로그 순증 방지·배치 번다운·이슈 바 상향](feedback_backlog_burndown_issue_bar.md) — 슬라이스마다 새 이슈 등록=순증. 범위 외 결함은 in-round fix/dev-report 노트 우선·marginal 이슈 등록 금지·실질 결함만. 파생 chore=성격별 배치 PR로 다수 close(순감). 워크플로우 임의 단축 금지(배치도 풀 캐논) (2026-07-20)
 
 # 커밋/PR/문서 규약
 - [한국어 의무 — 커밋/PR/Issue/보고](feedback_korean_commits.md) — git commit·PR·Issue+대면 보고/대화/설명 한국어(prefix·trailer만 예외)

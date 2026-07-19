@@ -4,7 +4,22 @@
 
 ---
 
-## 🎯 2026-07-19 — **잔여/이슈 일괄 결정 배치 + PM 자율 위임** ◀ 다음 세션 첫 읽기
+## 🔥 2026-07-20 — **백로그 번다운 (순감 전환)** ◀ 다음 세션 첫 읽기
+
+> 개발책임자 지시(2026-07-19 심야): "자꾸 issue가 늘어가는데 이러면 잔여 해결 issue가 많아질뿐" + "issue 먼저 해결하고 다음 슬라이스" + **"워크플로우 임의 단축 금지·엄수"**. → 슬라이스 파생 chore 순증을 **배치 close 로 순감** 전환 + **이슈 바 상향**(범위 외 결함=in-round fix 또는 dev-report 노트·marginal 이슈 등록 금지). 각 배치 **풀 캐논 엄수**.
+>
+> **정리**: #856 close(marginal·CI green·재현불가)·#830 Phase11 defer. 활성 21→13.
+>
+> **배치 계획 (풀 캐논·PM 자율)**:
+> - **B1-A** ✅ 머지(main `60fb16c3d`·PR #857): #834·837·840 DS 자동완성 committed-selection 계약·stale/IME 가드·DocRef 세대. 기획검수 3R→R1(4-dim CLEAN·테스트 MED4)→R2(**2-모델 상보: IME 조합키 프로덕션 버그**)→재수렴 0→머지. 라이브QA=실 desktop committed 차단 4프레임.
+> - **B1-B** ◀ 다음: #828(LineRow role=row orphan 제거·Header·EstimateLineRow sweep)·#842(Warehouse DOM/ARIA)·#843(matchBadge sibling 분리). SOL 권고=B1-A 후속(#840·#843 PartnerAutocomplete 충돌 회피). 독립 a11y/layout.
+> - **B2 회계/거래처**: #836(PartnersPage 403)·#838(거래처 교체 audit)·#839(partner_code 100)·#831(lookup UNAVAILABLE→NOT_FOUND·⚠️HIGH businessNo=null)·#832(mock parity).
+> - **B3 실버그+infra**: #854(outbox self-invocation·회계 미영속·실버그)·#851(qa-e2e BE trigger).
+> - **잔여 feature**(번다운 후): #825 슬5(신규 입력만)·슬6·슬7·#845 DS-3/4·#824. 🔴블로커 #827·#773(Google clasp 대화형 OAuth).
+
+---
+
+## 🎯 2026-07-19 — **잔여/이슈 일괄 결정 배치 + PM 자율 위임**
 
 > 개발책임자가 **남은 전 잔여(20이슈+2에픽) 결정을 일괄 확정·이후 전부 PM 자율 진행** 지시. 상세=[[project_pending_decisions_2026_07_19]]. 각 항목 **캐논 워크플로우 엄수**(chore 예외 아님)·무결성 재확인 불요(본 배치로 선확인).
 
