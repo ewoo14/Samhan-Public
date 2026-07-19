@@ -12,8 +12,8 @@
 >
 > **배치 계획 (풀 캐논·PM 자율)**:
 > - **B1-A** ✅ 머지(main `60fb16c3d`·PR #857): #834·837·840 DS 자동완성 committed-selection 계약·stale/IME 가드·DocRef 세대. 기획검수 3R→R1(4-dim CLEAN·테스트 MED4)→R2(**2-모델 상보: IME 조합키 프로덕션 버그**)→재수렴 0→머지. 라이브QA=실 desktop committed 차단 4프레임.
-> - **B1-B** ◀ 다음: #828(LineRow role=row orphan 제거·Header·EstimateLineRow sweep)·#842(Warehouse DOM/ARIA)·#843(matchBadge sibling 분리). SOL 권고=B1-A 후속(#840·#843 PartnerAutocomplete 충돌 회피). 독립 a11y/layout.
-> - **B2 회계/거래처**: #836(PartnersPage 403)·#838(거래처 교체 audit)·#839(partner_code 100)·#831(lookup UNAVAILABLE→NOT_FOUND·⚠️HIGH businessNo=null)·#832(mock parity).
+> - **B1-B** ✅ 머지(main `39d448a0e`·PR #858): #828(LineRow role=row orphan 제거·모바일 병합)·#842(Warehouse opaque/hasListbox)·#843(matchBadge sibling). 기획검수 3R→R1(4-dim CLEAN·dangling IDREF 3건 수리·모바일 테스트 MED1)→R2(**2-모델 상보: Warehouse IME 버그 + AccountCodeSelect defect-family sweep**)→재수렴 0→머지. 라이브QA=matchBadge 360px 비클립. IME 가드 4컴포넌트 완결.
+> - **B2 회계/거래처** ◀ 다음: #836(PartnersPage 403)·#838(거래처 교체 audit)·#839(partner_code 100)·#831(lookup UNAVAILABLE→NOT_FOUND·⚠️HIGH businessNo=null)·#832(mock parity).
 > - **B3 실버그+infra**: #854(outbox self-invocation·회계 미영속·실버그)·#851(qa-e2e BE trigger).
 > - **잔여 feature**(번다운 후): #825 슬5(신규 입력만)·슬6·슬7·#845 DS-3/4·#824. 🔴블로커 #827·#773(Google clasp 대화형 OAuth).
 
