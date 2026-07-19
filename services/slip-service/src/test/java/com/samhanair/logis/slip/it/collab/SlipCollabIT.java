@@ -15,6 +15,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.samhanair.logis.collab.CollabDocumentType;
 import com.samhanair.logis.security.permission.PermissionAction;
 import com.samhanair.logis.slip.SlipServiceApplication;
@@ -33,9 +34,11 @@ import com.samhanair.logis.slip.collab.SlipCollabComment;
 import com.samhanair.logis.slip.collab.SlipCollabCommentRepository;
 import com.samhanair.logis.slip.collab.SlipCollabSuggestion;
 import com.samhanair.logis.slip.collab.SlipCollabSuggestionRepository;
+import com.samhanair.logis.slip.collab.SlipDocumentCollaborationPort;
 import com.samhanair.logis.slip.delivery.sms.SmsGateway;
 import com.samhanair.logis.slip.domain.DeliveryTag;
 import com.samhanair.logis.slip.domain.Slip;
+import com.samhanair.logis.slip.domain.SlipStatus;
 import com.samhanair.logis.slip.it.AbstractPostgresIT;
 import com.samhanair.logis.slip.repository.SlipRepository;
 import com.samhanair.logis.slip.revision.domain.SlipRevision;
@@ -49,7 +52,10 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.mockito.ArgumentCaptor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
@@ -58,6 +64,7 @@ import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -99,6 +106,9 @@ class SlipCollabIT extends AbstractPostgresIT {
     @Autowired private MockMvc mvc;
     @Autowired private ObjectMapper objectMapper;
     @Autowired private SlipRepository slipRepository;
+    @Autowired
+    @Qualifier("slipOutboundCollaborationPort")
+    private SlipDocumentCollaborationPort collaborationPort;
     @Autowired private SlipRevisionRepository revisionRepository;
     @Autowired private SlipCollabSuggestionRepository suggestionRepository;
     @Autowired private SlipCollabCommentRepository commentRepository;
@@ -261,6 +271,31 @@ class SlipCollabIT extends AbstractPostgresIT {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(objectMapper.writeValueAsString(Map.of("sessionId", "presence-session-denied"))))
                 .andExpect(status().isForbidden());
+    }
+
+    @ParameterizedTest(name = "협업 {0} 상태의 거래처 없는 snapshot 복원은 거부")
+    @EnumSource(value = SlipStatus.class, names = {
+            "SENT", "ACCEPTED", "PROCESSING", "INSPECTING", "COMPLETED", "SHIPPING",
+            "DELIVERED", "CONFIRMED", "REJECTED"
+    })
+    void collaborationRestoreCommittedSlipWithPartnerlessSnapshot_isRejected(SlipStatus status)
+            throws Exception {
+        Slip slip = seedOutboundSlip("2099/06/13-RESTORE-PARTNER-" + SEQ.getAndIncrement());
+        slip.save();
+        slip.send();
+        ReflectionTestUtils.setField(slip, "status", status);
+        slip = slipRepository.saveAndFlush(slip);
+        UUID slipId = slip.getId();
+
+        ObjectNode snapshot = (ObjectNode) objectMapper.readTree(collaborationPort.loadSnapshot(slipId));
+        snapshot.putNull("partnerId");
+
+        assertThatThrownBy(() -> collaborationPort.restoreSnapshot(
+                        slipId, objectMapper.writeValueAsString(snapshot)))
+                .isInstanceOf(com.samhanair.logis.common.exception.BusinessException.class)
+                .hasMessage("거래처 없는 이력으로 커밋 전표를 복원할 수 없습니다");
+        assertThat(slipRepository.findById(slipId).orElseThrow().getPartnerId()).isNotNull();
+        assertThat(slipRepository.findById(slipId).orElseThrow().getStatus()).isEqualTo(status);
     }
 
     /**

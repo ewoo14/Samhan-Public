@@ -62,6 +62,29 @@ public class Slip extends BaseEntity {
 
     private static final Set<SlipStatus> EDITABLE_STATUSES =
             EnumSet.of(SlipStatus.DRAFT, SlipStatus.SAVED);
+    /** 커밋 상태 전이 및 이력 복원 시 거래처가 반드시 존재해야 하는 상태 집합. */
+    private static final Set<SlipStatus> REQUIRED_PARTNER_STATUSES = EnumSet.of(
+            SlipStatus.SENT,
+            SlipStatus.ACCEPTED,
+            SlipStatus.PROCESSING,
+            SlipStatus.INSPECTING,
+            SlipStatus.COMPLETED,
+            SlipStatus.SHIPPING,
+            SlipStatus.DELIVERED,
+            SlipStatus.CONFIRMED,
+            SlipStatus.REJECTED);
+
+    /**
+     * 커밋 전표 거래처 불변식의 공개 읽기 전용 상태 집합.
+     *
+     * <p>보정 서비스와 도메인 회귀 테스트가 동일한 집합을 사용하도록 enum 추가 시 누락을
+     * 즉시 드러내는 계약이다. 호출자는 반환 집합을 수정할 수 없다.
+     *
+     * @return 거래처 필수 상태 9종
+     */
+    public static Set<SlipStatus> requiredPartnerStatuses() {
+        return Set.copyOf(REQUIRED_PARTNER_STATUSES);
+    }
     private static final Set<SlipStatus> CANCELABLE_STATUSES =
             EnumSet.of(SlipStatus.DRAFT, SlipStatus.SAVED, SlipStatus.SENT);
 
@@ -919,6 +942,22 @@ public class Slip extends BaseEntity {
     }
 
     /**
+     * cutover 보정 전용 거래처 UUID 주입.
+     *
+     * <p>일반 편집 API가 committed 전표의 거래처를 임의 변경하지 않도록 public 범용 setter 대신
+     * 의미가 드러나는 보정 메서드로 한정한다. 실제 {@code modified_by}는 JPA auditing이 기록한다.
+     *
+     * @param partnerId partner-service가 해소한 거래처 UUID (null 불가)
+     */
+    public void backfillPartnerId(UUID partnerId) {
+        if (partnerId == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    "보정 거래처 UUID는 필수입니다");
+        }
+        this.partnerId = partnerId;
+    }
+
+    /**
      * 가배차 지역 그룹 snapshot 갱신 — PR-E1 BE-1 (V15) 신규. arologis RegionClassifier 결과
      * 또는 admin 직접 분류 경로에서 호출. partner_code 와 동일하게 단순 setter.
      *
@@ -967,9 +1006,28 @@ public class Slip extends BaseEntity {
      */
     public void send() {
         requireStatus(SlipStatus.SAVED);
+        if (this.partnerId == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    "전표 전송 전 거래처를 지정해야 합니다");
+        }
         this.status = SlipStatus.SENT;
         if (this.slipType != SlipType.OUTBOUND) {
             captureRevisionBaselineIfAbsent();
+        }
+    }
+
+    /**
+     * 커밋 상태에서 거래처 필수 불변식을 확인한다.
+     *
+     * <p>배포와 legacy 보정 사이에 남을 수 있는 partner_id null 전표가 다음 전이로 더 깊은
+     * 회계 체인에 들어가는 것을 차단한다. 정상 전표는 {@link #send()} 단계에서 이미 통과한다.
+     *
+     * @throws BusinessException(INVALID_INPUT) 거래처가 없는 커밋 전표일 때
+     */
+    private void requirePartnerForCommitted() {
+        if (this.partnerId == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    "거래처 없는 전표는 이 전이를 수행할 수 없습니다");
         }
     }
 
@@ -983,6 +1041,7 @@ public class Slip extends BaseEntity {
      */
     public void accept(String acceptorUserId) {
         requireStatus(SlipStatus.SENT);
+        requirePartnerForCommitted();
         LocalDateTime now = LocalDateTime.now();
         this.status = SlipStatus.ACCEPTED;
         this.acceptedBy = acceptorUserId;
@@ -998,6 +1057,7 @@ public class Slip extends BaseEntity {
      */
     public void process() {
         requireStatus(SlipStatus.ACCEPTED);
+        requirePartnerForCommitted();
         this.status = SlipStatus.PROCESSING;
     }
 
@@ -1010,6 +1070,7 @@ public class Slip extends BaseEntity {
      */
     public void complete() {
         requireStatus(SlipStatus.PROCESSING);
+        requirePartnerForCommitted();
         this.status = SlipStatus.INSPECTING;
         // completedAt 은 검수 완료(inspect) 시점에 기록 — "처리완료" 의미상 검수까지 통과해야 진정한 완료.
     }
@@ -1025,6 +1086,7 @@ public class Slip extends BaseEntity {
      */
     public void inspect(String inspectorUserId) {
         requireStatus(SlipStatus.INSPECTING);
+        requirePartnerForCommitted();
         this.status = SlipStatus.COMPLETED;
         if (this.slipType == SlipType.OUTBOUND) {
             captureRevisionBaselineIfAbsent();
@@ -1040,11 +1102,12 @@ public class Slip extends BaseEntity {
      * @throws BusinessException(CONFLICT) 현재 상태가 COMPLETED 가 아니거나, slipType 이 INBOUND 일 때
      */
     public void ship() {
+        requireStatus(SlipStatus.COMPLETED);
+        requirePartnerForCommitted();
         if (this.slipType != SlipType.OUTBOUND) {
             throw new BusinessException(ErrorCode.CONFLICT,
                     "배송 단계는 출고전표에만 적용됩니다");
         }
-        requireStatus(SlipStatus.COMPLETED);
         this.status = SlipStatus.SHIPPING;
     }
 
@@ -1054,11 +1117,12 @@ public class Slip extends BaseEntity {
      * @throws BusinessException(CONFLICT) 현재 상태가 SHIPPING 이 아니거나, slipType 이 INBOUND 일 때
      */
     public void deliver() {
+        requireStatus(SlipStatus.SHIPPING);
+        requirePartnerForCommitted();
         if (this.slipType != SlipType.OUTBOUND) {
             throw new BusinessException(ErrorCode.CONFLICT,
                     "배송 단계는 출고전표에만 적용됩니다");
         }
-        requireStatus(SlipStatus.SHIPPING);
         this.status = SlipStatus.DELIVERED;
     }
 
@@ -1073,6 +1137,7 @@ public class Slip extends BaseEntity {
         } else {
             requireStatus(SlipStatus.COMPLETED);
         }
+        requirePartnerForCommitted();
         this.status = SlipStatus.CONFIRMED;
         this.confirmedAt = LocalDateTime.now();
     }
@@ -1095,6 +1160,7 @@ public class Slip extends BaseEntity {
                     "반려 가능한 상태가 아닙니다: " + this.status.getDisplayName());
         }
         requireNotLocked();
+        requirePartnerForCommitted();
         this.status = SlipStatus.REJECTED;
         if (reasonText != null && !reasonText.isBlank()) {
             String prefix = "[반려: " + reasonText + "] ";
@@ -2042,6 +2108,10 @@ public class Slip extends BaseEntity {
         requireNotLocked();
         if (snapshot == null) {
             throw new IllegalArgumentException("복원 스냅샷은 null 일 수 없습니다");
+        }
+        if (REQUIRED_PARTNER_STATUSES.contains(this.status) && snapshot.partnerId() == null) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    "거래처 없는 이력으로 커밋 전표를 복원할 수 없습니다");
         }
         // 헤더 필드 역적용 — toSnapshot() 이 캡처한 동일 필드 집합 (스냅샷 값 그대로 덮어씀)
         this.slipNo = snapshot.slipNo();
