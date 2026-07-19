@@ -10,7 +10,7 @@ metadata:
 ## 확정 결정 (9건)
 1. **#845 DS-3 재인쇄 레이아웃 = 승인 당시 pin**(⒜). 결재 완료 문서에 templateId+schema_version(또는 스냅샷) 각인 → 재인쇄 시 그 버전 렌더. 감사/법정 무결성(승인 문서 외형 불변·[[project_accounting_ledger_edit_policy]] 정신). **편집기 MVP 스코프 = 밴드 캔버스 + FIELD/TEXT/APPROVAL_GRID 요소 + 저장·라이브 미리보기**. 반복 detail 밴드·이미지/로고·인쇄 fidelity 반복 = DS-4 분리.
 2. **#823 매출전표 배분 거래처 불일치 = 차단 reject**. 거래처 A 출고를 B 매출에 배분 시 4xx 한국어 거부. slip `/internal` 스냅샷에 partnerId 추가 + `verifySourceAndAllocation` 일치 검증. repo 3곳(PartnerOrderMergeConvertService 409·BankDepositReceiptService·CashReceiptService) 동일 "귀속키 단수 수렴 reject" 패턴 일관. 기존 오배분 운영 DB 조사 별도.
-3. **전표 거래처 필수화 = 전이 가드**(2026-07-19 재확정·AskUserQuestion). 배치 초안 "단계적(→BE NOT NULL)"은 정찰 반증(활성 null 1942 대부분 DRAFT·정상) → **컬럼 NOT NULL 비채택**. 대신 ⒜ FE 필수화 + ⒝ **BE 생명주기 전이 가드**(DRAFT→SENT/CONFIRMED 전이 시 partner 필수·DRAFT 는 partner 없이 유지 허용). SENT 상태 null 13건(OUTBOUND) = 별도 조사·보정. #823 위 회계체인 다음 슬라이스.
+3. **전표 거래처 필수화 = 전이 가드**(2026-07-19 재확정·AskUserQuestion). 배치 초안 "단계적(→BE NOT NULL)"은 정찰 반증(활성 null 1942 대부분 DRAFT·정상) → **컬럼 NOT NULL 비채택**. 대신 ⒜ FE 필수화 + ⒝ **BE 생명주기 전이 가드**(DRAFT→SENT/CONFIRMED 전이 시 partner 필수·DRAFT 는 partner 없이 유지 허용). SENT 상태 null 13건(OUTBOUND) = 별도 조사·보정. #823 위 회계체인 다음 슬라이스. **완주(2026-07-19·main `78cb759d9`·PR #853)**: 3중 도메인 가드(send/restore/forward 8전이)+발행 fail-closed(`resolveCommittedPartnerId`)+보정 엔드포인트(멱등·dry-run). 워크플로우 OPUS 기획→SOL 검수 3R→LUNA→OPUS R1(fixture CI RED→fix)→SOL R2(forward 미가드·docs)→재수렴(OPUS 수렴+SOL README)→재수렴 fix(reject 순서·README·FE·CRLF)→OPUS 델타검증 0수렴→CI 33/33. 별건 **#854**(outbox self-invocation·pre-existing).
 4. **#825 슬5 null-semantics = 신규 입력만 적용**. 기존 null 행 유지(dev daily_closings 0행·안전재고 null 0행). prod cutover 시점 별도 backfill 마이그. ①'전체' 명시 칩 도입+칩0개=미선택(저장차단)은 기확정.
 5. **#848 documentType 오버플로 = 3개 저장소 모두 40→70 확장**(2026-07-19 재확정·AskUserQuestion). 배치 초안 "단일 groupware V11"은 SOL 기획검수 반증 + 라이브 DB 실측(grep false-negative) → **`GROUPWARE_${code}` 저장 컬럼 전 3곳**: ①groupware `approval_lines.document_type`(V11) ②groupware `document_templates.doc_type`(V11·app validate 40→70) ③auth `approval_line_config.document_type`(V89·라이브 `GROUPWARE_EXPENSE_REPORT` 실측). 협업 `document_type`(고정 enum CHECK·최장 18)=스코프 밖. 70=GROUPWARE_(10)+code 60. ⚠️ddl-validate 는 length 미검사 → `information_schema.character_maximum_length=70` 단언 + 실 flush IT. V11 backfill 은 V10 이 `length<=40` 로 스킵했을 41–70 subset 대상이나 **현 라이브 대상 0행**(활성 NULL 64행은 전부 `template_id IS NULL` 독립형 결재·정당·backfill 무영향 — 직접 실측). 타 환경 방어용·멱등. code≤30 상한·접두사 제거 비채택. 규모 M. **완주(2026-07-19)**: SOL 기획검수 v1→v4 GO·LUNA 구현·OPUS R1(DTO @Size 40 게이트 HIGH·라이브 400 확증→fix)·CODEX SOL R2 5-agent.
 6. **#838 세금계산서 동일명 거래처 교체 audit = 추가 승인**. oldPartnerCode/partnerId snapshot + audit diff(UUID 미노출·partnerCode/name 조합 인간가독).
@@ -19,7 +19,7 @@ metadata:
 9. **#827 레거시 GAS 통합·#773 일마감 재계산 = Google 자격(clasp login 1회 또는 서비스계정+scriptId) 블로커**. 개발책임자 자격 제공 전 착수 불가·후순위 고정.
 
 ## 실행 순서 (PM 자율·의존성 반영)
-1. **회계체인**: #823(reject) → 전표 거래처 필수화(단계적) → #825 슬5(신규만)
+1. **회계체인**: #823(reject)✅ → 전표 거래처 필수화(전이 가드)✅`78cb759d9` → **#850 배분 과할당 버그**(요청 내 누적 미반영·`SalesAccountingSlipCreateAttemptService`/`Purchase` 미러 line 84·배치 후 발견·다음 착수) → #825 슬5(신규만)
 2. **#825 잔여**: 슬6 쪽지 수신자 칩(⑤) · 슬7 주문 병합 UX(③)
 3. **문서 디자이너**: #845 DS-3 편집기 MVP(pin) → DS-4
 4. **독립 FEAT**: #824 품목행 공급가액·부가세(4결정 확정) · #848 documentType 3저장소 컬럼확장(M·완주)
