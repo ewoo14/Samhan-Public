@@ -4,7 +4,21 @@
 
 ---
 
-## 🔥 2026-07-20 — **백로그 번다운 (순감 전환)** ◀ 다음 세션 첫 읽기
+## 🔥 2026-07-20 (회사PC 저녁) — **#832 ✅ 머지 + 워크플로우 변경(기획검수 폐지)** ◀ 다음 세션 첫 읽기
+
+> **#832 mock parity·감사이력 정밀도 완결** (main `17024ed07`·PR #861 squash·#832 close). 집PC WIP(R1 미완)→회사PC 재개→완주.
+> - mock parity(D-01 status hydration·D-02 matchedCount·D-04 BOM 5경로)+감사이력 정밀도(D-03 operationOrdinal/generation·이력표 "작업 N/세대" UX). **OPUS R1↔CODEX SOL R2 적대검증 0수렴·재수렴 CONVERGED**. R1 fix(시드 미실재거래처 P-2026-0001/0002/P-SEJIN-003 실재 ACTIVE 편입·CSV 역파리티 H1 게이팅·W1/W2 record 바인딩+실PG IT·dim4·이력표 xl/그룹핑/범례)·R2 fix(이력 응답 operationOrdinal DESC 정렬 production·bizNo 자사충돌 911-22-33344·정규화 raw parity·테스트강화)·CI Playwright mock 게이트 회귀 2건(공유 CODEF/시드 픽스처 정합). 검증: **vitest 1010·Playwright mock 게이트 590·BE IT8/ServiceTest21/Norm4 skip0**·라이브QA R1·R2 각 3장.
+> - **처분 대기(비차단·#832 스코프밖·후속)**: ①교차표면 bizNo split(리포트 픽스처 P-2026-0001=`111-22-33333` 유지·depositor master=`911`·리포트측은 BE AccountStatementIT와 일치) ②PRE FE(편집모달이 null/blank active를 재선택 강제·FE `.trim()`이 제출 전 BOM 제거→D-04 실사용자 무효) ③PARTNER_CODE_EXACT-via-CODEF e2e 바운드(공유 CODEF 픽스처 긴코드 변형이 모바일 레이아웃 게이트 상충) ④전역 MOCK_* beforeEach reset 부재 ⑤auth page-code(`accounting.deposit-match` vs FE `accounting.deposit-mapping`·실배포 시드 확인).
+>
+> 🚨 **워크플로우 변경(개발책임자 2026-07-20)**: **기획검수(구 CODEX SOL spec검수 2단계) 폐지** — 적대리뷰와 거의 동일(중복)·검수 후에도 적대리뷰서 결함 다수 발생. **다음 슬라이스부터** 적용(#832는 폐지 전이라 구 캐논 완주). 신 파이프라인: OPUS 기획(조기PR+게시) → CODEX LUNA 구현 → OPUS R1 적대검증+fix → CODEX SOL R2 적대검증+LUNA fix → 0수렴 → PM 종합 머지. 적대검증 2라운드·라이브QA·0수렴·단축금지 불변. [[feedback_canonical_workflow]]·CLAUDE.md·MEMORY.md 갱신+sync 완료.
+>
+> **교훈 박제**: mock.ts **데이터/픽스처 변경**도 공유 픽스처 의존 Playwright 스펙을 회귀시킴(bank-bulk-receipt·codef-fe-bc3) → **전체 Playwright mock 게이트 로컬 실행 필수**(vitest만으론 미포착). 회사PC `@axe-core/playwright` dev-dep 미설치로 게이트 collection 중단 주의(설치 필요). [[feedback_verify_playwright_gate_before_adversarial]].
+>
+> **다음 착수 큐**: #831(lookup·businessNo=null 정책 대기)·B3(#854 outbox self-invocation 실버그·#851 qa-e2e)·잔여 feature(#825 슬5/6/7·#845 DS-3/4·#824)·🔴블로커 #827/#773(Google clasp). ↓ 상세는 아래 백로그 번다운 섹션(#832 항목은 위로 종결).
+
+---
+
+## 🔥 2026-07-20 — **백로그 번다운 (순감 전환)**
 
 > 개발책임자 지시(2026-07-19 심야): "자꾸 issue가 늘어가는데 이러면 잔여 해결 issue가 많아질뿐" + "issue 먼저 해결하고 다음 슬라이스" + **"워크플로우 임의 단축 금지·엄수"**. → 슬라이스 파생 chore 순증을 **배치 close 로 순감** 전환 + **이슈 바 상향**(범위 외 결함=in-round fix 또는 dev-report 노트·marginal 이슈 등록 금지). 각 배치 **풀 캐논 엄수**.
 >
@@ -15,12 +29,7 @@
 > - **B1-B** ✅ 머지(main `39d448a0e`·PR #858): #828(LineRow role=row orphan 제거·모바일 병합)·#842(Warehouse opaque/hasListbox)·#843(matchBadge sibling). 기획검수 3R→R1(4-dim CLEAN·dangling IDREF 3건 수리·모바일 테스트 MED1)→R2(**2-모델 상보: Warehouse IME 버그 + AccountCodeSelect defect-family sweep**)→재수렴 0→머지. 라이브QA=matchBadge 360px 비클립. IME 가드 4컴포넌트 완결.
 > - **B2 회계 BE** ✅ 머지(main `d075cfe47`·PR #859): #839(partner_code 4컬럼 50→100)·#838(세금계산서 거래처 교체 audit). SOL 기획검수 4R→LUNA→OPUS R1 5-agent CLEAN+라이브QA(audit DB 권위·86자 실 API)→SOL R2(**2-모델 상보: audit tx 원자성 HIGH**)→**개발책임자 결정 A**(원자 동작 수용=무감사 변경 차단 정본·문구만 정정)→머지. #839/#838 close.
 > - **B2-FE #836** ✅ 머지(main `7d2074a0c`·PR #860): PartnersPage ACCOUNTANT 4탭 신규등록/행클릭 403 가드. SOL 기획검수 R1 BLOCKING3→GO→LUNA→OPUS R1 5-agent CLEAN+라이브QA(dev_accountant/sales 실로그인)→SOL R2(**2-모델 상보 MED4**: 권한캐시 stale·버전이력 403·QA 오라클·스샷)→처분(F1 handleLogout removeQueries·F2 버전이력 partners.4tab.edit 가드 defect-family·F3/F4 QA)→OPUS+SOL 재수렴 CONVERGED→머지. #836 close.
-> - **B2-FE 잔여 #832** 🔄 **WIP(회사PC 재개)**: PR #861·브랜치 `chore/832-mock-parity-audit-precision`(원격 push `7b1afb7fb`·**미머지**). spec v2 GO(SOL 기획검수 R1 BLOCKING4→v2→GO)→LUNA 구현(`5646adf61`·4항목: D-01 mock status hydration·D-02 CODEF matchedCount·D-03 감사이력 operationOrdinal/generation[BE+FE+mock]·D-04 BOM 5경로 mockJavaTrim·vitest 112/BE 23+5)→라이브QA D-03 **PASS**(재배포 accounting·operationOrdinal[1..8] 유일·generation[1,2,3]·UI "작업 N"). **⚠️ R1 미완(회사PC 재개 시 이어서)**:
->   - dim1 **CONFIRMED MED**: 시드 매핑 `삼한상사→P-2026-0001`이 `MOCK_ADMIN_PARTNERS`에 부재→#832 D-01 변경으로 기본매핑 stale 오판 회귀(구엔 always-ACTIVE로 가려짐)·mock 전용. **fix**=MOCK_ADMIN_PARTNERS에 P-2026-0001(ACTIVE·'삼한상사') 추가 또는 시드매핑 재지정 + 시드 staleTarget 단언.
->   - dim4 **CONFIRMED MED**: mock operationOrdinal/generation 파생(~48행 BE 미러)이 **vitest 무검증**(값은 정확·false-green 위험). **fix**=mock.test.ts 삭제+재생성 시나리오에 operationOrdinal 1..N 유일·generation≥2 단언 추가.
->   - **dim2(D-02/04)·dim3(D-03 BE)·dim5(테스트무결성) = API 500/529 overload로 FAILED**(부분결과만)→**fresh 재디스패치 필요**.
->   - ⚠️**완료착각 금지·부분결과 참조만·다음 세션 `git pull`+`sync-claude-memory.ps1` 먼저**([[incomplete-work-wip-branch-cross-pc]]). ⚠️**home PC 로컬 accounting-service가 #832 D-03로 재배포됨**(미머지·company PC 무관·fresh 체크아웃/재빌드 시 main 복귀).
->   - **재개 절차**: git pull+sync → #832 브랜치 checkout → R1 dim2/3/5 fresh 재디스패치 + dim1/dim4 2 MED fix(LUNA) + 수집 → R2 → 재수렴 → 머지·#832 close.
+> - **B2-FE 잔여 #832** ✅ **머지 완결**(main `17024ed07`·PR #861 squash·#832 close) — 상세는 최상단 "#832 ✅ 머지" 종결 섹션 참조. (집PC dim1/dim4 CONFIRMED MED는 R1 fresh 재검증서 S1/dim4로 재확인·해소.)
 > - **다음(#832 후)**: #831(lookup·businessNo=null 정책 대기)·B3(#854 outbox self-invocation BUG·#851 qa-e2e)·잔여 feature(#825 슬5/6/7·#845 DS-3/4·#824·🔴블로커 #827/#773 Google clasp).
 > - **B3 실버그+infra**: #854(outbox self-invocation·회계 미영속·실버그)·#851(qa-e2e BE trigger).
 > - **잔여 feature**(번다운 후): #825 슬5(신규 입력만)·슬6·슬7·#845 DS-3/4·#824. 🔴블로커 #827·#773(Google clasp 대화형 OAuth).
