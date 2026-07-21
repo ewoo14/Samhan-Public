@@ -4,7 +4,53 @@
 
 ---
 
-## 🔥 2026-07-20 (회사PC 저녁) — **#832 ✅ 머지 + 워크플로우 변경(기획검수 폐지)** ◀ 다음 세션 첫 읽기
+## 🔥 2026-07-21 (집PC 새벽) — **2트랙 병렬 가동 중** ◀ 다음 세션 첫 읽기·재개점
+
+> **🚨 워크플로우 2건 변경(2026-07-20)** — ①**기획검수 폐지**(적대리뷰와 중복) ②**1차 적대검증 리뷰=FABLE5 · 그 라운드 fix=SONNET5**(OPUS 4.8 = 기획 + PM 오케스트레이션 전담, 리뷰·라운드 fix 직접 수행 금지). 정본 = [[feedback_canonical_workflow]]. CLAUDE.md·MEMORY.md 동기화 완료.
+>
+> **🚨 처리량 3레버 결정(2026-07-20)** — #854 가 8h21m·69파일·5라운드 쓰고도 미머지, 잔여 11~12 슬라이스 → **위험 등급제는 미채택(캐논 풀 강도 유지)**, 대신 ①**슬라이스 병렬화**(캐논 명시 허용·간섭 없는 조합만) ②**슬라이스 중 범위 동결**(자체 코드 결함=현 PR fix / 새 기능·표면 추가=이슈+다음 슬라이스·현 PR 편입 시 PM 이 라운드 비용 선제시 의무) ③잔여 chore 배치화. 정본 = [[feedback_throughput_parallel_scope_freeze_batch]].
+>
+> ### 트랙 1 — #854 outbox (PR #862, 브랜치 `fix/854-outbox-selfinvocation-tx`, 본 트리) ◀ **머지 임박**
+> 진행: 기획 → LUNA 구현 → R1(OPUS) → R2(SOL) → R3(OPUS) → **R4**(HIGH-A 소유권 가드 무가드 뮤테이션 실증·HIGH-B 4xx 오분류·HIGH-C 종결 조건 부재) → **Track 2**(관측/알림 배선·FE 전표발행 상태 표시·slip-service 상태코드) → **R5 FABLE5**(HIGH 5·MED 14·LOW 23 → SONNET5 fix) → **R6 SOL**(BLOCKING 3·HIGH 6 → LUNA fix) → **R7 FABLE5**(BLOCKING/HIGH/MED **0**·LOW 2 → SONNET5 fix) → **R8 재수렴 진행 중**.
+> **CI 35/35 SUCCESS**(exact SHA). R6 의 CI RED(Playwright mock 게이트 589/1 — R5 mock 픽스처 거래처명이 기존 스펙의 음성 단언과 충돌)는 **해소**됨.
+> 다음: R8 신규 지적 0 확인 → **PM 종합 게시** → 머지·#854 close.
+> 이월 이슈 **#863**(outbox depth/heartbeat·startup scrape race·awslogs 버퍼 유실·목록 발행상태 UX·mock DELETE shadow·"완료" 배지 AA + **전체 Playwright 스위트가 커밋된 스크린샷 53개를 덮어쓰는 함정**).
+>
+> ### 트랙 2 — #825 슬5 null-semantics (PR #864, 브랜치 `feat/825-s5-codef-null-semantics`, **워크트리 `.claude/worktrees/s5-codef`**)
+> OPUS 기획(spec `docs/specs/825-s5-null-semantics-spec.md` + 기획 리뷰 게시) → **LUNA 구현 완료·검증·게시**(`e63aac28c`) → **🔴 CI Playwright 게이트 3건 RED → LUNA fix 진행 중**.
+> 핵심: 세 도메인(일마감 `partner_id` NULL·안전재고 `warehouseId` null·CODEF 선택 `[]`)에서 빈 값이 '전체'와 '미선택'을 겸함 → **저장 스키마 무변경**으로 `scopeMode(ALL|SELECTED)` 필수화(누락=400·무음 폴백 금지). 마이그 0건·기존 행 무영향. anti-false-green: DTO/서비스 **둘 다 제거해야 RED**(이중 방어 정상 특성) 실측.
+> 🔴 **CI RED 원인**: "칩 0개 = 저장/실행 버튼 비활성"이 기존 mock 시나리오 3건을 막음(`ac-4-partner-standardize` 일마감 DC-2·`codef-fe-bc2`·`permission-groups-c5-followup`). 특히 마지막 건은 **권한 게이팅 검증이 다른 이유로 마스킹**되므로 원 의도 보존이 필요.
+> 다음: LUNA fix(**Playwright 590 전량 본인 실행 의무**) → PM 검증 → FABLE5 적대검증(fix=SONNET5) → SOL(fix=LUNA) → 0수렴 → 머지.
+>
+> ### 🚨 PM 운영 실패 2건 (재발 방지 박제)
+> ① **"통지 없는 대기"로 6시간 23분 정지**(00:21~06:45) — CI 확인·abort 된 MCP 태스크는 완료 통지가 오지 않는데 기다렸다. 근본 원인 = `ScheduleWakeup` 을 "여기선 안 될 것"이라 **추측으로 단정하고 시도조차 안 함**(실제 정상 동작). → [[feedback_autonomous_loop_schedulewakeup]] 에 체크리스트 박제.
+> ② **Playwright 전량 미실행을 2회 연속 반복** — 구현자에게 "실행 금지·PM 회수" 지시 후 회수를 두 번 다 빠뜨려 양 트랙에서 CI RED. → **지시 구조 변경**: mock.ts·FE 상호작용을 건드리는 구현자는 **본인이 590 전량 실행 + 스크린샷 부수효과 원복**까지 수행.
+>
+> ### 트랙 확장 계획 (3트랙)
+> #854 머지 후 → **#845 DS-3**(groupware) + **B4 chore 배치(#831·#830·#851)** 추가. ⚠️ **#831 은 #854 와 같은 결함 계열/파일**(`PartnerInternalClient` 4xx 세탁)이라 **#854 머지 전 착수 금지**.
+> 🔴 블로커 유지: #827·#773(Google clasp 대화형 OAuth).
+
+---
+
+## 🔥 2026-07-20 (회사PC 밤) — **#854: R3 완료·R4 재수렴 대기**(당시 기록)
+
+> **#854 outbox self-invocation @Transactional 우회 실버그** (PR **#862**·브랜치 `fix/854-outbox-selfinvocation-tx`·최신 **`b72804689`**). B3 실버그(#853 전표 거래처 필수화 fail-closed가 노출·pre-existing). **신 캐논(기획검수 폐지 후 첫 슬라이스)**.
+>
+> **⚠️ 재개 먼저**: `git pull` + `.\scripts\sync-claude-memory.ps1`. R1/R2/R3 fix는 **전부 커밋·push·검증 완료**(각 라운드 partner-order-service 전체 test green·라이브QA 스샷)—**미검증 WIP 아님**·feature 브랜치가 진실원(stash 금지). [[feedback_incomplete_work_wip_branch_cross_pc]].
+>
+> **완료 라운드**(각 게시·라이브QA 스샷·genuine test):
+> - **OPUS 기획**(조기 PR·spec `docs/specs/854-outbox-selfinvocation-tx-spec.md` D-854-01~07) → **CODEX LUNA 구현**.
+> - **OPUS R1** 5-agent: tx-경계 genuine 가드(명시save 마스킹 해소·tx-active 캡처)·parsePayload storm(try 안)·F2·비관락 F1·SlipServiceClient 타임아웃(builder.clone). 370 tests. SlipServiceClientTest 회귀 11 자가포착·fix.
+> - **CODEX SOL R2**(fix=LUNA): **비관락→FOR UPDATE SKIP LOCKED claim/lease 정석 전환**(HTTP를 DB 락 밖·ResultWriter 결과tx·stale lease reclaim)·4xx fail-fast(400/409 즉시 FAILED_PERMANENT)·SLIP_FAILED_PERMANENT enum(마이그 불요). 375 tests.
+> - **OPUS R3 재수렴** 5-agent(claim/lease 재아키텍처 독립검증): **아키텍처 PASS·BLOCKING0**. 개발책임자 전건 fix → **[HIGH] 원자 소유권 가드**(processingRow `findWithLockById` FOR UPDATE 재읽기·동시성 clobber 근본차단·30회 실 Postgres IT)·[MED] lease/batch 불변식(batch-size=10·lease120·@PostConstruct)·dead code 3제거(markProcessing 포함→구 #725 KEEP 대체)·doc-sync·LOW(markRequeue·@Profile("!local")·null 필터). **377 tests·IT 15**. 라이브QA=batch cap(claim 10→2행).
+>
+> **▶ 다음 재개점 = OPUS R4 재수렴**: R3 HIGH 원자가드(findWithLockById) 독립 검증 + R3 변경(batch/lease·markRequeue·@Profile·dead code 제거)이 **신규 HIGH/MED 0**인지 확인 → **0수렴** → PM 종합(게시) → CI green(`gh pr checks 862`) → **PM 머지·#854 close**. (R3까지 3라운드·claim/lease가 HIGH 낳음 → R4서 수렴 확인이 핵심. R4도 신규 HIGH면 [[feedback_pm_regulate_slice_effort]] 바운드 재제시.)
+>
+> **핵심 컨텍스트**: outbox **producer 부재=dormant**(confirm 자동발행 D-CF-02 폐지·convert 미enqueue) → 라이브QA=**수동 시드**(정직 표기·합성 producer 위장 안 함). **에스컬레이션 대기(개발책임자·비차단)**: outbox at-least-once 발행 의도 유효성/enqueuer 복원·poison-row 무한재claim(반복 JVM사망·LOW)·401/403 재시도(accept). claim/lease는 개발책임자 선택(SKIP LOCKED 멀티인스턴스). **실행 스택**: partner-order-service만 R3코드+fastcron override로 재배포(wtC 워크트리 스택·타 서비스 무접촉). QA 시드 정리 완료(주문 복원·outbox 0).
+
+---
+
+## 🔥 2026-07-20 (회사PC 저녁) — **#832 ✅ 머지 + 워크플로우 변경(기획검수 폐지)**
 
 > **#832 mock parity·감사이력 정밀도 완결** (main `17024ed07`·PR #861 squash·#832 close). 집PC WIP(R1 미완)→회사PC 재개→완주.
 > - mock parity(D-01 status hydration·D-02 matchedCount·D-04 BOM 5경로)+감사이력 정밀도(D-03 operationOrdinal/generation·이력표 "작업 N/세대" UX). **OPUS R1↔CODEX SOL R2 적대검증 0수렴·재수렴 CONVERGED**. R1 fix(시드 미실재거래처 P-2026-0001/0002/P-SEJIN-003 실재 ACTIVE 편입·CSV 역파리티 H1 게이팅·W1/W2 record 바인딩+실PG IT·dim4·이력표 xl/그룹핑/범례)·R2 fix(이력 응답 operationOrdinal DESC 정렬 production·bizNo 자사충돌 911-22-33344·정규화 raw parity·테스트강화)·CI Playwright mock 게이트 회귀 2건(공유 CODEF/시드 픽스처 정합). 검증: **vitest 1010·Playwright mock 게이트 590·BE IT8/ServiceTest21/Norm4 skip0**·라이브QA R1·R2 각 3장.

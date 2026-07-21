@@ -34,6 +34,7 @@ import type {
   SetMatchedDriverPayload,
 } from './dispatchTask'
 import type { DispatchCollabEdit, DispatchComment } from './dispatchCollab'
+import type { PartnerOrderDetail, PartnerOrderSummary, SlipPublishStatus } from './sales'
 import type { ApprovalLineAdminResponse } from './groupwareApproval'
 import type { ApproverOption } from './groupwareApprovalApprover'
 import type { ApprovalAttachment } from './groupwareApprovalAttachment'
@@ -100,6 +101,17 @@ function mockError(status: number, code: string, message: string) {
     },
   }
 }
+
+/**
+ * 주문 상세 mock fixture 의 헤더 필드(라인 제외) 계약 — `PartnerOrderDetail` 과 동일.
+ *
+ * <p>`lines` 는 핸들러별로 라인 shape 이 제각각(정적 fixture vs `body.lines` 동적 매핑)이라
+ * 제외한다. 헤더만 강타입 선언해도 R5 HIGH(슬립발행상태 필드 누락이 `envelope<T>()` 제네릭
+ * 추론에 지워져 typecheck green 인 false-green)를 방지하는 목적은 충분히 달성된다 — 신규
+ * 헤더 필드(예: `slipPublishStatus`)를 fixture 에서 빠뜨리면 이 타입 주석이 있는 지점에서
+ * 즉시 컴파일 에러로 승격된다.
+ */
+type PartnerOrderDetailHeader = Omit<PartnerOrderDetail, 'lines'>
 
 function toSlashDocumentNo(value: string): string {
   if (/^\d{4}-\d{2}-\d{2}-.+$/.test(value)) {
@@ -7591,88 +7603,122 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     const includeDeleted = includeDeletedParam === 'true'
 
     // Phase 2.5 — status 별 fixture rows
-    const DRAFT_ROW = {
+    // 강타입 선언(PartnerOrderSummary) — R5 HIGH: slipPublishStatus 등 신규 필수 필드를
+    // fixture 에 추가하지 않고 지나가면 여기서 즉시 컴파일 에러(false-green 차단).
+    const DRAFT_ROW: PartnerOrderSummary = {
       orderNumber: '2026/05/04-1',
       partnerCode: '1234567890',
       partnerName: '엘에이시스템에어',
       submittedAt: '2026-05-04T10:30:00',
-      status: 'DRAFT' as const,
+      status: 'DRAFT',
+      slipPublishStatus: 'NOT_REQUIRED',
       totalAmount: 3700000,
       linkedSlipNo: null,
     }
-    const ON_HOLD_ROW = {
+    const ON_HOLD_ROW: PartnerOrderSummary = {
       orderNumber: '2026/05/05-2',
       partnerCode: '2345678901',
       partnerName: '강남에어솔루션',
       submittedAt: '2026-05-05T09:00:00',
-      status: 'ON_HOLD' as const,
+      status: 'ON_HOLD',
+      slipPublishStatus: 'NOT_REQUIRED',
       totalAmount: 1850000,
       linkedSlipNo: null,
     }
-    const CONFIRMED_ROW = {
+    const CONFIRMED_ROW: PartnerOrderSummary = {
       orderNumber: '2026/05/03-1',
       partnerCode: '3456789012',
       partnerName: '한빛쾌적',
       submittedAt: '2026-05-03T14:00:00',
-      status: 'CONFIRMED' as const,
+      status: 'CONFIRMED',
+      slipPublishStatus: 'PUBLISHED',
       totalAmount: 5200000,
       linkedSlipNo: '2026/05/03-1',
     }
     // Phase 2.6b D2: 병합 시나리오 4·5용 — SAME_PARTNER 같은 거래처 2건 (DRAFT + ON_HOLD).
     // partnerCode = '1234567890' (DRAFT_ROW 와 동일 거래처).
-    const SAME_PARTNER_DRAFT_ROW = {
+    const SAME_PARTNER_DRAFT_ROW: PartnerOrderSummary = {
       orderNumber: '2026/05/31-3',
       partnerCode: '1234567890',
       partnerName: '엘에이시스템에어',
       submittedAt: '2026-05-31T08:00:00',
-      status: 'DRAFT' as const,
+      status: 'DRAFT',
+      slipPublishStatus: 'NOT_REQUIRED',
       totalAmount: 2500000,
       linkedSlipNo: null,
     }
-    const SAME_PARTNER_ON_HOLD_ROW = {
+    const SAME_PARTNER_ON_HOLD_ROW: PartnerOrderSummary = {
       orderNumber: '2026/05/31-4',
       partnerCode: '1234567890',
       partnerName: '엘에이시스템에어',
       submittedAt: '2026-05-31T09:00:00',
-      status: 'ON_HOLD' as const,
+      status: 'ON_HOLD',
+      slipPublishStatus: 'NOT_REQUIRED',
       totalAmount: 1200000,
       linkedSlipNo: null,
     }
-    const DELETED_DRAFT_ROW = {
+    const DELETED_DRAFT_ROW: PartnerOrderSummary = {
       orderNumber: '2026/05/31-5',
       partnerCode: '1234567890',
       partnerName: '엘에이시스템에어',
       submittedAt: '2026-05-31T10:00:00',
-      status: 'DRAFT' as const,
+      status: 'DRAFT',
+      slipPublishStatus: 'NOT_REQUIRED',
       totalAmount: 980000,
       linkedSlipNo: null,
       isDeleted: true,
       deletedAt: '2026-06-01T11:20:00',
       deletedByName: '오병승',
     }
+    // #854 R5 HIGH — 전표 발행 대기/실패 상태의 관측 가능한 전용 fixture(전용 주문번호).
+    // 실 BE 흐름 모사: 완료(CONFIRMED) 상태인데 outbox 자동발행이 아직/영구히 실패해
+    // linkedSlipNo 가 비어 있는 형상 (854 R4 라이브 QA 캡처와 동일 조합).
+    // GET 상세는 같은 orderNumber(하이픈 경로 변환) 를 buildPartnerOrderDetail 에서 인식해
+    // 목록→클릭→상세 전 구간에서 동일한 slipPublishStatus 를 재현한다.
+    // 목록/상세 정합을 위해 발행 상태 전용 거래처 코드·이름을 사용한다. 기존 DRAFT 회귀
+    // 가드가 CONFIRMED 목록에서 '엘에이시스템에어' 미노출을 확인하므로 이 fixture 를 기존
+    // 거래처에 귀속시키면 mock 전체 Playwright 게이트가 깨진다.
+    const SLIP_PENDING_RETRY_ROW: PartnerOrderSummary = {
+      orderNumber: '2026/05/31-6',
+      partnerCode: '8540000006',
+      partnerName: '전표 발행 대기 거래처',
+      submittedAt: '2026-05-31T11:00:00',
+      status: 'CONFIRMED',
+      slipPublishStatus: 'PENDING_RETRY',
+      totalAmount: 640000,
+      linkedSlipNo: null,
+    }
+    const SLIP_FAILED_PERMANENT_ROW: PartnerOrderSummary = {
+      orderNumber: '2026/05/31-7',
+      partnerCode: '8540000007',
+      partnerName: '전표 발행 실패 거래처',
+      submittedAt: '2026-05-31T12:00:00',
+      status: 'CONFIRMED',
+      slipPublishStatus: 'FAILED_PERMANENT',
+      totalAmount: 410000,
+      linkedSlipNo: null,
+    }
 
-    let content: Array<{
-      orderNumber: string
-      partnerCode: string
-      partnerName: string
-      submittedAt: string
-      status: string
-      totalAmount: number
-      linkedSlipNo: string | null
-      isDeleted?: boolean
-      deletedAt?: string | null
-      deletedByName?: string | null
-    }>
+    let content: PartnerOrderSummary[]
     if (statusParam === 'DRAFT') {
       // DRAFT 필터: 같은 거래처 DRAFT 2건 포함 (시나리오 2/4/5 직접 접근 가능)
       content = [DRAFT_ROW, SAME_PARTNER_DRAFT_ROW, DELETED_DRAFT_ROW]
     } else if (statusParam === 'ON_HOLD') {
       content = [ON_HOLD_ROW, SAME_PARTNER_ON_HOLD_ROW]
     } else if (statusParam === 'CONFIRMED') {
-      content = [CONFIRMED_ROW]
+      content = [CONFIRMED_ROW, SLIP_PENDING_RETRY_ROW, SLIP_FAILED_PERMANENT_ROW]
     } else {
       // 전체 또는 기타 — 모든 행 반환 (혼합 시나리오 포함)
-      content = [DRAFT_ROW, SAME_PARTNER_DRAFT_ROW, DELETED_DRAFT_ROW, SAME_PARTNER_ON_HOLD_ROW, ON_HOLD_ROW, CONFIRMED_ROW]
+      content = [
+        DRAFT_ROW,
+        SAME_PARTNER_DRAFT_ROW,
+        DELETED_DRAFT_ROW,
+        SAME_PARTNER_ON_HOLD_ROW,
+        ON_HOLD_ROW,
+        CONFIRMED_ROW,
+        SLIP_PENDING_RETRY_ROW,
+        SLIP_FAILED_PERMANENT_ROW,
+      ]
     }
 
     // 3-D: 병합/전환된 주문은 CONVERTED 로 표시. DRAFT 필터에서는 제외(BE 동작 모사).
@@ -11300,22 +11346,27 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     }
     // CONFIRMED 복원 → slipResyncRequired=true.
     const slipResyncRequired = orderId === 'ord-confirmed'
+    const restoredHeader: PartnerOrderDetailHeader = {
+      orderNumber: '2026/05/04-1',
+      partnerCode: '1234567890',
+      bizCode: '1234567890',
+      partnerName: '엘에이시스템에어',
+      submittedAt: '2026-05-04T10:30:00',
+      updatedAt: '2026-05-30T11:00:00',
+      status: slipResyncRequired ? 'CONFIRMED' : 'DRAFT',
+      // 복원 직후에는 자동발행 outbox 가 아직 개입하지 않은 시점이므로 미해당.
+      slipPublishStatus: 'NOT_REQUIRED',
+      totalAmount: 240000,
+      linkedSlipNo: slipResyncRequired ? '2026/05/04-1' : null,
+      deliveryAddress: '서울시 강남구 테헤란로 1',
+      siteAddress: '현장 A동',
+      contactPhone: '010-1234-5678',
+      dueDate: '2026-05-30',
+      memo: 'rev1 시점 복원본',
+    }
     return envelope({
       order: {
-        orderNumber: '2026/05/04-1',
-        partnerCode: '1234567890',
-        bizCode: '1234567890',
-        partnerName: '엘에이시스템에어',
-        submittedAt: '2026-05-04T10:30:00',
-        updatedAt: '2026-05-30T11:00:00',
-        status: slipResyncRequired ? 'CONFIRMED' : 'DRAFT',
-        totalAmount: 240000,
-        linkedSlipNo: slipResyncRequired ? '2026/05/04-1' : null,
-        deliveryAddress: '서울시 강남구 테헤란로 1',
-        siteAddress: '현장 A동',
-        contactPhone: '010-1234-5678',
-        dueDate: '2026-05-30',
-        memo: 'rev1 시점 복원본',
+        ...restoredHeader,
         lines: [
           {
             modelCode: 'AJ040RXH4BC1',
@@ -11452,13 +11503,15 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
   if (method === 'POST' && partnerOrderInlineRestoreMatch) {
     const orderNo = toSlashDocumentNo(decodeURIComponent(partnerOrderInlineRestoreMatch[1] ?? ''))
     mockDeletedOrderNos.delete(orderNo)
-    return envelope({
+    const restoredOrder: PartnerOrderDetail = {
       orderNumber: orderNo,
       partnerCode: '1234567890',
       bizCode: '1234567890',
       partnerName: '엘에이시스템에어',
       submittedAt: '2026-05-31T10:00:00',
       status: 'DRAFT',
+      // soft-delete 복원 직후에는 outbox 자동발행 대상 아님(전환 전 DRAFT).
+      slipPublishStatus: 'NOT_REQUIRED',
       totalAmount: 980000,
       linkedSlipNo: null,
       updatedAt: new Date().toISOString(),
@@ -11471,7 +11524,8 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       deletedAt: null,
       deletedByName: null,
       lines: [],
-    })
+    }
+    return envelope(restoredOrder)
   }
 
   // ==========================================================================
@@ -11526,7 +11580,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       return mockError(409, 'PARTNER_ORDER_HOLD_INVALID_STATUS', '진행중 주문만 보류할 수 있습니다. 현재 상태: 완료')
     }
     const orderId = partnerOrderHoldMatch[1]!
-    return envelope({
+    const heldHeader: PartnerOrderDetailHeader = {
       orderNumber: '2026/05/04-1',
       partnerCode: '1234567890',
       bizCode: '1234567890',
@@ -11534,6 +11588,8 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       submittedAt: '2026-05-04T10:30:00',
       updatedAt: new Date().toISOString(),
       status: 'ON_HOLD',
+      // 보류는 전환 전 상태 — outbox 자동발행 대상 아님.
+      slipPublishStatus: 'NOT_REQUIRED',
       totalAmount: 3700000,
       linkedSlipNo: null,
       deliveryAddress: '서울시 강남구 테헤란로 1',
@@ -11541,6 +11597,9 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       contactPhone: '010-1234-5678',
       dueDate: '2026-05-30',
       memo: `hold mock — orderId=${orderId}`,
+    }
+    return envelope({
+      ...heldHeader,
       lines: [
         {
           modelCode: 'AJ040RXH4BC1',
@@ -11563,7 +11622,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       return mockError(409, 'PARTNER_ORDER_RELEASE_INVALID_STATUS', '보류 주문만 해제할 수 있습니다. 현재 상태: 진행중')
     }
     const orderId = partnerOrderReleaseMatch[1]!
-    return envelope({
+    const releasedHeader: PartnerOrderDetailHeader = {
       orderNumber: '2026/05/04-1',
       partnerCode: '1234567890',
       bizCode: '1234567890',
@@ -11571,6 +11630,8 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       submittedAt: '2026-05-04T10:30:00',
       updatedAt: new Date().toISOString(),
       status: 'DRAFT',
+      // 보류 해제는 전환 전 상태 — outbox 자동발행 대상 아님.
+      slipPublishStatus: 'NOT_REQUIRED',
       totalAmount: 3700000,
       linkedSlipNo: null,
       deliveryAddress: '서울시 강남구 테헤란로 1',
@@ -11578,6 +11639,9 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       contactPhone: '010-1234-5678',
       dueDate: '2026-05-30',
       memo: `release mock — orderId=${orderId}`,
+    }
+    return envelope({
+      ...releasedHeader,
       lines: [
         {
           modelCode: 'AJ040RXH4BC1',
@@ -11623,6 +11687,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     submittedAt: string
     updatedAt: string
     status: string
+    slipPublishStatus: SlipPublishStatus
     totalAmount: number
     linkedSlipNo: string | null
     deliveryAddress: string | null
@@ -11659,6 +11724,11 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
   const partnerOrderCollabDetailsStore = gpoc.__SAMHAN_MOCK_PARTNER_ORDER_COLLAB_DETAILS!
 
   const buildPartnerOrderDetail = (poId: string): MockPartnerOrderMutable => {
+    // #854 R5 HIGH — 전표 발행 대기/영구실패 전용 fixture. 직접 진입(ord-slip-* id, 기존
+    // ord-draft/ord-hold 관례와 동일) + 목록 클릭 전환(toOrderPathId('2026/05/31-6|-7')
+    // 결과인 하이픈 경로) 양쪽 모두 인식해 목록→상세 전 구간에서 동일 상태를 재현한다.
+    const isSlipPendingRetryId = poId === 'ord-slip-pending-retry' || poId === '2026-05-31-6'
+    const isSlipFailedId = poId === 'ord-slip-failed' || poId === '2026-05-31-7'
     const poStatus: string =
       poId === 'ord-draft' || poId === 'ord-partially-converted' || poId === 'ord-linked-slip'
         ? 'DRAFT'
@@ -11670,13 +11740,32 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
               ? 'CANCELED'
               : poId === 'ord-converted'
                 ? 'CONVERTED'
+                // isSlipPendingRetryId/isSlipFailedId 도 기본 CONFIRMED — R4 라이브 QA 캡처와
+                // 동일 형상(완료 상태인데 outbox 자동발행만 대기/영구실패).
                 : 'CONFIRMED'
     const poLinkedSlip =
-      poId === 'ord-linked-slip' || poId === 'ord-converted'
-        ? '2026/05/04-1'
-        : poStatus === 'CONFIRMED'
+      isSlipPendingRetryId || isSlipFailedId
+        ? null
+        : poId === 'ord-linked-slip' || poId === 'ord-converted'
           ? '2026/05/04-1'
-          : null
+          : poStatus === 'CONFIRMED'
+            ? '2026/05/04-1'
+            : null
+    const poSlipPublishStatus: SlipPublishStatus = isSlipPendingRetryId
+      ? 'PENDING_RETRY'
+      : isSlipFailedId
+        ? 'FAILED_PERMANENT'
+        : poLinkedSlip
+          ? 'PUBLISHED'
+          : 'NOT_REQUIRED'
+    const slipFixture = isSlipPendingRetryId || isSlipFailedId
+      ? {
+          partnerCode: isSlipPendingRetryId ? '8540000006' : '8540000007',
+          partnerName: isSlipPendingRetryId ? '전표 발행 대기 거래처' : '전표 발행 실패 거래처',
+          submittedAt: isSlipPendingRetryId ? '2026-05-31T11:00:00' : '2026-05-31T12:00:00',
+          totalAmount: isSlipPendingRetryId ? 640000 : 410000,
+        }
+      : null
     const poLines =
       poId === 'ord-partially-converted'
         ? [
@@ -11718,10 +11807,10 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
               modelCode: 'AJ040RXH4BC1',
               productName: '실외기',
               categoryKey: 'homemulti',
-              quantity: 2,
+              quantity: isSlipPendingRetryId ? 2 : isSlipFailedId ? 1 : 2,
               convertedQuantity: 0,
-              deliveryPrice: 120000,
-              subtotal: 240000,
+              deliveryPrice: isSlipPendingRetryId ? 320000 : isSlipFailedId ? 410000 : 120000,
+              subtotal: isSlipPendingRetryId ? 640000 : isSlipFailedId ? 410000 : 240000,
               remark: '초기 라인 비고',
               bundleMode: null,
               productType: 'SINGLE',
@@ -11733,14 +11822,19 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
         ? '2026/05/04-2'
         : poId === 'ord-converted'
           ? '2026/05/04-3'
-          : '2026/05/04-1',
-      partnerCode: '1234567890',
-      bizCode: '1234567890',
-      partnerName: '엘에이시스템에어',
-      submittedAt: '2026-05-04T10:30:00',
+          : isSlipPendingRetryId
+            ? '2026/05/31-6'
+            : isSlipFailedId
+              ? '2026/05/31-7'
+              : '2026/05/04-1',
+      partnerCode: slipFixture?.partnerCode ?? '1234567890',
+      bizCode: slipFixture?.partnerCode ?? '1234567890',
+      partnerName: slipFixture?.partnerName ?? '엘에이시스템에어',
+      submittedAt: slipFixture?.submittedAt ?? '2026-05-04T10:30:00',
       updatedAt: '2026-05-17T10:00:00',
       status: poStatus,
-      totalAmount: 3700000,
+      slipPublishStatus: poSlipPublishStatus,
+      totalAmount: slipFixture?.totalAmount ?? 3700000,
       linkedSlipNo: poLinkedSlip,
       deliveryAddress: '서울시 강남구 테헤란로 1',
       siteAddress: '현장 A동',
@@ -11958,7 +12052,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     // 그 외 기존 fixture      → CONFIRMED (하위 호환)
     // Phase 2.6d: ord-error-test → 에러 배너 시나리오 (R-4). __error_test__ productId → batch 500
     if (poId === 'ord-error-test') {
-      return envelope({
+      const errorTestDetail: PartnerOrderDetail = {
         orderNumber: '2026/05/31-99',
         partnerCode: '1234567890',
         bizCode: '1234567890',
@@ -11966,6 +12060,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
         submittedAt: '2026-05-31T10:00:00',
         updatedAt: '2026-05-31T10:00:00',
         status: 'DRAFT',
+        slipPublishStatus: 'NOT_REQUIRED',
         totalAmount: 100000,
         linkedSlipNo: null,
         deliveryAddress: '서울시 강남구 테헤란로 1',
@@ -11990,7 +12085,8 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
             expandedComponents: [],
           },
         ],
-      })
+      }
+      return envelope(errorTestDetail)
     }
 
     // Round C #23: 세트(BUNDLE) 재고 가드 fixture
@@ -12028,7 +12124,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
         productType: 'SINGLE',
         expandedComponents: [],
       }
-      return envelope({
+      const bundleDetail: PartnerOrderDetail = {
         orderNumber: poId === 'ord-bundle-only' ? '2026/06/11-1' : '2026/06/11-2',
         partnerCode: '1234567890',
         bizCode: '1234567890',
@@ -12036,6 +12132,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
         submittedAt: '2026-06-11T10:00:00',
         updatedAt: '2026-06-11T10:00:00',
         status: 'DRAFT',
+        slipPublishStatus: 'NOT_REQUIRED',
         totalAmount: poId === 'ord-bundle-only' ? 2500000 : 2740000,
         linkedSlipNo: null,
         deliveryAddress: '서울시 강남구 테헤란로 1',
@@ -12044,7 +12141,8 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
         dueDate: '2026-06-20',
         memo: null,
         lines: poId === 'ord-bundle-only' ? [bundleLine] : [bundleLine, singleLine],
-      })
+      }
+      return envelope(bundleDetail)
     }
 
     return envelope(getPartnerOrderMutable(poId))
@@ -12060,7 +12158,7 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       'SET-HM2WAY': 'line-bundle-001',
       AJ040RXH4BC1: 'line-bundle-002',
     }
-    return envelope({
+    const updatedHeader: PartnerOrderDetailHeader = {
       orderNumber: '2026/05/04-1',
       partnerCode: body?.partnerCode ?? '1234567890',
       bizCode: body?.bizCode ?? '1234567890',
@@ -12068,6 +12166,8 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       submittedAt: '2026-05-04T10:30:00',
       updatedAt: '2026-05-17T10:05:00',
       status: 'CONFIRMED',
+      // 정식 편집(PUT) 대상은 이미 전표 발행 완료된 확정 주문 fixture(linkedSlipNo 기존값 유지).
+      slipPublishStatus: 'PUBLISHED',
       totalAmount: 685000,
       linkedSlipNo: '2026/05/04-1',
       deliveryAddress: '서울시 강남구 테헤란로 1',
@@ -12075,6 +12175,9 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       contactPhone: '010-1234-5678',
       dueDate: body?.dueDate ?? null,
       memo: body?.memo ?? null,
+    }
+    return envelope({
+      ...updatedHeader,
       lines: body?.lines?.map((line: Record<string, unknown>, index: number) => {
         const modelCode = String(line['modelCode'] ?? '')
         const product = Object.values(MOCK_PRODUCTS_BY_MODEL).find(
