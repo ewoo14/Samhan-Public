@@ -31,7 +31,14 @@ codex 격리 사본(`.codex-isolations/`)은 **8파일 이관 검증 후 제거*
 |---|---|---|---|---|
 | **A** #864 | 40건 중 **success 38 · failure 1 · 진행 1** | **라이브QA 통과 · 신규 제품 결함 0** | 재수렴 | 최종 수렴엔 **SOL 필요** |
 | **B** #865 | **35/35 green** | SOL 2차 적대검증 → **미수렴(MED 7·LOW 1)** | **LUNA fix** | 🔴 **막힘** |
-| **C** #876 | 35건 중 **success 34 · 진행 1** | SOL fix 커밋 | 재수렴 | 최종 수렴엔 **SOL 필요** |
+| **C** #876 | **35/35 green** ✅ | SOL fix 커밋 | 재수렴 | 최종 수렴엔 **SOL 필요** |
+
+> **정지 시점 CI 최종 확정** (exact SHA · `per_page=100` 총계 대조)
+> - **#876 `b81203d92`** — `total=35 · 수신 35 · success 35 · failure 0 · 진행 0` ⟹ **완전 green**
+> - **#864 `e0dff455f`** — `total=40 · 수신 40 · success 38 · failure 1 · 진행 1`
+>   - `failure 1` = **GitGuardian**(PM false positive 판정 · 머지 비차단, 아래 설명)
+>   - `진행 1` = **Desktop Playwright (mock 회귀 hard gate)**, `2026-07-21T16:37:22Z` 시작. 590 테스트 스위트라 정상 소요 범위이며 정지 시점에 미완. **재개 시 이 SHA 의 결과부터 확인**하십시오
+> - **#865 `845165f35`** — 35/35 green
 
 **#864 의 failure 1건 = GitGuardian** — PM 이 **false positive 로 판정, 머지 비차단**([PR 코멘트](https://github.com/ewoo14/Samhan-Public/pull/864#issuecomment-5036204423)). `Username Password` 복합 탐지기가 `e31a5df71` 커밋 히스토리의 Testcontainers 비밀번호를 잡은 것이고, 워크트리에서는 이미 제거됐습니다. `.gitguardian.yaml` 의 무시 규칙은 **값 기반**이라 복합 탐지기를 못 막습니다.
 
