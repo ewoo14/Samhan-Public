@@ -29,6 +29,7 @@ abort 는 codex 를 멈추지 않지만 **완료 통지를 끊어** 오케스트
 - **적용 = `scripts/setup-codex-mcp-timeout.ps1`**(멱등·백업·쓰기 후 재검증. 기본 2h). 양 PC 셋업 절차는 [dev-environment-setup-multi-pc.md](../../docs/dev-environment-setup-multi-pc.md) `1-A-2`.
 - 🚨 **이 설정은 `~/.claude.json` 에 있고 git 추적 대상이 아니다** — `.claude/memory/` 처럼 자동으로 따라오지 않는다. **PC 를 옮기면 반드시 1회 실행**할 것. (2026-07-21 개발책임자 지시: "집PC 에서도 idle timeout 변경내역이 적용되도록".)
 - ⚠️ **적용은 다음 세션부터** — MCP 설정은 연결 시점에 읽힌다. 설정을 바꿔도 **진행 중인 세션은 계속 1800s 로 abort** 되니, 그 세션에서는 폴링으로 버틴다.
+- 🚨 **스크립트가 `NO_CODEX_SERVER` 로 실패하는 PC 가 있다 (2026-07-21 집PC 실측)** — 스크립트는 `~/.claude.json` 의 `projects.<path>.mcpServers.codex` **한 곳만** 본다. 그런데 codex 를 **repo 의 project-scope `.mcp.json`** 으로 등록한 PC 에서는 그 경로에 아무것도 없다. 그래서 `claude mcp list` 가 `codex: codex mcp-server - ✔ Connected` 인데도 스크립트는 "미등록"으로 판정한다 — **연결 상태와 스크립트 판정이 서로 다른 곳을 본다.** 해소 = `claude mcp add codex -- codex mcp-server`(기본 local scope → `~/.claude.json` 에 기록) 후 스크립트 재실행. 같은 command 라 동작은 불변이고 local scope 가 project scope 를 가린다. **"Connected 니까 등록돼 있다"고 단정하지 말 것** — 등록 위치가 PC 마다 다르다.
 - 전역 `CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT` 은 **비추천** — 모든 MCP 서버에 적용돼 진짜로 멈춘 서버까지 안 끊긴다. codex 만 per-server 로 여는 게 맞다.
 - ⚠️ 스크립트는 **ASCII 전용**으로 유지할 것. PowerShell 5.1 이 BOM 없는 UTF-8 `.ps1` 을 ANSI 로 읽어 한글 문자열이 깨지면 **파싱 자체가 실패**한다(2026-07-21 실측 — 한글 주석 버전이 `TerminatorExpectedAtEndOfString` 로 죽었다). 한글 설명은 문서로 분리([[feedback_powershell_utf8_writes]]).
 
