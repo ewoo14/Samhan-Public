@@ -54,8 +54,13 @@
 > 라이브QA 가 **공유 로컬 `accounting_db` 를 V64 로 전진**시켰고 되돌릴 수 없습니다. **#864 머지 전까지 accounting-service 를 main 이미지(V63)로 재기동하면 Flyway 가 `applied migration not resolved locally: 64` 로 부팅 실패**합니다. 현재 컨테이너 2개는 워크트리 jar hot-swap 상태(이미지 태그는 옛 것 — 재생성 시 되돌아감).
 > 📌 관련 발견: **이 슬라이스는 로컬 스택에 배포된 적이 없었습니다**(이미지가 HEAD 이전·V64 미적용) → **R1 라이브QA 도 슬라이스 코드를 검증하지 못했습니다.** 앞으로 라이브QA 전에 **배포 시점부터 확인**할 것.
 >
-> ### 새 위임 (2026-07-21)
-> **문서 전용 PR 은 상시 자율 머지**(코드 변경 0인 `docs/**`·`.claude/memory/**`·`CLAUDE.md`·`DECISIONS.md`). 코드가 한 줄이라도 섞이면 풀 캐논. → [[feedback_pm_auto_merge_authority]]
+> ### 새 위임 (2026-07-21) — **문서는 PR 없이 main 직접 커밋**
+> 개발책임자: *"메모리, 핸드오프 등의 문서는 PR을 만들어서 머지하지 말고 그냥 메인에 바로 커밋할것"*
+> 코드 변경이 **0인** 커밋(`docs/**`·`.claude/memory/**`·`CLAUDE.md`·`DECISIONS.md`)은 **main 에서 바로 commit+push**. 구 가드("main 직접 push 는 별개 승인")는 **폐지**됐습니다.
+> 🚫 코드·설정·CI·마이그가 **한 줄이라도** 섞이면 문서가 아니며 브랜치+PR+**풀 캐논**입니다. **문서에 코드를 끼워 넣어 캐논을 우회하지 마십시오.** → [[feedback_pm_auto_merge_authority]]
+>
+> ### 후속 분리분 = **#887** (MED 8 · LOW 15 배치)
+> 트랙A HIGH-only 바운드의 분리분을 1건으로 묶어 등록했습니다(백로그 순증 방지). **착수는 #864 머지 이후** — 같은 파일을 만져 충돌합니다. pre-existing 4건(`AsyncAutocomplete` `role="option"` 등)은 그 안에 **개발책임자 처분 대기**로 분리 기재돼 있습니다.
 
 ---
 
