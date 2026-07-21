@@ -29,18 +29,32 @@ metadata:
 2. **구현 = CODEX LUNA 5.6** — 구현 전담(파일 수정만, git 금지 — PM commit 대행 [[feedback_codex_sandbox_git]]). PM(세션) 직접 구현 금지 유지([[feedback_pm_no_direct_implementation]]). 완료 시 **구현/개발사항 리뷰를 PR 게시**.
 3. **1차 적대검증 = OPUS 4.8 5-agents(또는 그 이상)** ※**2026-07-21 지시로 FABLE5 → OPUS 4.8 재전환**(FABLE5 토큰 과다), **fix = SONNET5 유지** — FE/BE/Design/DevOps/QA **최소 5차원 전부**(Design "N/A" 대체 금지·focused 축소 금지·수렴/재검 라운드도 full) + 필요 시 증원(보안/성능/마이그레이션/회계정합 등). **적대 리뷰 + 라이브QA**(Docker 실서버·mock OFF [[feedback_qa_docker_real_test]]) 수행. **라이브QA 스크린샷 다수 필수 첨부** — 사용자 플로우 단계별 여러 장(요약 1컷 금지), SendUserFile + PR SHA-pinned 인라인 둘 다([[feedback_live_qa_every_round_screenshots]] [[feedback_pr_screenshot_sha_pinned_urls]] [[feedback_qa_screenshots_inline_to_user]]). 발견 전건 명시 disposition → **FIX = SONNET5 디스패치**(2026-07-20 2차 지시 · 종전 "OPUS 4.8 직접" 폐기) → fix 후 검증(변경모듈 전체 스위트 genuine [[feedback_changed_module_full_test_before_push]] [[feedback_gradle_test_cache_false_green]]) → **라운드 리뷰(5차원 취합 표 + 스샷) PR 게시**.
 4. **2차 적대검증 = CODEX SOL 5.6 5-agents(또는 그 이상)** — 3단계와 동일 구조(5차원 이상·적대·라이브QA·스샷 다수·fix 후 검증). 실행 = `mcp__codex__codex` **차원별 직접 호출**(codex-rescue 금지 [[feedback_codex_rescue_unreliable_use_mcp]]·sandbox danger-full-access [[feedback_codex_review_sandbox_danger_access]]·approval-policy never·git 금지·PM commit 대행). **FIX = CODEX LUNA 5.6**(SOL 은 리뷰·적대검증·재검증 전담·fix 미수행 — **2026-07-18 개발책임자 지시**: "코덱스 리뷰는 SOL, 해당 라운드 실제 fix 는 LUNA". SOL=리뷰어/LUNA=구현자 분리) → LUNA fix 후 SOL 재검증 → **라운드 리뷰 PR 게시**.
-5. 🚨 **수렴 판정 — 2026-07-21 개발책임자 결정으로 전면 개정 (구 "전 심각도 0수렴" 폐기)**
-   - **머지 게이트 = BLOCKING/HIGH 잔여 0** + CI green(exact SHA) + 라이브QA. **MED/LOW 는 슬라이스당 1건 배치 이슈로 등록하고 현 PR 에서 손대지 않는다**([[feedback_backlog_burndown_issue_bar]] 의 배치 원칙 적용).
-   - **BLOCKING/HIGH 는 종전 그대로** — 1건이라도 있으면 ①명시 disposition(fix 또는 검증된 무결 근거) ②재수렴 라운드(신규 BLOCKING/HIGH 0 확인) ③PM 종합 후에만 머지. **PM 독단 dismissal + 즉시 머지 절대 금지**는 계속 유효.
-   - **개정 근거(실측)**: 6차원 적대검증은 **설계상 MED/LOW 를 고갈시키지 못한다**(문서·테스트강화·a11y 폴리시 항목은 코드가 존재하는 한 계속 나옴) → 모든 슬라이스가 PM 임의 바운드까지 무한 반복. 게다가 **fix 부피가 다음 라운드 발견량을 결정**한다: #854 R4 신규 1,400줄 → R5 HIGH 5건이 거의 전부 그 안 · #864 R3 HIGH/MED 5건 중 4건이 R2 fix 신규 코드 안 · #865 R2 MED 4건 중 3건이 R1 fix 도입. **#864 에서 HIGH-only 바운드를 걸자 20+건이 6건이 되고 한 라운드에 종결**됐다 — 실제로 작동한 유일한 레버.
-   - 🚫 **심각도 하향으로 게이트 회피 금지** — 리뷰어가 매긴 BLOCKING/HIGH 를 PM 이 MED 로 낮춰 밀어내면 위반이다. 심각도 이견은 **근거와 함께 PR 에 명시**하고 **리뷰어 라운드가 재판정**한다.
-   - **심각도와 무관하게 통과 아닌 것**(구 규칙 유지): `test.skip` · false-green · 미실행 · 캐시 히트를 실행 증거로 인용.
+5. 🚨 **수렴 판정 = 전 심각도 0수렴 (현행 정본 — 2026-07-21 21:40 개발책임자 결정)**
+   > *"기존 MED, LOW 등의 결함도 모두 FIX하고 넘어가는것으로 하자."*
+   - **머지 게이트 = BLOCKING/HIGH/MED/LOW 잔여 0** + CI green(exact SHA) + 라이브QA(실서버 실제 실행).
+   - 발견은 **심각도 무관 전건** ①명시 disposition(fix 또는 검증된 무결 근거) ②재수렴 라운드(양측 새 지적 0) ③PM 종합 후에만 머지. **PM 독단 dismissal + 즉시 머지 절대 금지.**
+   - **범위 밖**(타 서비스·타 슬라이스)만 분리 가능하다 — [[feedback_fix_in_current_pr_no_split]] 의 원칙 그대로.
+   - ⚠️ **같은 날 앞선 "BLOCKING/HIGH 0 = 머지 게이트, MED/LOW 는 배치 이슈" 결정은 폐기됐다.** 그 결정의 문제의식(fix 가 새 결함을 낳아 라운드가 무한증식)은 **범위 축소가 아니라 fix 품질로 해결**한다 — 아래 8항 **RED-first fix** 와 9항 **라이브QA 실서버 실제 실행**이 그 장치다. 구 문구를 현행으로 읽지 말 것.
+   - **심각도와 무관하게 통과 아닌 것**: `test.skip` · false-green · 미실행 · 캐시 히트를 실행 증거로 인용.
    - **불변**: 적대검증 강도·최소 5차원·라이브QA 매 라운드·실행=게시 1:1·라운드 수 상한 없음.
+   - 📌 참고 실측(폐기된 결정의 근거였고, **RED-first 로 상쇄해야 할 대상**): #854 R4 신규 1,400줄 → R5 HIGH 5건이 거의 전부 그 안 · #864 R3 HIGH/MED 5건 중 4건이 R2 fix 신규 코드 안 · #865 R2 MED 4건 중 3건이 R1 fix 도입. **fix 부피가 다음 라운드 발견량을 키운다는 사실 자체는 유효하다** — 그러니 전건 fix 하되 **RED-first 로 결함 표면을 먼저 확정**해 부피와 오사격을 줄인다.
 6. **PM 종합 → 머지** — PM(오케스트레이션 세션)이 전 단계·전 라운드를 종합한 **PM 종합 리뷰를 PR 게시**, dev-report/docs 동기화([[feedback_continuous_docs_sync]]) 확인, CI green(exact SHA) 확인 후 아래 머지 게이트 전부 충족 시 자율 머지([[feedback_pm_auto_merge_authority]]).
 
 7. 🚨 **PM 은 fix 지시에서 불변식만 말하고 구현 수단을 지시하지 않는다 (2026-07-21 신설)**
    PM 이 "이렇게 고쳐라"로 **수단**을 지정하면 그 수단의 결함까지 PM 이 떠안고, 구현자·리뷰어의 독립 판단이 사라진다. 실측 3건: ①#865 M-1 감사 위조 = **PM 이 `COALESCE(modified_at, created_at)` 사용을 지시**해서 생김(LOW 를 고치려다 더 나쁜 것을 넣음) ②#865 BLOCKING(ACTIVE-0) = **PM 이 "설계 정합" 으로 수용 처분**해 남음 ③#864 HIGH-1 = **PM 이 FE 만 읽고 "BLOCKING fix 가 진짜" 라고 판정**해 BE 분기가 그대로 남음.
    ⟹ PM 은 **"무엇이 참이어야 하는가"(불변식·수용 기준·검증 게이트)** 를 쓰고, **"어떻게"** 는 구현자가 고른다. 수단을 꼭 제안해야 하면 **제안임을 명시**하고 구현자가 반박할 여지를 남긴다. PM 이 지시한 fix 일수록 검증을 **더 엄격히** 본다([[feedback_pm_verify_what_measurement_proves]]).
+
+8. 🚨 **RED-first fix — 결함 재현 테스트를 먼저 쓰고 RED 를 보인 뒤 고친다 (2026-07-21 개발책임자 결정)**
+   종전 순서는 `fix → 테스트 추가 → 뮤테이션 확인` 이었다. 뮤테이션 검사는 fix **이후**에 하므로 **"구현자가 고른 fix"만 검증**하고 **결함의 전체 표면은 검증하지 않는다.** 순서를 뒤집으면 코드를 쓰기 전에 **결함이 어느 층·어느 파일까지 사는지 열거**해야 한다.
+   - 각 BLOCKING/HIGH 발견마다 **그 결함을 재현하는 실패 테스트를 먼저 작성하고 RED 원문을 제출**한다. 그 다음 고치고 GREEN 원문을 제출한다.
+   - 실측 근거: #864 BLOCKING-1 은 **FE 만 고쳐지고 BE 분기가 그대로 남았다**. BE 를 지나는 RED 테스트를 먼저 썼다면 구조적으로 불가능했다. #865 M-2(`EntityManager#persist` 가 Spring 예외변환 상실)·M-1(`COALESCE` 가 다른 의미) 도 **계약을 고정하는 테스트가 선행했다면** 치환이 걸러졌다.
+   - RED 를 못 만들면 그것 자체가 신호다 — 결함을 아직 이해하지 못했거나, 테스트가 닿지 않는 층에 있다는 뜻이다. **그 상태로 고치지 말고 보고한다.**
+
+9. 🚨 **라이브QA = 실서버 실제 실행. 정적 게이트로 대체 금지 (2026-07-21 개발책임자 지시)**
+   > *"REAL QA로 실서버 검증을 하지 않는다면 추후 사용자가 사용할때 나타나는 버그를 잡을 수가 없잖아."*
+   - `--list`·typecheck·lint 류 **정적 검사는 하네스가 구조적으로 부서진 것만** 잡는다. **사용자가 겪을 버그는 실행해야만** 나온다. 정적 게이트를 라이브QA 의 **대체물로 제안하는 것은 금지**(보조 조기경보로만 허용).
+   - 🚨 **구조적 실태(2026-07-21 실측)**: repo 에 `*-real-qa.spec.ts` **85파일/213테스트**가 있으나 `playwright.config.ts` 가 명시 제외하고 `.github/workflows/` 에 `real-qa` **0건** → **CI 가 한 번도 실행하지 않는다.** 그래서 ①하네스 결함이 영구 미탐(#864 R2 가 testMatch 를 축소해 82스펙을 죽였는데 CI 는 40/40 green 이었다) ②사용자 표면 회귀도 미탐. **83개 스펙이 사실상 죽은 코드다.**
+   - ⟹ 라이브QA 라운드는 **해당 슬라이스의 real-QA 를 실서버로 실제 실행**하고 결과 원문을 제출한다. "코드로 확인했다"·"IT 로 통과했다" 는 대체가 아니다([[feedback_live_qa_penetrates_it_masking]]).
 
 ## 모델 디스패치 매핑 (2026-07-15 집PC 실측 · 2026-07-16 갱신)
 - **OPUS 4.8** = Agent 도구 `model: "opus"` 서브에이전트 **명시**(에이전트 정의 frontmatter 기본값 의존 금지). **1단계 기획 + 3단계 1차 적대검증 리뷰 + PM 오케스트레이션/commit 대행/머지**(2026-07-21 지시 — 리뷰 겸임 복귀). 🚫 **라운드 fix 직접 수행은 계속 금지**(fix=SONNET5). 리뷰는 `model:"opus"` 다차원 서브에이전트로 디스패치 — PM 세션이 혼자 대신하지 않는다.
