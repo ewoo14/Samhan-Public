@@ -30,7 +30,7 @@
 - [권한 표기 풀네임](feedback_role_naming_full.md) — MASTER/MANAGER 풀네임, 약어 금지
 - [전표 용어 — 슬립 금지](feedback_jeonpyo_not_slip.md) — 한글 "전표"(슬립 금지), 영문 slipId는 별개
 - [코멘트 용어 — 협업 코멘트 금지](feedback_comment_not_collab_comment.md) — 라벨 "코멘트", 영문 CollabComment 유지
-- [UUID 사용자 비공개](feedback_uuid_no_user_visibility.md) — 화면 UUID 금지, 비즈니스 식별자만
+- [UUID 사용자 비공개 · 🚨07-22 엔티티별 노출 코드 지정](feedback_uuid_no_user_visibility.md) — 화면 UUID 금지(DB PK 전용). **엔티티마다 사용자 노출 코드를 정한다**: 담당자코드(`employees.ecount_code` 활성 unique·실직원 91/91) · 거래처코드(`partner_code`, V1 주석에 이미 명문화) · 품목코드(`product_code`) · 전표/문서번호(`YYYY/MM/DD-N`). **동명이인 구분=코드**(실측 `채권추심` 2건이 `00000`/`999-99-99999`로 구분). 평소 이름만·충돌 시 코드 병기·모달은 코드 열 상시. 🚫로그인ID/이메일/UUID 를 구분자로 쓰지 말 것. 신규 마스터 엔티티는 노출 코드 동시 설계
 - [문서 동기화 의무](feedback_continuous_docs_sync.md) — 매 PR에 README+ROADMAP+DECISIONS+각 README+dev-report, 별도 docs PR 금지
 - [overview.html 동기화](feedback_samhan_public_overview_sync.md) — docs/samhan-public-overview.html 항시 동기화
 - [함수 문서화 3-layer](feedback_function_documentation.md) — 한국어 Javadoc+springdoc+dev-reports 누적
