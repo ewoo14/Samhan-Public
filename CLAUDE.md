@@ -7,7 +7,7 @@
 > **운영 단위 명칭 (2026-05-14 결정)**:
 > - **Samhan Public** (삼한 퍼블릭) = 14 service 묶음(모노레포 전체)의 정식 명칭
 > - **아로로지스** (arologis) = Samhan Public 마이크로서비스에서 분리된 독립 운영 단위 (Phase 10.5, [project_arologis_independent.md](.claude/memory/project_arologis_independent.md))
-> - `SamhanLogis` = **`com.samhanair.logis.*` 패키지 네임스페이스**(기술 식별자, rename 비대상). 프로젝트/제품 명칭 아님. ※ 로컬 working dir 폴더명은 `Samhan-Public` 으로 통일 (집 PC 2026-06-06 완료, 회사 PC 변경 예정).
+> - `SamhanLogis` = **`com.samhanair.logis.*` 패키지 네임스페이스**(기술 식별자, rename 비대상). 프로젝트/제품 명칭 아님. ※ 로컬 working dir 폴더명은 `Samhan-Public` 으로 통일 (집 PC 2026-06-06 완료, 회사 PC 2026-07-22 완료 — `C:\dev` → `D:\dev\Samhan-Public` 이동).
 
 ---
 
@@ -35,7 +35,7 @@ git commit -m "memory: <변경 내용>"
 git push
 ```
 
-> 사용자 홈 auto-memory 경로 (`C:\Users\<user>\.claude\projects\C--dev-Samhan-Public\memory\`) 는 working dir 경로에서 파생되는 Claude Code 빌트인이라 직접 변경 불가 — sync 스크립트가 repo → 홈 단방향 복사. (폴더명 `Samhan-Public` rename 에 따라 2026-06-06 경로 갱신 — 회사 PC 도 폴더 rename 후 동일 경로 적용됨.)
+> 사용자 홈 auto-memory 경로 (회사 PC 현재: `C:\Users\<user>\.claude\projects\D--dev-Samhan-Public\memory\`) 는 working dir 경로에서 파생되는 Claude Code 빌트인이라 직접 변경 불가 — sync 스크립트가 repo → 홈 단방향 복사. **2026-07-22: 회사 PC 프로젝트를 `C:\dev` → `D:\dev` 로 이동** 하며 파생 폴더명이 `C--dev-…` → `D--dev-…` 로 바뀜. 이에 따라 sync 스크립트는 경로를 하드코딩하지 않고 **working dir 에서 슬러그를 자동 도출**하도록 개편(양 PC·드라이브 무관 동작). 집 PC 가 `C:\dev` 를 유지하면 자동으로 `C--dev-…` 로 미러됨(스크립트 재수정 불필요). (이력: 폴더명 `Samhan-Public` rename 2026-06-06.)
 
 ---
 

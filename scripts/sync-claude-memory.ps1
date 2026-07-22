@@ -14,7 +14,12 @@ $ErrorActionPreference = 'Stop'
 
 $RepoRoot = Split-Path -Parent $PSScriptRoot
 $Source = Join-Path $RepoRoot '.claude\memory'
-$Dest = Join-Path $env:USERPROFILE '.claude\projects\C--dev-Samhan-Public\memory'
+# Claude Code auto-memory 폴더명은 working dir 경로에서 파생됨 (드라이브 letter/구분자 ':','\','/' → '-').
+#   예) D:\dev\Samhan-Public -> D--dev-Samhan-Public,  C:\dev\Samhan-Public -> C--dev-Samhan-Public
+# 하드코딩 금지 — C→D 드라이브 이동(2026-07-22)처럼 경로가 바뀌거나 PC(집 D: / 회사 C:)가 달라도
+# working dir 에서 자동 도출해 항상 올바른 홈 위치로 미러한다. (git 추적 스크립트라 양 PC 공유)
+$ProjectSlug = $RepoRoot -replace '[:\\/]', '-'
+$Dest = Join-Path $env:USERPROFILE ".claude\projects\$ProjectSlug\memory"
 
 if (-not (Test-Path $Source)) {
     Write-Error "Source not found: $Source"
