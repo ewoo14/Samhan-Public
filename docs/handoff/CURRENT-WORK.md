@@ -31,6 +31,23 @@ DS-4 가 신규 타입을 `schemaVersion: 2` 에 넣어, 배포된 구버전 Ele
 ⟹ **데스크톱 자동 업데이트가 선행 슬라이스**가 됐다(이슈 생성 금지 지시로 여기 기록). DS-4 는 **활성화 게이트**를 두고 마감하며, 자동 업데이트가 서면 게이트를 해제한다.
 🚫 schemaVersion v3 승격은 이번 결정이 아니다.
 
+### 3-1. 📋 자동 업데이트 선행 슬라이스 — PM 사전 스코핑 (2026-07-23 05:45)
+
+개발책임자 결정으로 선행 슬라이스가 됐으므로 미리 조사했다. **생각보다 작다 — 버전확인·강제수준 계층은 이미 있다.**
+
+| 구성요소 | 상태 |
+|---|---|
+| BE `/app/version` | ✅ **존재** — `dashboard-service` `AppReleaseController:37` (커밋 `edc7befb3`, 2026-06-28 DEV-1) |
+| 게이트웨이 라우트 | ✅ **존재** — `application.yml:469` `Path=/app/version` → `lb://dashboard-service` |
+| FE 클라이언트 | ✅ **존재** — `appVersion.ts` `getAppVersion` · `listAppReleases` |
+| 강제 수준 | ✅ **존재** — `AppForceLevel = NONE \| MINOR \| MAJOR \| CRITICAL` |
+| **`electron-updater`** | ❌ **없음**(의존성 미도입) |
+| **`publish` 타깃** | ❌ `electron-builder.yml:59` `publish: null` — 주석에 *"후속 슬라이스에서 GitHub Releases 또는 사내 호스팅 + electron-updater"* 라고 이미 적혀 있다 |
+
+⟹ **남은 일은 실제 updater(바이너리 배포·다운로드·설치)와 기존 `forceLevel` 을 실제 차단/안내에 배선하는 것**이다. 버전 확인 API 를 새로 만들 필요는 없다.
+
+⚠️ **미해결 관찰** — 로컬 스택에서 `/app/version` 이 **404** 다. 배포 jar 에 `AppReleaseController.class` 는 **들어 있다**(stale 가설은 반증됨). 같은 서비스의 다른 경로는 403(보안 필터)인데 이 경로만 404 라, **context-path 나 조건부 등록**을 의심한다. 슬라이스 착수 시 먼저 규명할 것 — 원인을 모른 채 "엔드포인트가 있다" 로 진행하면 안 된다.
+
 ### 4. 🔑 이번 세션 최대 교훈 — **mock/QA 가 실 경로보다 좁으면 green 이 결함을 가린다**
 
 같은 형태가 **5회** 나왔다:
