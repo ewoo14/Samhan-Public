@@ -4,7 +4,36 @@
 
 ---
 
-## 🎉 2026-07-22 (집PC 오전) — **3트랙 전부 머지 완료** ◀◀◀ 여기부터 읽으십시오
+## 🚀 2026-07-22 (회사PC · D드라이브 이동 후) — **다음 3트랙 병렬 착수** ◀◀◀ 여기부터 읽으십시오
+
+> 개발책임자 지시 *"기존 작업 이어서 3트랙 병렬 진행"* (회사PC, C→D 이동 직후). 열린 PR 0 · main `b6bd87866`.
+
+### 0. C→D 이동 회귀 2건 — 수정 완료
+- **메모리 sync**: auto-memory 파생경로 `C--dev-…`→`D--dev-…` 로 바뀌어 새 경로가 비었던 것. sync 스크립트를 working-dir 자동도출로 개편(양 PC·드라이브 무관) → 166/166 복원. commit `d253337cf`(push 완료).
+- **codex MCP**: `.claude.json` 의 codex 가 옛 `C:/dev/Samhan-Public` 키에만 있어 D: 에서 미연결이던 것. D: 키에 복제(+`timeout:7200000` → 회사PC setup 동시 충족) → `claude mcp list` = **codex ✔ Connected**. ⚠️ `~/.claude.json` = git 미추적이라 로컬 전용(재현: `projects["D:/dev/Samhan-Public"].mcpServers.codex = {"type":"stdio","command":"codex","args":["mcp-server"],"env":{},"timeout":7200000}`).
+- C 백업(`C:\dev\Samhan-Public`)·잔여 worktree 4개 삭제. C:\dev 엔 SA 키만 잔존.
+
+### 0-b. codex 도구 = 재시작 필수 (착수 전 실측)
+MCP 도구는 세션 시작 시 바인딩 → **`claude -c` 로 재개**(컨텍스트 유지 + codex 연결). 재개 직후 **codex 실제 호출로 토큰 가용 확인**(부재 시 우회 없이 정지·보고 — 모델 대체 금지).
+
+### 1. 착수 3트랙 (개발책임자 확정 — "진행 에픽 이어가기")
+| 트랙 | 이슈 | 영역 |
+|---|---|---|
+| **T1** | **#868** #845 DS-3b 문서양식 편집기 MVP(3-pane 밴드 캔버스·schema v2) | design-system / groupware |
+| **T2** | **#866** #825 슬6 쪽지 수신자 칩 복수선택 + BE 복수 수신 API | messaging / user-service |
+| **T3** | **#824** 품목행 공급가액·부가세 열(자동계산 우선·편집가능) | estimate/order-app / product |
+
+서로 다른 영역 = 파일 경합 최소. ⚠️ #867(슬7)은 #866 과 칩 컴포넌트 공유 → 이번 병렬 제외.
+
+### 2. 캐논 = 도달성 축 ([[feedback_canonical_workflow]] · 변경 없음)
+각 트랙 순차 완주: OPUS 기획+조기PR+게시 → LUNA 구현+게시 → OPUS 5-agent R1+라이브QA+**SONNET5 fix**+게시 → SOL 5-agent R2+**LUNA fix**+게시 → **도달성 0수렴** 반복 → PM 종합+CI green(exact SHA)+라이브QA(실서버) → 머지. 게이트=①실경로 재현결함0 ②CI green ③라이브QA. RED-first·뮤테이션RED·PM중재3단·게시1:1·모델대체금지 유지. 3PR 공유파일 시 [[feedback_stacked_pr_ci_false_green]] 머지순서(머지 후 나머지에 `git merge origin/main`→재-CI green).
+
+### 3. 회사PC 재개 절차 상태
+`git pull`(이미 D 최신) · `sync-claude-memory`(✅) · `setup-codex-mcp-timeout`(✅ codex 등록에 timeout 포함). worktree 는 트랙별 착수 시 생성.
+
+---
+
+## 🎉 2026-07-22 (집PC 오전) — **3트랙 전부 머지 완료**
 
 > 개발책임자 지시 *"3트랙 머지 후 회사PC에서 이어갈 수 있도록 세션 정리"* — **3트랙 머지 완료.** 열린 PR 0건.
 
