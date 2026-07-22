@@ -4,6 +4,76 @@
 
 ---
 
+## 🏠 2026-07-22 (집PC 저녁, ~22:00) — **3트랙 병렬 가동 · 집PC 환경 정상화 완료** ◀◀◀ 여기부터 읽으십시오
+
+> 개발책임자 지시 *"회사PC 진행 내역 이어서 · 다만 집PC 미커밋/PROBLEMS 먼저 해결"* → 환경 정상화 완료 후 3트랙 병렬 가동.
+
+### 0. 재개 절차
+```powershell
+git pull
+.\scripts\sync-claude-memory.ps1
+# 워크트리 3개 (집PC 엔 이미 존재 · 없으면):
+git worktree add .claude/worktrees/ds3b     feat/845-ds3b-editor-mvp
+git worktree add .claude/worktrees/s6-msg   feat/825-s6-messenger-recipient-chips
+git worktree add .claude/worktrees/824-tax  feat/824-item-line-supply-vat
+```
+
+### 1. 3트랙 현황
+
+| 트랙 | PR | HEAD | CI (exact SHA) | 남은 일 |
+|---|---|---|---|---|
+| **T1** #868 DS-3b 편집기 | **#891** | `e67cfc878` | ✅ **35/35** | **GUI 재촬영**(레이아웃 변경분) · L7~L9 · L11 |
+| **T2** #866 슬6 쪽지 칩 | **#892** | `d93ea81d8` | ✅ **35/35** | R2 fix 커밋 → 도달성 마감 → **머지 1순위** |
+| **T3** #824 품목행 tax | **#893** | `dde574823` | 🔄 38 ✅ + 2 진행 | CI 확인 → **PM 직접 라이브QA(11항목)** → SOL R2 |
+
+⚠️ **T2 워크트리에 미커밋 산출물 존재** — LUNA R2 fix + 후속(비동기 경계). 커밋 전이니 **fresh 재디스패치 말고 diff 확인부터**.
+
+### 2. 🚨 집PC 환경 정상화 (이 세션 최대 소득)
+
+**PROBLEMS 5,404 → 에러 0.** 원인은 **Gradle Build Server(BSP) 임포터**였다. 가설 2개를 실측으로 기각한 뒤 확정:
+
+| 기각된 가설 | 반증 |
+|---|---|
+| stale 워크스페이스 캐시 | Clean 후 전면 재임포트(오류 0)해도 에러 1,256 그대로 |
+| `leafProjects` 누락 → toolchain 미적용 → JVM 불일치 | Gradle 데몬 JVM = JDK 17.0.18 · 4개 모듈 class major version 전부 **61(Java 17)** |
+
+**확정 원인**: Gradle 본체의 Eclipse 모델은 `<classpathentry kind="src" path="/collab-core">` 를 정상 생성하는데 **BSP 임포터만** 이를 누락. 설정 설명이 *"It will replace the original Buildship"* 이라 명시. → `.vscode/settings.json` 에 **`"java.gradle.buildServer.enabled": "off"`** 적용(gitignore 대상, PR 불필요). 함께 `nullAnalysis.mode: disabled`(경고 3,947건 원인) + 사본 트리 `java.import.exclusions` 추가.
+🔑 **Reload 로는 안 고쳐진다 — 반드시 `Java: Clean Java Language Server Workspace`.**
+
+**디스크 2.8GB 회수 · 유실 0**: stash 14→0 · 로컬 브랜치 66→1 · 고아 워크트리 19개(2.4GB) · 루트 임시물 416MB.
+백업 3중: `C:\dev\_samhan-backup\samhan-local-refs-2026-07-22.bundle`(287MB·92ref·verify 통과) · `backup-stash-0~13` 태그 · 고유파일 아카이브 63개.
+🚫 `backups/` 의 **C5 컷오버 직전 DB 덤프 2개는 보존**(임시물 아님).
+
+### 3. 🚨 이 세션 실측 함정 (전부 검증으로 포착)
+
+- **compose 가 삭제된 워크트리에 등록돼 있었다** — `working_dir = …/worktrees/ds3a/infrastructure`(삭제됨). **YAML 내용 grep 으로는 안 잡힌다 — 컨테이너 라벨에 있다.** PM 이 처음에 "참조 없음 ✅" 으로 오판했다
+- **design-system dist 가 이틀 stale** — 소스 07-22 08:35 vs dist 07-20 01:16. 재빌드하니 `index.js` 303,373 → **305,043 bytes** 실제 변경. 그대로 QA 했으면 낡은 공용 컴포넌트를 검증
+- **고아 playwright test-server** 가 메인 트리 config 를 물고 생존(구코드 서빙 = false-RED 원천)
+- 🚨 **PM 이 "Playwright 실행 금지" 를 지시해 CI hard gate RED 서프라이즈를 자초** — [[feedback_verify_playwright_gate_before_adversarial]] 에 **동일 패턴이 이미 기록돼 있었는데 반복**했다
+- **Playwright 전체 스위트 1회 = PNG 146장 재생성** — 다른 슬라이스 커밋 증거를 덮는다. 원복은 **의도 코드 먼저 `git add` → 경로 개별 checkout → untracked 개별 삭제** 순서(디렉토리 통째 금지)
+- **PowerShell `Out-File -Encoding utf8` 이 커밋 제목에 BOM 삽입** — 커밋 메시지는 Write 도구로 쓸 것
+
+### 4. 각 트랙 성과
+
+**T1 #891** — PM 직접 라이브QA **L1~L6 · L10 · L12 완주**(캡처 14장, PR SHA-pinned 게시). 배포 증명은 `javap` 로 jar 내부 `DocumentPayload$Geometry` 의 `JsonInclude`·`NON_NULL` 실물까지 확인. **PM 발견 1건**: 신규 요소 기본 `w=100` 이라 가로 위치 `x` 를 0보다 크게 하면 `x+w>100` 으로 저장이 막히는데(`templateSchema.ts:205`) 각 입력은 `min=0/max=100` 안이라 화면상 위반이 안 보인다 → **게이트 아님(UX) 판정, 현 PR 처리 권고**.
+이후 **개발책임자 지시로 레이아웃 정돈 + 모바일 세로 카드 스택**(1100/700/639px) 흡수. PM 이 건 회귀 위험 2건 반영 확인 — 공용 `.paper` 를 `.document-template-preview .paper` 로 스코프 한정(11화면 전수 확인) · 카드형 전환에도 `role="table"` 유지.
+**CI RED 1건은 제품 결함이 아니라 수단 고착 테스트**였다 — `overflow-x:auto` 를 단언하는데 세로 스택은 `visible`. 도달성 불변식으로 교체하며 `scrollIntoViewIfNeeded()` 를 제거하고 `mouse.wheel`+`elementFromPoint` hit-test 로 **과거 2회 false-green 원인**을 막았다.
+
+**T2 #892** — PM 직접 라이브QA 완주. 🎯 **실 DB 에서 `batch_id` 1건에 recipients=2 확인**(V14 + MessageBulkSend 핵심 계약). CODEX SOL R2 = **도달가능 5 / 검증품질 5**, 뮤테이션 4건 중 3건 진짜 RED · `refId` 만 **가짜 GREEN**.
+⚠️ **환경 제약 정직 기록**: 집PC `user_db` 는 직원 24명 **전원 `ecount_code` 미부여 · 동명이인 0건** → *"같은 이름 2건 이상일 때만 담당자코드 병기"*(불변식 4) **검증 불가**. 회사PC(91/91 + `채권추심` 2건)에서 확인 필요.
+
+**T3 #893** — SONNET5 R1 fix 완주(`dde574823`, 16파일 +461/−66). **BLOCKING-1 이 4계층**이었다: ①`detailVatLine` 이 단가 자리에 합계를 넣어 *"직전 합계×새 수량"* ②`CollaborativeSlipInput` **무한루프**로 커밋 자체가 안 됨(*"지워도 7이 남던"* 진짜 원인) ③stale-ref 경합 ④`coeditLinesToEditLines` 가 권위값을 빈 문자열로 와이핑(라이브 신규 발견).
+⚠️ **시도 후 폐기 기록**: 파생값을 Y.Doc 에 동기 반영하려다 SUPPLY/VAT/TOTAL 3필드 상호 재귀로 `Maximum call stack size exceeded` 실제 크래시 → 접근 완전 제거.
+
+### 5. 🔴 미해결 / 판단 대기
+
+- **T2 비동기 경계** — R2 fix 가 알림 fan-out 을 `CompletableFuture.runAsync`(executor 미지정 = **공용 ForkJoinPool**)로 뺐는데 그 안이 **타임아웃 없는 블로킹 HTTP**다. 동기일 때의 역압력이 사라져 행 장애 시 작업이 무한 축적될 수 있다. **publisher 는 accounting·groupware·inventory 3개 서비스 공유.** 불변식 *"알림 발행 시도는 유한 시간에 끝난다"* 로 마지막 요청 디스패치함(진행 중)
+- **T1 GUI 재촬영** — 레이아웃이 바뀌어 캡처 14장 전부 재촬영 대상. **#892 머지 → main 병합(V14 정합) → groupware-service 재배포** 순서 필요(T1·T2 가 같은 서비스·DB 공유)
+- **#904** 루트 `build.gradle` `leafProjects` 에 `shared:collab-core`·`approval-core` 누락(6주간) — PROBLEMS 원인은 아니었고 위생 이슈. 인코딩 위험은 `gradle.properties` 의 `-Dfile.encoding=UTF-8` 이 커버(실측)
+- **#894 채팅** — 개발책임자 UI 확정: **우측 하단 삼한이 마스코트 런처 → 위로 채팅 리스트 팝오버 → 채팅창은 독립 페이지/별도 창**, 모바일 동일. `MascotLoader`·`MascotEmptyState` 재사용 가능. #892 는 **현 범위 완주 후 머지**로 재확인됨
+
+---
+
 ## 🌗 2026-07-22 (회사PC 오후, ~18:00 정리) — **3트랙 R1 라운드 완주 · 라이브QA 진행 중** ◀◀◀ 여기부터 읽으십시오
 
 > 개발책임자 지시 *"기존 작업 이어서 3트랙 병렬 진행"* → 기획·구현·적대검증 R1·fix 까지 완주. **머지 0건**(게이트 ③ 라이브QA 미완).
