@@ -8,9 +8,11 @@ import com.samhanair.logis.groupware.client.GroupwareApprovalLineConfigClient;
 import com.samhanair.logis.groupware.client.UserClient;
 import com.samhanair.logis.groupware.domain.ApprovalLine;
 import com.samhanair.logis.groupware.domain.ResolvedRole;
+import com.samhanair.logis.groupware.domain.DocumentTemplateStatus;
 import com.samhanair.logis.groupware.dto.ApprovalLineAdminResponse;
 import com.samhanair.logis.groupware.dto.ApprovalLineCreateRequest;
 import com.samhanair.logis.groupware.repository.ApprovalLineRepository;
+import com.samhanair.logis.groupware.repository.DocumentTemplateRepository;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
@@ -20,6 +22,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -43,6 +46,8 @@ public class ApprovalLineService {
     private final ApprovalNumberService approvalNumberService;
     private final ApprovalTemplateService approvalTemplateService;
     private final GroupwareApprovalLineConfigClient configClient;
+    private final DocumentTemplateRepository documentTemplateRepository;
+    private final DocumentTemplateRevisionService documentTemplateRevisionService;
 
     /**
      * 신규 결재선 생성 + chain 등록. 요청자 본인 차단 / 결재자 0명 차단 / 사용자 미존재 차단 가드.
@@ -249,6 +254,19 @@ public class ApprovalLineService {
         ApprovalLine line = findById(approvalId);
         try {
             line.approve(approverId);
+            pinApprovedLayout(line);
+            // R3 판단 기록 — 아래 DataIntegrityViolationException catch는 현재 호출 그래프상
+            // pinApprovedLayout()이 유발하는 유일한 DIVE(revision self-heal 경합)에는 도달하지
+            // 않는다. 그 경합은 DocumentTemplateRevisionService.ensureCurrentRevision()이 이미
+            // 내부에서 BusinessException(CONFLICT)로 변환해 던지기 때문이다(ApprovalLineApprovalConflictTest
+            // 참고). 그럼에도 이 catch를 남겨둔 이유: line.approve() 로 인한 상태변경이 이 try
+            // 블록 안의 후속 SELECT(문서양식 조회)에서 auto-flush 될 때, 이 슬라이스가 도입하지
+            // 않은 approval_lines의 다른 제약(향후 슬라이스가 추가할 CHECK 등)이 그 시점에
+            // 위반되면 여기서 진짜로 발생할 수 있는 방어선이라 판단해 제거하지 않았다 — 삭제
+            // 여부는 판단 필요 항목으로 남긴다(제거해도 현재 테스트 스위트는 깨지지 않는다).
+        } catch (DataIntegrityViolationException ex) {
+            throw new BusinessException(ErrorCode.CONFLICT,
+                    "승인 당시 문서 양식 각인 경합이 발생했습니다. 다시 시도해 주세요");
         } catch (IllegalStateException ex) {
             throw new BusinessException(ErrorCode.CONFLICT, ex.getMessage());
         }
@@ -271,6 +289,11 @@ public class ApprovalLineService {
         ApprovalLine line = findById(approvalId);
         try {
             line.approve(actorUserId, actorGroupIds == null ? Set.of() : actorGroupIds, Set.of());
+            pinApprovedLayout(line);
+            // R3 판단 기록 — 위 approve(UUID, UUID) 오버로드의 동일 catch 주석 참고.
+        } catch (DataIntegrityViolationException ex) {
+            throw new BusinessException(ErrorCode.CONFLICT,
+                    "승인 당시 문서 양식 각인 경합이 발생했습니다. 다시 시도해 주세요");
         } catch (IllegalStateException ex) {
             throw new BusinessException(ErrorCode.CONFLICT, ex.getMessage());
         }
@@ -323,5 +346,21 @@ public class ApprovalLineService {
             throw new BusinessException(ErrorCode.CONFLICT, ex.getMessage());
         }
         return line;
+    }
+
+    /**
+     * APPROVED 전이와 같은 transaction에서 현재 ACTIVE layout revision을 각인한다.
+     * revision 저장/각인 중 하나라도 실패하면 승인 변경도 함께 rollback되어 부분 성공을 막는다.
+     */
+    private void pinApprovedLayout(ApprovalLine line) {
+        if (line.getStatus() != ApprovalStatus.APPROVED || line.getDocumentType() == null) {
+            return;
+        }
+        documentTemplateRepository.findFirstByDocTypeAndStatusAndIsDeletedFalse(
+                        line.getDocumentType(), DocumentTemplateStatus.ACTIVE)
+                .ifPresentOrElse(template -> {
+                    documentTemplateRevisionService.ensureCurrentRevision(template);
+                    line.pinDocumentTemplate(template.getId(), template.getRevision());
+                }, line::pinDefaultDocumentTemplate);
     }
 }

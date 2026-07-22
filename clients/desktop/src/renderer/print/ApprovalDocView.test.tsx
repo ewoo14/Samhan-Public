@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import React, { useEffect } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -17,13 +17,23 @@ const mocks = vi.hoisted(() => ({
   listApprovalAttachments: vi.fn(),
   findActiveApprovalTemplate: vi.fn(),
   findActiveDocumentTemplate: vi.fn(),
+  findDocumentTemplateRevision: vi.fn(),
 }))
-const { getGroupwareApproval, listApprovalAttachments, findActiveApprovalTemplate, findActiveDocumentTemplate } = mocks
+const {
+  getGroupwareApproval,
+  listApprovalAttachments,
+  findActiveApprovalTemplate,
+  findActiveDocumentTemplate,
+  findDocumentTemplateRevision,
+} = mocks
 
 vi.mock('../api/groupwareApproval', () => ({ getGroupwareApproval: mocks.getGroupwareApproval }))
 vi.mock('../api/groupwareApprovalAttachment', () => ({ listApprovalAttachments: mocks.listApprovalAttachments }))
 vi.mock('../api/groupwareApprovalTemplate', () => ({ findActiveApprovalTemplate: mocks.findActiveApprovalTemplate }))
-vi.mock('../api/documentTemplate', () => ({ findActiveDocumentTemplate: mocks.findActiveDocumentTemplate }))
+vi.mock('../api/documentTemplate', () => ({
+  findActiveDocumentTemplate: mocks.findActiveDocumentTemplate,
+  findDocumentTemplateRevision: mocks.findDocumentTemplateRevision,
+}))
 vi.mock('../hooks/usePageTitle', () => ({ usePageTitle: vi.fn() }))
 vi.mock('./DocumentRenderer', () => ({
   DocumentRenderer: vi.fn(({ backTo }: { backTo?: string }) => (
@@ -42,6 +52,9 @@ function approval(input: Partial<ApprovalLineAdminResponse> = {}): ApprovalLineA
     templateId: input.templateId ?? 'template-id',
     templateName: null,
     documentType: input.documentType ?? null,
+    documentTemplateId: input.documentTemplateId ?? null,
+    documentTemplateRevision: input.documentTemplateRevision ?? null,
+    documentTemplateDefaultPinned: input.documentTemplateDefaultPinned ?? false,
     fieldValues: input.fieldValues ?? { memo: '값' },
     status: input.status ?? 'APPROVED',
     steps: input.steps ?? [],
@@ -127,6 +140,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   findActiveDocumentTemplate.mockReset()
   findActiveDocumentTemplate.mockResolvedValue(null)
+  findDocumentTemplateRevision.mockResolvedValue(null)
   findActiveApprovalTemplate.mockResolvedValue(null)
 })
 
@@ -135,6 +149,164 @@ afterEach(() => {
 })
 
 describe('ApprovalDocView renderer transition', () => {
+  it('승인 완료 문서는 활성 양식이 바뀌어도 각인된 revision을 재인쇄한다', async () => {
+    const resolvedApproval = approval({
+      approvalId: 'pinned-approval',
+      documentType: 'GROUPWARE_PINNED',
+      documentTemplateId: 'layout-template-id',
+      documentTemplateRevision: 4,
+    })
+    getGroupwareApproval.mockResolvedValue(resolvedApproval)
+    listApprovalAttachments.mockResolvedValue(attachment())
+    findDocumentTemplateRevision.mockResolvedValue(activeLayout('GROUPWARE_PINNED', 4))
+    findActiveDocumentTemplate.mockResolvedValue(activeLayout('GROUPWARE_PINNED', 9))
+
+    renderView(queryClient(), '/groupware/approvals/pinned-approval/print')
+
+    await waitFor(() => expect(DocumentRenderer).toHaveBeenCalledTimes(1))
+    const props = vi.mocked(DocumentRenderer).mock.calls[0]?.[0]
+    expect(props?.template.revision).toBe(4)
+    expect(props?.template.docType).toBe('GROUPWARE_PINNED')
+    expect(findDocumentTemplateRevision).toHaveBeenCalledWith('layout-template-id', 4, 'GROUPWARE_PINNED')
+    expect(findActiveDocumentTemplate).not.toHaveBeenCalled()
+  })
+
+  it('pin이 없는 승인 완료 문서는 현재 양식 fallback과 운영자 고지를 함께 표시한다', async () => {
+    const resolvedApproval = approval({ documentType: 'GROUPWARE_UNPINNED', status: 'APPROVED' })
+    getGroupwareApproval.mockResolvedValue(resolvedApproval)
+    listApprovalAttachments.mockResolvedValue(attachment())
+    findActiveDocumentTemplate.mockResolvedValue(activeLayout('GROUPWARE_UNPINNED', 9))
+
+    renderView(queryClient(), '/groupware/approvals/approval-id/print')
+
+    await waitFor(() => expect(DocumentRenderer).toHaveBeenCalledTimes(1))
+    const notice = screen.getByTestId('approval-reprint-unpinned-notice')
+    expect(notice.textContent).toBe(
+      '승인 당시 레이아웃 정보가 없어 현재 양식으로 표시됩니다.',
+    )
+    expect(notice.className).toContain('no-print')
+    expect(vi.mocked(DocumentRenderer).mock.calls[0]?.[0]?.template.revision).toBe(9)
+  })
+
+  it('R3 D-1: pin도 없고 현재 활성 양식도 없으면 고지가 "현재 양식"이 아니라 기본 양식 사용을 알린다', async () => {
+    const resolvedApproval = approval({ documentType: 'GROUPWARE_UNPINNED_NO_ACTIVE', status: 'APPROVED' })
+    getGroupwareApproval.mockResolvedValue(resolvedApproval)
+    listApprovalAttachments.mockResolvedValue(attachment())
+    // 이 docType의 현재 ACTIVE 양식이 0개인 경우 — findActiveDocumentTemplate은 null을 resolve한다.
+    findActiveDocumentTemplate.mockResolvedValue(null)
+
+    renderView(queryClient(), '/groupware/approvals/approval-id/print')
+
+    await waitFor(() => expect(DocumentRenderer).toHaveBeenCalledTimes(1))
+    // 실제 렌더는 GROUPWARE_DEFAULT인데(현재 활성이 없으므로), 고지가 "현재 양식으로 표시됩니다"라고
+    // 말하면 실제 렌더와 불일치한다 — 그 문서는 이 docType의 어떤 저장된 활성 양식도 아니다.
+    expect(vi.mocked(DocumentRenderer).mock.calls[0]?.[0]?.template.docType).toBe('GROUPWARE_DEFAULT')
+    const notice = screen.getByTestId('approval-reprint-unpinned-notice')
+    expect(notice.textContent).not.toBe('승인 당시 레이아웃 정보가 없어 현재 양식으로 표시됩니다.')
+    expect(notice.textContent).toBe(
+      '승인 당시 레이아웃 정보가 없고 현재 활성 양식도 없어 기본 양식(GROUPWARE_DEFAULT)으로 표시됩니다.',
+    )
+  })
+
+  it('승인 당시 ACTIVE-0은 기본 양식으로 고정하고 이후 ACTIVE 양식을 조회하지 않는다', async () => {
+    const resolvedApproval = approval({
+      documentType: 'GROUPWARE_ACTIVE_ZERO',
+      documentTemplateDefaultPinned: true,
+      status: 'APPROVED',
+    })
+    getGroupwareApproval.mockResolvedValue(resolvedApproval)
+    listApprovalAttachments.mockResolvedValue(attachment())
+    findActiveDocumentTemplate.mockResolvedValue(activeLayout('GROUPWARE_ACTIVE_ZERO', 9))
+
+    renderView(queryClient(), '/groupware/approvals/approval-id/print')
+
+    await waitFor(() => expect(DocumentRenderer).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(DocumentRenderer).mock.calls[0]?.[0]?.template.docType).toBe('GROUPWARE_DEFAULT')
+    const notice = screen.getByTestId('approval-reprint-default-pinned-notice')
+    expect(notice.textContent).toBe(
+      '승인 당시 활성 양식이 없어 기본 양식(GROUPWARE_DEFAULT)으로 고정 표시됩니다.',
+    )
+    expect(notice.className).toContain('no-print')
+    expect(findActiveDocumentTemplate).not.toHaveBeenCalled()
+  })
+
+  it('docType이 없는 승인 완료 문서에는 미pin 고지를 노출하지 않는다(레이아웃 개념 자체가 없는 구식/독립형 결재)', async () => {
+    const resolvedApproval = approval({ documentType: null, templateId: null, status: 'APPROVED' })
+    getGroupwareApproval.mockResolvedValue(resolvedApproval)
+    listApprovalAttachments.mockResolvedValue(attachment())
+
+    renderView(queryClient(), '/groupware/approvals/approval-id/print')
+
+    await waitFor(() => expect(DocumentRenderer).toHaveBeenCalledTimes(1))
+    expect(screen.queryByTestId('approval-reprint-unpinned-notice')).toBeNull()
+  })
+
+  it('pin revision 조회가 실패하면 무고지 DEFAULT 대신 alert 고지 + 재시도 버튼을 보여준다', async () => {
+    const resolvedApproval = approval({
+      documentType: 'GROUPWARE_PIN_FETCH_FAILED',
+      documentTemplateId: 'layout-template-id',
+      documentTemplateRevision: 3,
+    })
+    getGroupwareApproval.mockResolvedValue(resolvedApproval)
+    listApprovalAttachments.mockResolvedValue(attachment())
+    findDocumentTemplateRevision.mockRejectedValue(new Error('revision fetch failed'))
+
+    renderView(queryClient(), '/groupware/approvals/approval-id/print')
+
+    await waitFor(() => expect(DocumentRenderer).toHaveBeenCalledTimes(1))
+    // 무고지 강하 금지(H-2) — DEFAULT로 내려가되 alert 고지가 반드시 함께 떠야 한다.
+    expect(vi.mocked(DocumentRenderer).mock.calls[0]?.[0]?.template.docType).toBe('GROUPWARE_DEFAULT')
+    const notice = screen.getByTestId('approval-reprint-pin-failed-notice')
+    expect(notice.getAttribute('role')).toBe('alert')
+    expect(notice.className).toContain('no-print')
+    expect(notice.textContent).toBe(
+      '승인 당시 레이아웃 조회에 실패해 기본 양식(GROUPWARE_DEFAULT)으로 대신 표시됩니다. 실제 승인 당시 양식과 다를 수 있습니다. 다시 시도',
+    )
+    // 미pin 고지(pin 자체가 없는 경우)와는 상호 배타적이라 동시에 뜨지 않아야 한다.
+    expect(screen.queryByTestId('approval-reprint-unpinned-notice')).toBeNull()
+  })
+
+  it('pin revision malformed(null) 응답도 alert 고지와 DEFAULT fallback을 유지한다', async () => {
+    const resolvedApproval = approval({
+      documentType: 'GROUPWARE_PIN_MALFORMED',
+      documentTemplateId: 'layout-template-id',
+      documentTemplateRevision: 3,
+    })
+    getGroupwareApproval.mockResolvedValue(resolvedApproval)
+    listApprovalAttachments.mockResolvedValue(attachment())
+    findDocumentTemplateRevision.mockResolvedValue(null)
+
+    renderView(queryClient(), '/groupware/approvals/approval-id/print')
+
+    await waitFor(() => expect(DocumentRenderer).toHaveBeenCalledTimes(1))
+    expect(vi.mocked(DocumentRenderer).mock.calls[0]?.[0]?.template.docType).toBe('GROUPWARE_DEFAULT')
+    const notice = screen.getByTestId('approval-reprint-pin-failed-notice')
+    expect(notice.getAttribute('role')).toBe('alert')
+    expect(notice.className).toContain('no-print')
+  })
+
+  it('pin revision 조회 실패 후 재시도가 성공하면 alert 고지가 사라지고 pinned revision을 렌더한다', async () => {
+    const resolvedApproval = approval({
+      documentType: 'GROUPWARE_PIN_RETRY',
+      documentTemplateId: 'layout-template-id',
+      documentTemplateRevision: 2,
+    })
+    getGroupwareApproval.mockResolvedValue(resolvedApproval)
+    listApprovalAttachments.mockResolvedValue(attachment())
+    findDocumentTemplateRevision
+      .mockRejectedValueOnce(new Error('revision fetch failed'))
+      .mockResolvedValueOnce(activeLayout('GROUPWARE_PIN_RETRY', 2))
+
+    renderView(queryClient(), '/groupware/approvals/approval-id/print')
+
+    await waitFor(() => expect(screen.getByTestId('approval-reprint-pin-failed-notice')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: '다시 시도' }))
+
+    await waitFor(() => expect(vi.mocked(DocumentRenderer).mock.calls.at(-1)?.[0]?.template.revision).toBe(2))
+    expect(screen.queryByTestId('approval-reprint-pin-failed-notice')).toBeNull()
+    expect(findDocumentTemplateRevision).toHaveBeenCalledTimes(2)
+  })
+
   it('동일 QueryClient 재마운트에서 cached null을 재사용하지 않고 active layout을 다시 조회한다', async () => {
     const client = queryClient(5 * 60 * 1000)
     const resolvedApproval = approval({ documentType: 'GROUPWARE_CACHE', templateId: null })
@@ -189,7 +361,7 @@ describe('ApprovalDocView renderer transition', () => {
     getGroupwareApproval.mockResolvedValue(resolvedApproval)
     listApprovalAttachments.mockResolvedValue(attachment())
     const cached = activeLayout('GROUPWARE_PENDING', 1)
-    client.setQueryData(['approval.documentType', 'GROUPWARE_PENDING'], cached)
+    client.setQueryData(['approval.documentLayout', 'approval-id', 'GROUPWARE_PENDING', null, null], cached)
     let resolveFetch!: (value: TemplateEnvelope | null) => void
     findActiveDocumentTemplate.mockReturnValue(new Promise<TemplateEnvelope | null>((resolve) => {
       resolveFetch = resolve
@@ -208,7 +380,7 @@ describe('ApprovalDocView renderer transition', () => {
     const resolvedApproval = approval({ documentType: 'GROUPWARE_ERROR', templateId: null })
     getGroupwareApproval.mockResolvedValue(resolvedApproval)
     listApprovalAttachments.mockResolvedValue(attachment())
-    client.setQueryData(['approval.documentType', 'GROUPWARE_ERROR'], activeLayout('GROUPWARE_ERROR'))
+    client.setQueryData(['approval.documentLayout', 'approval-id', 'GROUPWARE_ERROR', null, null], activeLayout('GROUPWARE_ERROR'))
     findActiveDocumentTemplate.mockRejectedValueOnce(new Error('offline'))
 
     renderView(client)
@@ -281,12 +453,21 @@ describe('ApprovalDocView renderer transition', () => {
     const client = queryClient(5 * 60 * 1000)
     const approvalA = approval({ approvalId: 'A', documentType: 'GROUPWARE_CACHED_SHARED', title: 'A 문서' })
     const approvalB = approval({ approvalId: 'B', documentType: 'GROUPWARE_CACHED_SHARED', title: 'B 문서' })
+    // R3 HIGH-1 fix로 approvalQuery가 이제 매 mount마다 refetchOnMount:'always'로 실제
+    // 재검증을 트리거한다 — setQueryData만으로 캐시를 심어도 background refetch가 반드시
+    // 발생하므로, 그 refetch가 seed와 다른(leak된 이전 테스트의) 응답을 돌려주면 docType이
+    // 바뀌어 버려 이 테스트의 "같은 docType 유지" 전제 자체가 깨진다. seed와 정합하는
+    // 응답을 명시한다.
+    getGroupwareApproval.mockImplementation((approvalId: string) => Promise.resolve(
+      approvalId === 'A' ? approvalA : approvalB,
+    ))
+    listApprovalAttachments.mockResolvedValue(attachment())
     client.setQueryData(['groupware-approval-print', 'A'], approvalA)
     client.setQueryData(['groupware-approval-print', 'B'], approvalB)
     client.setQueryData(['groupware-approval-print-attachments', 'A'], attachment())
     client.setQueryData(['groupware-approval-print-attachments', 'B'], attachment())
     client.setQueryData(
-      ['approval.documentType', 'GROUPWARE_CACHED_SHARED'],
+      ['approval.documentLayout', 'A', 'GROUPWARE_CACHED_SHARED', null, null],
       activeLayout('GROUPWARE_CACHED_SHARED', 1),
     )
     findActiveDocumentTemplate
@@ -433,6 +614,166 @@ describe('ApprovalDocView renderer transition', () => {
 
     await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('결재문서를 불러오지 못했습니다.'))
     expect(DocumentRenderer).not.toHaveBeenCalled()
+  })
+
+  it('R3 HIGH-1/MED-1: 5분 캐시 창 내에서도 stale 승인 데이터가 아닌 fresh pin을 렌더한다', async () => {
+    // 재현: 인쇄 미리보기를 먼저 열어(PENDING, pin 없음) approvalQuery가 5분 staleTime으로
+    // 캐시된 뒤, 같은 mount 안에서 최종 승인이 반영된 fresh 응답(APPROVED + pin rev7)이
+    // 와도 화면이 stale 데이터를 계속 신뢰하면 승인 당시 외형이 아닌 엉뚱한 현재 활성
+    // 양식(rev99)이 무고지로 인쇄된다.
+    const client = queryClient(5 * 60 * 1000)
+    const stalePending = approval({
+      documentType: 'GROUPWARE_R3_STALE',
+      status: 'PENDING',
+      documentTemplateId: null,
+      documentTemplateRevision: null,
+    })
+    const freshPinned = approval({
+      documentType: 'GROUPWARE_R3_STALE',
+      status: 'APPROVED',
+      documentTemplateId: 'layout-r3',
+      documentTemplateRevision: 7,
+    })
+    client.setQueryData(['groupware-approval-print', 'approval-id'], stalePending)
+    getGroupwareApproval.mockResolvedValue(freshPinned)
+    listApprovalAttachments.mockResolvedValue(attachment())
+    findDocumentTemplateRevision.mockResolvedValue(activeLayout('GROUPWARE_R3_STALE', 7))
+    findActiveDocumentTemplate.mockResolvedValue(activeLayout('GROUPWARE_R3_STALE', 99))
+
+    renderView(client)
+
+    await waitFor(() => expect(vi.mocked(DocumentRenderer).mock.calls.at(-1)?.[0]?.template.revision).toBe(7))
+    expect(findActiveDocumentTemplate).not.toHaveBeenCalled()
+    expect(screen.queryByTestId('approval-reprint-unpinned-notice')).toBeNull()
+  })
+
+  it('같은 docType에서 PENDING 무pin이 APPROVED defaultPinned으로 갱신되면 새 레이아웃과 고지를 반영한다', async () => {
+    const client = queryClient(5 * 60 * 1000)
+    const pendingUnpinned = approval({
+      documentType: 'GROUPWARE_R3_LATCH',
+      status: 'PENDING',
+      documentTemplateId: null,
+      documentTemplateRevision: null,
+      documentTemplateDefaultPinned: false,
+    })
+    const approvedDefaultPinned = approval({
+      ...pendingUnpinned,
+      status: 'APPROVED',
+      documentTemplateDefaultPinned: true,
+    })
+    getGroupwareApproval.mockResolvedValue(pendingUnpinned)
+    listApprovalAttachments.mockResolvedValue(attachment())
+    findActiveDocumentTemplate.mockResolvedValue(activeLayout('GROUPWARE_R3_LATCH', 99))
+
+    renderView(client)
+    await waitFor(() => expect(vi.mocked(DocumentRenderer).mock.calls.at(-1)?.[0]?.template.revision).toBe(99))
+    expect(screen.queryByTestId('approval-reprint-default-pinned-notice')).toBeNull()
+
+    client.setQueryData(['groupware-approval-print', 'approval-id'], approvedDefaultPinned)
+
+    await waitFor(() => expect(vi.mocked(DocumentRenderer).mock.calls.at(-1)?.[0]?.template.docType).toBe('GROUPWARE_DEFAULT'))
+    expect(screen.getByTestId('approval-reprint-default-pinned-notice').textContent).toBe(
+      '승인 당시 활성 양식이 없어 기본 양식(GROUPWARE_DEFAULT)으로 고정 표시됩니다.',
+    )
+  })
+
+  it('layout epoch의 status가 바뀌면 같은 docType에서도 승인 고지를 다시 결정한다', async () => {
+    const client = queryClient()
+    const pendingDefaultPinned = approval({
+      documentType: 'GROUPWARE_R3_STATUS_EPOCH',
+      status: 'PENDING',
+      documentTemplateDefaultPinned: true,
+    })
+    const approvedDefaultPinned = approval({
+      ...pendingDefaultPinned,
+      status: 'APPROVED',
+    })
+    getGroupwareApproval.mockResolvedValue(pendingDefaultPinned)
+    listApprovalAttachments.mockResolvedValue(attachment())
+
+    renderView(client)
+    await waitFor(() => expect(vi.mocked(DocumentRenderer).mock.calls.at(-1)?.[0]?.template.docType).toBe('GROUPWARE_DEFAULT'))
+    expect(screen.queryByTestId('approval-reprint-default-pinned-notice')).toBeNull()
+
+    client.setQueryData(['groupware-approval-print', 'approval-id'], approvedDefaultPinned)
+
+    await waitFor(() => expect(screen.getByTestId('approval-reprint-default-pinned-notice')).toBeTruthy())
+  })
+
+  it('layout epoch의 template id가 바뀌면 같은 revision이어도 새 pin 레이아웃을 렌더한다', async () => {
+    const client = queryClient()
+    const firstApproval = approval({
+      documentType: 'GROUPWARE_R3_TEMPLATE_ID_EPOCH',
+      documentTemplateId: 'layout-first',
+      documentTemplateRevision: 1,
+    })
+    const secondApproval = approval({
+      ...firstApproval,
+      documentTemplateId: 'layout-second',
+    })
+    getGroupwareApproval.mockResolvedValue(firstApproval)
+    listApprovalAttachments.mockResolvedValue(attachment())
+    findDocumentTemplateRevision
+      .mockResolvedValueOnce(activeLayout('GROUPWARE_R3_TEMPLATE_ID_EPOCH', 1))
+      .mockResolvedValueOnce(activeLayout('GROUPWARE_R3_TEMPLATE_ID_EPOCH', 2))
+
+    renderView(client)
+    await waitFor(() => expect(vi.mocked(DocumentRenderer).mock.calls.at(-1)?.[0]?.template.revision).toBe(1))
+
+    client.setQueryData(['groupware-approval-print', 'approval-id'], secondApproval)
+
+    await waitFor(() => expect(vi.mocked(DocumentRenderer).mock.calls.at(-1)?.[0]?.template.revision).toBe(2))
+  })
+
+  it('layout epoch의 template revision이 바뀌면 같은 template id에서도 새 pin 레이아웃을 렌더한다', async () => {
+    const client = queryClient()
+    const firstApproval = approval({
+      documentType: 'GROUPWARE_R3_TEMPLATE_REVISION_EPOCH',
+      documentTemplateId: 'layout-same',
+      documentTemplateRevision: 1,
+    })
+    const secondApproval = approval({
+      ...firstApproval,
+      documentTemplateRevision: 2,
+    })
+    getGroupwareApproval.mockResolvedValue(firstApproval)
+    listApprovalAttachments.mockResolvedValue(attachment())
+    findDocumentTemplateRevision
+      .mockResolvedValueOnce(activeLayout('GROUPWARE_R3_TEMPLATE_REVISION_EPOCH', 1))
+      .mockResolvedValueOnce(activeLayout('GROUPWARE_R3_TEMPLATE_REVISION_EPOCH', 2))
+
+    renderView(client)
+    await waitFor(() => expect(vi.mocked(DocumentRenderer).mock.calls.at(-1)?.[0]?.template.revision).toBe(1))
+
+    client.setQueryData(['groupware-approval-print', 'approval-id'], secondApproval)
+
+    await waitFor(() => expect(vi.mocked(DocumentRenderer).mock.calls.at(-1)?.[0]?.template.revision).toBe(2))
+  })
+
+  it('layout epoch의 defaultPinned이 바뀌면 같은 docType에서도 기본 양식 고지를 반영한다', async () => {
+    const client = queryClient()
+    const unpinnedApproval = approval({
+      documentType: 'GROUPWARE_R3_DEFAULT_PINNED_EPOCH',
+      documentTemplateId: null,
+      documentTemplateRevision: null,
+      documentTemplateDefaultPinned: false,
+    })
+    const defaultPinnedApproval = approval({
+      ...unpinnedApproval,
+      documentTemplateDefaultPinned: true,
+    })
+    getGroupwareApproval.mockResolvedValue(unpinnedApproval)
+    listApprovalAttachments.mockResolvedValue(attachment())
+    findActiveDocumentTemplate.mockResolvedValue(activeLayout('GROUPWARE_R3_DEFAULT_PINNED_EPOCH', 9))
+
+    renderView(client)
+    await waitFor(() => expect(vi.mocked(DocumentRenderer).mock.calls.at(-1)?.[0]?.template.revision).toBe(9))
+    expect(screen.queryByTestId('approval-reprint-default-pinned-notice')).toBeNull()
+
+    client.setQueryData(['groupware-approval-print', 'approval-id'], defaultPinnedApproval)
+
+    await waitFor(() => expect(vi.mocked(DocumentRenderer).mock.calls.at(-1)?.[0]?.template.docType).toBe('GROUPWARE_DEFAULT'))
+    expect(screen.getByTestId('approval-reprint-default-pinned-notice')).toBeTruthy()
   })
 
   it('id가 없으면 orphan 화면을 렌더하지 않는다', () => {
