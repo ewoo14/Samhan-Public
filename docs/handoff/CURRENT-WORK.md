@@ -68,7 +68,25 @@ CI 가 **RED**(`Desktop Playwright (mock 회귀 hard gate)`)이고 도달 가능
 **배포 증명 완료**: 컨테이너 내 jar `99,335,061`/`Jul 22 16:45` · 이미지 `89ba7b81e552` · `javap -v` 로 `Geometry`/`Style` 의 `JsonInclude+NON_NULL` **실물 확인** · Flyway 13 validated · `ddl-auto=validate` 통과 · healthy
 **BLOCKING-1 실서버 확증**: 부분 style(`{"bold":true}`)로 CREATE **201** → GET **200**(명시적 null **0건**) → **ACTIVATE 200**(fix 이전엔 **400** `style fontSize가 유효하지 않습니다`). throwaway docType 사용 후 정리 완료, 기존 실데이터 불변(45·2 pinned·100 messages).
 **🔴 L9 픽스처 실재 확인**: pin 문서 2건이 템플릿 `21dd571b…` rev 1·2 참조, **둘 다 `schema_version=1`**, 템플릿은 **soft-delete** 상태 → 원래 L9 보다 강한 조건. **다음 세션에서 GUI 재인쇄로 배너 미출현 확인 필요.**
-**미완**: L1~L7·L10~L12 GUI 스샷 · **L8**(v2 승인문서 재인쇄 외형 불변) · **L9** · geometry/style 이 실제 인쇄물에 반영되는지 육안 확인
+**🎯 L9 실서버 확증(2차)**: 같은 docType 에 **v2 양식을 ACTIVE 로 만든 상태**에서도 v1 pin revision 1·2 가 `200 · schemaVersion:1 · 원래 요소(qa1/qa2-title)` 를 그대로 반환하고, active 조회는 `schemaVersion:2 · v2-title` 를 준다 ⟹ **pin 경로와 active 경로가 완전 분리 동작**. 기획서가 BLOCKING 으로 지목한 *"상수 bump 시 pin 붕괴"* 가 실서버에서 **발생하지 않음** 확증.
+**🎯 real-qa 하네스 실서버 통과**: `868-ds3b-real-qa` **1 passed (8.6s)** — HashRouter + mock OFF + 실 백엔드(`:8080`). v2 저장·활성·조회 왕복 + 편집기 진입 + ACTIVE 잠금 문구.
+
+🚨 **다음 세션이 반드시 알아야 할 실행 절차**(PM 이 시행착오로 확정):
+```powershell
+# 렌더러 — 반드시 vite.renderer.dev.config.ts (root=src/renderer, HashRouter)
+cd clients/desktop
+$env:VITE_API_BASE_URL="http://localhost:8080"
+.\node_modules\.bin\vite dev --config vite.renderer.dev.config.ts --port 5190 --strictPort --host 127.0.0.1
+# real-qa (mock OFF = VITE_MOCK_MODE 미설정)
+$env:AUDIT_BASE_URL="http://127.0.0.1:5190"; $env:API_BASE="http://localhost:8080"; $env:DEV_PASSWORD='dev_p05_pass!'
+.\node_modules\.bin\playwright test --config=playwright.real-qa.config.ts --reporter=line --timeout=90000 playwright/868-ds3b-real-qa
+```
+- 🚫 **`vite.web.config.ts` 로 띄우면 안 된다** — `VITE_PLATFORM='web'` → **BrowserRouter** 라 스펙의 `/#/...` 가 홈으로 떨어진다(PM 이 이걸로 **없는 결함을 보고할 뻔했다**).
+- 🚫 `vite.config.ts` 는 root 가 달라 **404**.
+- real-qa config 의 `testMatch` 는 `**/*-real-qa.spec.ts` — **새 스펙 파일명에 `-real-qa` 접미사 필수**(없으면 "No tests found").
+- Playwright 스펙은 **ESM 스코프**라 `__dirname` 불가 → `process.cwd()` 기준(cwd = `clients/desktop`).
+
+**미완**: L1~L7·L10~L12 GUI **스크린샷** · **L8**(v2 승인문서 재인쇄 외형 불변) · L9 **GUI 육안**(API 층은 확증됨) · geometry/style 이 실제 인쇄물에 반영되는지 육안. PM 이 GUI 캡처 스펙을 작성했으나 목록 화면 로케이터에서 걸려 **커밋하지 않고 제거**했다(실패 스펙을 남기지 않음).
 
 ### 7. 🔴 다음 세션 우선순위
 1. **T3 R1 fix 디스패치**(SONNET5) — 게이트 결함 다수 + CI RED 2건. 5차원 종합 라운드 리뷰 게시 선행
