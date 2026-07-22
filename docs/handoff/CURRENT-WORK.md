@@ -88,8 +88,23 @@ $env:AUDIT_BASE_URL="http://127.0.0.1:5190"; $env:API_BASE="http://localhost:808
 
 **미완**: L1~L7·L10~L12 GUI **스크린샷** · **L8**(v2 승인문서 재인쇄 외형 불변) · L9 **GUI 육안**(API 층은 확증됨) · geometry/style 이 실제 인쇄물에 반영되는지 육안. PM 이 GUI 캡처 스펙을 작성했으나 목록 화면 로케이터에서 걸려 **커밋하지 않고 제거**했다(실패 스펙을 남기지 않음).
 
+### 6-b. 🚧 T3 fix 미완 산출물 격리 (세션 종료 처리)
+SONNET5 fix 를 디스패치했으나 세션 종료로 중단됐다. **미커밋 잔여를 원격 WIP 브랜치로 격리**했다([[feedback_incomplete_work_wip_branch_cross_pc]] — stash 는 원격에 안 넘어가므로 금지).
+
+| 항목 | 값 |
+|---|---|
+| WIP 브랜치 | **`wip/824-r1-fix-incomplete-2026-07-22`** (`12aba5cc5`, 원격 푸시 완료) |
+| feature 브랜치 | `feat/824-item-line-supply-vat` = `2f17a2595` **청결**(미커밋 0) |
+
+중단 시점이 *"RED confirmed. Restore the fix."* 였으나 **PM 이 diff 를 검사해 뮤테이션 잔재가 아니라 정상 fix 상태**임을 확인했다(핵심 BLOCKING-2 fix 가 적용된 채 존재).
+
+**들어있는 것(미검증)**: BLOCKING-2 fix(`lineVat.ts` PRICE 경로 `divideHalfUp` → `supplyFromVatInclusive` 절사 통일 · `vatPrice.ts`·`LineRow.tsx` 도 전환) · **감도 있는 fixture 신설**(`7,900`/`100`/`1,234,500` — ÷11 나머지 5.5 이상이라 HALF_UP≠DOWN 이 실제로 갈린다. 종전 `100005` 계열은 무감도) · **FE 화면 도달 테스트 3종 신설**(적대검증이 지적한 "555줄 FE 화면 도달 테스트 0건" 공백) · CI RED-2 라벨 스펙 동기화 · `global.css`.
+
+🚫 **확인되지 않은 것**: 전체 테스트 미실행 · BLOCKING-1(`detailVatLine` 단가/합계 혼동) 처리 여부 불명 · 주문 항등식 강제 · 인쇄 4경로 권위값 · MED 다수.
+🚫 **완료 착각 금지** — 이 브랜치를 feature 에 머지하지 말 것. **fresh 재디스패치가 기본값**이며 WIP diff 는 **참조용**으로만 본다.
+
 ### 7. 🔴 다음 세션 우선순위
-1. **T3 R1 fix 디스패치**(SONNET5) — 게이트 결함 다수 + CI RED 2건. 5차원 종합 라운드 리뷰 게시 선행
+1. **T3 R1 fix 재디스패치**(SONNET5) — 게이트 결함 다수 + CI RED 2건. 라운드 종합은 **5차원 완성분이 PR #893 에 게시돼 있다**(QA 차원 포함). WIP diff(`wip/824-r1-fix-incomplete-2026-07-22`)를 참조로 주되 **완료물로 취급 금지**
 2. **T2 새 SHA CI 확인** → PM 직접 라이브QA
 3. **T1 L8/L9 GUI 라이브QA** → 게이트 ③ 충족 시 **T1 이 첫 머지 후보**
 4. 세 PR 이 `mock.ts`·`routes/index.tsx`·`AppLayout.tsx`·design-system 공유 → **머지 순서 규율**(한 PR 머지 후 나머지에 `git merge origin/main` → **재-CI green 확인 후** 다음)
