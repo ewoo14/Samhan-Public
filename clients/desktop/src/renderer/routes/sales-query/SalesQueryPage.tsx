@@ -42,6 +42,7 @@ import { usePageTitle } from '../../hooks/usePageTitle'
 import { usePermissions } from '../../hooks/usePermissions'
 import { exportSlips } from '../../api/excelExportApi'
 import { useExcelDownload, makeExportFilename } from '../../hooks/useExcelDownload'
+import { ExcelDownloadError } from '../../components/ExcelDownloadError'
 import axios from 'axios'
 
 const PAGE_SIZE = 50
@@ -216,7 +217,7 @@ export function SalesQueryPage() {
   const [salesDeleteErrorAlert, setSalesDeleteErrorAlert] = useState<string | null>(null)
 
   // ── Excel export ──
-  const { downloading, download } = useExcelDownload()
+  const { downloading, download, error: downloadError } = useExcelDownload()
 
   // ── 창고 목록 (sourceWarehouseId resolve) ──
   const warehousesQuery = useQuery({
@@ -560,7 +561,10 @@ export function SalesQueryPage() {
           </>
         ) : null}
 
-        {/* Excel 다운로드 — BE export endpoint 는 MANAGER/MASTER 전용. */}
+        {/* Excel 다운로드 — BE export endpoint 는 MANAGER/MASTER 전용.
+            화면 검색모달(appliedSearch) 을 export 에도 그대로 전달 — 화면에 좁힌 조건이
+            파일에도 동일하게 적용되어야 한다(P-1). 누락 시 화면에서 검색해도 파일은 전체가
+            나오는 결함(#907 재수렴 R로 발견). */}
         {canExport ? (
           <Button
             variant="secondary"
@@ -569,7 +573,17 @@ export function SalesQueryPage() {
             disabled={downloading}
             onClick={() =>
               download(
-                () => exportSlips({ slipType: 'OUTBOUND', from: dateFrom, to: dateTo }),
+                () =>
+                  exportSlips({
+                    slipType: 'OUTBOUND',
+                    from: dateFrom,
+                    to: dateTo,
+                    ...(appliedSearch.searchSlipNo         ? { searchSlipNo:         appliedSearch.searchSlipNo }         : {}),
+                    ...(appliedSearch.searchPartnerName    ? { searchPartnerName:    appliedSearch.searchPartnerName }    : {}),
+                    ...(appliedSearch.searchBusinessNumber ? { searchBusinessNumber: appliedSearch.searchBusinessNumber } : {}),
+                    ...(appliedSearch.searchDeliveryAddress? { searchDeliveryAddress:appliedSearch.searchDeliveryAddress }: {}),
+                    ...(appliedSearch.searchProjectName    ? { searchProjectName:    appliedSearch.searchProjectName }    : {}),
+                  }),
                 makeExportFilename('판매관리'),
               )
             }
@@ -620,6 +634,7 @@ export function SalesQueryPage() {
         총 {totalElements.toLocaleString('ko-KR')}건
         {slipsQuery.isLoading ? ' · 로딩 중...' : ''}
       </div>
+      <ExcelDownloadError error={downloadError} testId="sales-query-excel-error" />
 
       {/* ── DataGrid 보기 (Excel-like: 열헤더 필터 + 다중 셀 선택 + Ctrl+C) ── */}
       {gridMode ? (

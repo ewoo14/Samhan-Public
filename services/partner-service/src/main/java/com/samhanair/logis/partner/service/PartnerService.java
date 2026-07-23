@@ -185,7 +185,7 @@ public class PartnerService {
      */
     @Transactional(readOnly = true)
     public Page<Partner> searchAdmin(String q, PartnerStatus status, boolean includeDeleted, Pageable pageable) {
-        String normalized = (q == null || q.isBlank()) ? null : q.trim();
+        String normalized = (q == null || q.isBlank()) ? null : escapeLikeLiteral(q);
         if (!includeDeleted) {
             return partnerRepository.searchAdmin(normalized, status, pageable);
         }
@@ -207,13 +207,21 @@ public class PartnerService {
      */
     @Transactional(readOnly = true)
     public List<PartnerDirectoryResponse> listDirectory(String q, int limit, int page) {
-        String normalized = (q == null || q.isBlank()) ? null : q.trim();
+        String normalized = (q == null || q.isBlank()) ? null : escapeLikeLiteral(q);
         int normalizedLimit = Math.min(Math.max(limit, 1), 5000);
         int normalizedPage = Math.max(page, 0);
         Pageable pageable = PageRequest.of(normalizedPage, normalizedLimit, Sort.by("partnerCode").ascending());
         return partnerRepository.searchDirectory(normalized, pageable).stream()
                 .map(PartnerDirectoryResponse::from)
                 .toList();
+    }
+
+    /** 사용자 검색어를 SQL LIKE 리터럴로 보존한다. escape 문자를 먼저 처리한다. */
+    static String escapeLikeLiteral(String value) {
+        return value.trim()
+                .replace("\\", "\\\\")
+                .replace("%", "\\%")
+                .replace("_", "\\_");
     }
 
     /**
@@ -245,8 +253,9 @@ public class PartnerService {
         if (exact.isPresent()) {
             return exact.get();
         }
+        String escapedKeyword = escapeLikeLiteral(trimmed);
         List<Partner> candidates = partnerRepository
-                .findAllByNameContaining(trimmed, PageRequest.of(0, 2))
+                .findAllByNameContaining(escapedKeyword, PageRequest.of(0, 2))
                 .getContent();
         if (candidates.isEmpty()) {
             throw new BusinessException(ErrorCode.NOT_FOUND,
@@ -296,8 +305,9 @@ public class PartnerService {
         if (exact.isPresent()) {
             return exact;
         }
+        String escapedKeyword = escapeLikeLiteral(trimmed);
         List<Partner> candidates = partnerRepository
-                .findAllByNameContaining(trimmed, PageRequest.of(0, 2))
+                .findAllByNameContaining(escapedKeyword, PageRequest.of(0, 2))
                 .getContent();
         if (candidates.size() == 1) {
             return Optional.of(candidates.get(0));

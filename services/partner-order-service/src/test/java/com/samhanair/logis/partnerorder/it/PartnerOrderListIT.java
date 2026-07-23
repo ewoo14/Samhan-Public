@@ -34,6 +34,7 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.util.ReflectionTestUtils;
 
 /**
  * 주문 목록 endpoint 의 legacy GAS 동등 필터를 검증한다.
@@ -113,6 +114,94 @@ class PartnerOrderListIT extends AbstractPostgresIT {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.totalElements").value(1))
                 .andExpect(jsonPath("$.data.content[0].partnerCode").value("P-SP0841-B"));
+    }
+
+    @Test
+    @WithMockUser(roles = {"SALES"})
+    void list_merge_candidate_exact_partner_code_excludes_prefix_match() throws Exception {
+        saveOrder("2026/05/11-1", "P-1", "1111111111", "정확 거래처", "EXACT-001", "CONFIRMING");
+        saveOrder("2026/05/12-1", "P-10", "1010101010", "접두사 거래처", "PREFIX-001", "CONFIRMING");
+
+        mockMvc.perform(get("/api/v1/partner-orders")
+                        .header("X-User-Id", ACCOUNT_ID)
+                        .header("X-User-Role", "SALES")
+                        .param("partnerCode", "P-1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalElements").value(1))
+                .andExpect(jsonPath("$.data.content[0].partnerCode").value("P-1"));
+    }
+
+    @Test
+    @WithMockUser(roles = {"SALES"})
+    void list_merge_candidate_exact_partner_code_treats_wildcards_as_literal() throws Exception {
+        saveOrder("2026/05/13-1", "P-%_", "1313131313", "와일드카드 거래처", "WILDCARD-001", "CONFIRMING");
+        saveOrder("2026/05/14-1", "P-%_other", "1414141414", "와일드카드 접두사", "WILDCARD-002", "CONFIRMING");
+
+        mockMvc.perform(get("/api/v1/partner-orders")
+                        .header("X-User-Id", ACCOUNT_ID)
+                        .header("X-User-Role", "SALES")
+                        .param("partnerCode", "P-%_"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalElements").value(1))
+                .andExpect(jsonPath("$.data.content[0].partnerCode").value("P-%_"));
+    }
+
+    @Test
+    @WithMockUser(roles = {"SALES"})
+    void list_merge_candidate_exact_partner_id_excludes_same_code_different_identity() throws Exception {
+        UUID selectedPartnerId = UUID.fromString("10000000-0000-0000-0000-000000000911");
+        UUID otherPartnerId = UUID.fromString("10000000-0000-0000-0000-000000000912");
+        PartnerOrder selected = saveOrder("2026/05/15-1", "P-SAME-UUID", "1515151515",
+                "선택 거래처 주문", "IDENTITY-SELECTED", "CONFIRMING");
+        PartnerOrder other = saveOrder("2026/05/16-1", "P-SAME-UUID", "1616161616",
+                "상이 거래처 주문", "IDENTITY-OTHER", "CONFIRMING");
+        ReflectionTestUtils.setField(selected, "partnerId", selectedPartnerId);
+        ReflectionTestUtils.setField(other, "partnerId", otherPartnerId);
+        orderRepository.saveAllAndFlush(java.util.List.of(selected, other));
+
+        mockMvc.perform(get("/api/v1/partner-orders")
+                        .header("X-User-Id", ACCOUNT_ID)
+                        .header("X-User-Role", "SALES")
+                        .param("partnerCode", "P-SAME-UUID")
+                        .param("partnerIdExact", selectedPartnerId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalElements").value(1))
+                .andExpect(jsonPath("$.data.content[0].orderNumber").value("2026/05/15-1"));
+    }
+
+    @Test
+    @WithMockUser(roles = {"SALES"})
+    void list_merge_candidate_exact_partner_id_keeps_legacy_rows_for_ineligibility_notice() throws Exception {
+        UUID selectedPartnerId = UUID.fromString("10000000-0000-0000-0000-000000000913");
+        PartnerOrder selected = saveOrder("2026/05/17-1", "P-LEGACY-MIX", "1717171717",
+                "선택 거래처 주문", "IDENTITY-SELECTED-LEGACY-MIX", "CONFIRMING");
+        PartnerOrder legacy = saveOrder("2026/05/18-1", "P-LEGACY-MIX", "1818181818",
+                "기존 거래처 주문", "IDENTITY-LEGACY-MIX", "CONFIRMING");
+        ReflectionTestUtils.setField(selected, "partnerId", selectedPartnerId);
+        ReflectionTestUtils.setField(legacy, "partnerId", null);
+        orderRepository.saveAllAndFlush(java.util.List.of(selected, legacy));
+
+        mockMvc.perform(get("/api/v1/partner-orders")
+                        .header("X-User-Id", ACCOUNT_ID)
+                        .header("X-User-Role", "SALES")
+                        .param("partnerCode", "P-LEGACY-MIX")
+                        .param("partnerIdExact", selectedPartnerId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalElements").value(2))
+                .andExpect(jsonPath("$.data.content[?(@.orderNumber == '2026/05/18-1')].mergeEligible").value(false))
+                .andExpect(jsonPath("$.data.content[?(@.orderNumber == '2026/05/18-1')].mergeIneligibilityReason").value(
+                        "기존 주문은 거래처 정체성을 확인할 수 없어 병합할 수 없습니다. 단건 전표 발행은 계속할 수 있습니다."));
+
+        // includeDeleted=true는 native query 경로이므로 JPA 경로와 같은 legacy 고지 계약을 확인한다.
+        mockMvc.perform(get("/api/v1/partner-orders")
+                        .header("X-User-Id", ACCOUNT_ID)
+                        .header("X-User-Role", "SALES")
+                        .param("partnerCode", "P-LEGACY-MIX")
+                        .param("partnerIdExact", selectedPartnerId.toString())
+                        .param("includeDeleted", "true"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalElements").value(2))
+                .andExpect(jsonPath("$.data.content[?(@.orderNumber == '2026/05/18-1')].mergeEligible").value(false));
     }
 
     @Test

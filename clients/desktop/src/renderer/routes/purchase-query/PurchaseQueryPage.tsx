@@ -28,6 +28,7 @@ import { usePageTitle } from '../../hooks/usePageTitle'
 import { usePermissions } from '../../hooks/usePermissions'
 import { exportSlips } from '../../api/excelExportApi'
 import { useExcelDownload, makeExportFilename } from '../../hooks/useExcelDownload'
+import { ExcelDownloadError } from '../../components/ExcelDownloadError'
 import { InboundInspectionDialog } from '../components/InboundInspectionDialog'
 
 const PAGE_SIZE = 50
@@ -144,7 +145,7 @@ export function PurchaseQueryPage() {
   const [inspectionSlipId, setInspectionSlipId] = useState<string | null>(null)
 
   // ── Excel export ──
-  const { downloading, download } = useExcelDownload()
+  const { downloading, download, error: downloadError } = useExcelDownload()
 
   // ── 창고 목록 (destinationWarehouseId resolve) ──
   const warehousesQuery = useQuery({
@@ -359,7 +360,9 @@ export function PurchaseQueryPage() {
           </Button>
         ) : null}
 
-        {/* Excel 다운로드 — BE export endpoint 는 MANAGER/MASTER 전용. */}
+        {/* Excel 다운로드 — BE export endpoint 는 MANAGER/MASTER 전용.
+            화면 검색모달(appliedSearch) 을 export 에도 그대로 전달 — SalesQueryPage 와 동일
+            패턴의 결함(계열 전수 sweep, #907 재수렴 R). */}
         {canExport ? (
           <Button
             variant="secondary"
@@ -368,7 +371,15 @@ export function PurchaseQueryPage() {
             disabled={downloading}
             onClick={() =>
               download(
-                () => exportSlips({ slipType: 'INBOUND', from: dateFrom, to: dateTo }),
+                () =>
+                  exportSlips({
+                    slipType: 'INBOUND',
+                    from: dateFrom,
+                    to: dateTo,
+                    ...(appliedSearch.searchSlipNo         ? { searchSlipNo:         appliedSearch.searchSlipNo }         : {}),
+                    ...(appliedSearch.searchPartnerName    ? { searchPartnerName:    appliedSearch.searchPartnerName }    : {}),
+                    ...(appliedSearch.searchBusinessNumber ? { searchBusinessNumber: appliedSearch.searchBusinessNumber } : {}),
+                  }),
                 makeExportFilename('구매관리'),
               )
             }
@@ -419,6 +430,7 @@ export function PurchaseQueryPage() {
         총 {totalElements.toLocaleString('ko-KR')}건
         {slipsQuery.isLoading ? ' · 로딩 중...' : ''}
       </div>
+      <ExcelDownloadError error={downloadError} testId="purchase-query-excel-error" />
 
       {/* ── DataGrid 보기 (Excel-like: 열헤더 필터 + 다중 셀 선택 + Ctrl+C) ── */}
       {gridMode ? (

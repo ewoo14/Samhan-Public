@@ -9,6 +9,8 @@ import type { PartnerOrderSummary } from '../api/sales'
 
 const mocks = vi.hoisted(() => ({
   listPartnerOrders: vi.fn(),
+  restorePartnerOrder: vi.fn(),
+  canAccess: vi.fn(() => true),
 }))
 
 vi.mock('@samhan/design-system', () => ({
@@ -50,15 +52,25 @@ vi.mock('../api/sales', async () => {
   return {
     ...actual,
     listPartnerOrders: mocks.listPartnerOrders,
-    restorePartnerOrder: vi.fn(),
+    restorePartnerOrder: mocks.restorePartnerOrder,
   }
 })
-vi.mock('../hooks/usePermissions', () => ({ usePermissions: () => ({ canAccess: () => true }) }))
+vi.mock('../hooks/usePermissions', () => ({ usePermissions: () => ({ canAccess: mocks.canAccess }) }))
 vi.mock('../realtime/useCollectionRealtime', () => ({ useCollectionRealtime: vi.fn() }))
 vi.mock('../realtime/PartnerOrderBoardRealtimeClient', () => ({ PartnerOrderBoardRealtimeClient: {} }))
 vi.mock('../components/audit/AuditOverlaySection', () => ({ AuditInfoBanner: () => null }))
 vi.mock('../components/sales/SalesSubNav', () => ({ SalesSubNav: () => null }))
-vi.mock('./components/MergeConvertDialog', () => ({ MergeConvertDialog: () => null }))
+vi.mock('./components/MergeConvertDialog', () => ({
+  MergeConvertDialog: ({ onSuccess }: { onSuccess: (slipNo: string, orderNos: string[]) => void }) => (
+    <button
+      type="button"
+      data-testid="test-merge-success"
+      onClick={() => onSuccess('SLIP-TEST-1', ['2026/05/31-2'])}
+    >
+      test merge success
+    </button>
+  ),
+}))
 vi.mock('../stores/pageTitle', () => ({ usePageTitleStore: () => vi.fn() }))
 vi.mock('../components/sales/sales.module.css', () => ({ default: new Proxy({}, { get: (_target, key) => String(key) }) }))
 
@@ -76,8 +88,7 @@ const row = (overrides: Partial<PartnerOrderSummary>): PartnerOrderSummary => ({
   ...overrides,
 })
 
-function renderPage() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+function renderPage(client = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter>
@@ -211,4 +222,99 @@ describe('SalesPartnerOrderListPage 발행실패 건수 조회 실패', () => {
     expect(errorBanner.textContent).toContain('발행 실패 건수를 확인하지 못했습니다')
     expect(screen.queryByTestId('partner-order-slip-publish-failure-banner')).toBeNull()
   }, 10_000)
+})
+
+describe('SalesPartnerOrderListPage 병합 권한 게이팅', () => {
+  beforeEach(() => {
+    mocks.listPartnerOrders.mockReset()
+    mocks.listPartnerOrders.mockResolvedValue({
+      content: [],
+      totalElements: 0,
+      totalPages: 0,
+      number: 0,
+      size: 50,
+      first: true,
+      last: true,
+    })
+    mocks.canAccess.mockReset()
+    mocks.canAccess.mockImplementation((page: string, action: string) =>
+      !(page === 'partners.search' && action === 'view'),
+    )
+  })
+
+  it('병합 생성 권한은 있어도 거래처 검색 권한이 없으면 버튼을 비활성화하고 사유를 안내한다', async () => {
+    renderPage()
+
+    expect(await screen.findByTestId('merge-convert-action-bar')).toBeTruthy()
+    expect((screen.getByTestId('merge-convert-open') as HTMLButtonElement).disabled).toBe(true)
+    expect(screen.getByTestId('merge-convert-permission-hint').textContent).toContain(
+      '거래처 검색 권한이 필요합니다',
+    )
+  })
+})
+
+describe('SalesPartnerOrderListPage 병합 성공 캐시 무효화', () => {
+  beforeEach(() => {
+    mocks.listPartnerOrders.mockReset()
+    mocks.listPartnerOrders.mockResolvedValue({
+      content: [row({ orderNumber: '2026/05/31-2', status: 'DRAFT' })],
+      totalElements: 1,
+      totalPages: 1,
+      number: 0,
+      size: 50,
+      first: true,
+      last: true,
+    })
+    mocks.canAccess.mockReset()
+    mocks.canAccess.mockReturnValue(true)
+  })
+
+  it('병합 성공 시 목록·후보·정규화된 주문 상세 키를 무효화한다', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const invalidateQueries = vi.spyOn(client, 'invalidateQueries')
+
+    renderPage(client)
+    await screen.findByTestId('merge-convert-open')
+    fireEvent.click(screen.getByTestId('merge-convert-open'))
+    fireEvent.click(screen.getByTestId('test-merge-success'))
+
+    await waitFor(() => {
+      expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['partner-orders'] })
+      expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['partner-order-merge-candidates'] })
+      expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['partner-order', '2026-05-31-2'] })
+    })
+  })
+})
+
+describe('SalesPartnerOrderListPage 복원 캐시 무효화', () => {
+  beforeEach(() => {
+    mocks.listPartnerOrders.mockReset()
+    mocks.listPartnerOrders.mockResolvedValue({
+      content: [row({ orderNumber: '2026/05/31-restore', status: 'DRAFT', isDeleted: true })],
+      totalElements: 1,
+      totalPages: 1,
+      number: 0,
+      size: 50,
+      first: true,
+      last: true,
+    })
+    mocks.restorePartnerOrder.mockReset()
+    mocks.restorePartnerOrder.mockResolvedValue(row({ orderNumber: '2026/05/31-restore', isDeleted: false }))
+    mocks.canAccess.mockReset()
+    mocks.canAccess.mockReturnValue(true)
+  })
+
+  it('복원 성공 시 하이픈 정규화된 주문 상세 캐시를 무효화한다', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const invalidateQueries = vi.spyOn(client, 'invalidateQueries')
+
+    renderPage(client)
+    fireEvent.click(await screen.findByTestId('partner-order-restore-2026/05/31-restore:deleted'))
+
+    await waitFor(() => {
+      expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['partner-orders'] })
+      expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['partner-order', '2026-05-31-restore'] })
+    })
+    expect(invalidateQueries).not.toHaveBeenCalledWith({ queryKey: ['partner-order', '2026/05/31-restore'] })
+  })
 })

@@ -23,6 +23,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -171,7 +172,7 @@ public class PartnerOrderQueryService {
 
     private PartnerOrderListFilter normalize(PartnerOrderListFilter filter) {
         if (filter == null) {
-            return new PartnerOrderListFilter(null, null, null, null, null, null);
+            return new PartnerOrderListFilter(null, null, null, null, null, null, null, null);
         }
         LocalDate from = filter.dateFrom();
         LocalDate to = filter.dateTo();
@@ -180,6 +181,8 @@ public class PartnerOrderQueryService {
                     to,
                     from,
                     trimToNull(filter.partnerId()),
+                    trimToNull(filter.partnerCode()),
+                    filter.partnerIdExact(),
                     filter.status(),
                     trimToNull(filter.slipPublishStatus()),
                     trimToNull(filter.searchKeyword()));
@@ -188,6 +191,8 @@ public class PartnerOrderQueryService {
                 from,
                 to,
                 trimToNull(filter.partnerId()),
+                trimToNull(filter.partnerCode()),
+                filter.partnerIdExact(),
                 filter.status(),
                 trimToNull(filter.slipPublishStatus()),
                 trimToNull(filter.searchKeyword()));
@@ -267,6 +272,19 @@ public class PartnerOrderQueryService {
         if (filter.partnerId() != null) {
             predicates.add("(LOWER(po.partner_code) LIKE :partnerId OR LOWER(po.biz_code) LIKE :partnerId)");
             params.put("partnerId", like(filter.partnerId()));
+        }
+        if (filter.partnerCode() != null) {
+            predicates.add("po.partner_code = :partnerCode");
+            params.put("partnerCode", filter.partnerCode());
+        }
+        if (filter.partnerIdExact() != null) {
+            // 병합 후보 조회는 선택 UUID와 일치하는 신규 주문뿐 아니라, 같은 partnerCode의
+            // legacy(NULL) 주문도 함께 내려야 FE가 fail-closed 사유와 단건 발행 대안을 고지할 수 있다.
+            // 다른 UUID가 이미 저장된 주문은 계속 제외해 동일 코드 재사용 오귀속을 막는다.
+            predicates.add(filter.partnerCode() != null
+                    ? "(po.partner_id = :partnerIdExact OR po.partner_id IS NULL)"
+                    : "po.partner_id = :partnerIdExact");
+            params.put("partnerIdExact", filter.partnerIdExact());
         }
         if (filter.status() != null) {
             predicates.add("po.status = :status");
@@ -349,6 +367,15 @@ public class PartnerOrderQueryService {
                 predicates.add(cb.or(
                         cb.like(cb.lower(root.get("partnerCode")), partner),
                         cb.like(cb.lower(root.get("bizCode")), partner)));
+            }
+            if (filter.partnerCode() != null) {
+                predicates.add(cb.equal(root.get("partnerCode"), filter.partnerCode()));
+            }
+            if (filter.partnerIdExact() != null) {
+                Predicate exactPartner = cb.equal(root.get("partnerId"), filter.partnerIdExact());
+                predicates.add(filter.partnerCode() != null
+                        ? cb.or(exactPartner, cb.isNull(root.get("partnerId")))
+                        : exactPartner);
             }
             if (filter.status() != null) {
                 predicates.add(cb.equal(root.get("status"), filter.status()));

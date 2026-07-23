@@ -2783,6 +2783,14 @@ PR #660 은 **이미 머지됨** (`579835ef`, 2026-06-28 ewoo14). 집 PC 미설�
 - genuine 검증: Gradle `26 actionable tasks: 26 executed`; Desktop typecheck 통과; Desktop Vitest `134 files / 1039 tests passed`; design-system `23 files / 142 tests passed`; AC mock `36 passed, skipped=0, unexpected=0`; real QA inventory `213 tests in 83 files`.
 - 실제 서버 기반 Live QA는 이 세션에서 실행하지 않았으며, PM/개발책임자 최종 게이트로 남겼다. `docs/dev-reports/825-s5-null-semantics-r4.md`에 상세 대응과 검증을 기록했다.
 
+## ✅ 2026-07-23 Codex LUNA — PR #907 SOL 적대리뷰 fix
+
+- 병합 후보는 기존 목록 검색용 부분일치 `partnerId`를 유지하면서 신규 `partnerCode` 정확일치 계약으로 분리했다. `P-1`/`P-10` 접두사 혼입과 `%`/`_` literal 회귀 테스트를 실 BE MockMvc+Testcontainers 경로에 추가했고, mock도 두 계약을 구분했다.
+- 병합 권한을 `sales.partner-order.convert:create` + `partners.search:view`로 정렬했다. 검색 VIEW가 없으면 버튼 disabled와 원인 안내를 노출하며, `partnerApi.searchPartners`의 기존 fail-soft는 공유 화면 호환을 위해 유지하고 병합 호출만 오류를 재throw한다.
+- DS Modal 영향 범위를 피하기 위해 전달되지 않는 `merge-convert-dialog` testid를 제거했다. UUID/코드 재사용 스키마 이슈는 개발책임자 판단 범위로 미수정.
+- 좁은 BE 테스트 `BUILD SUCCESSFUL`, Desktop typecheck 및 전체 Vitest `142 files / 1119 tests passed`. 전체 partner-order Gradle은 첫 지정 실행의 셀 결과가 유실되었고, `--no-daemon` 재시도는 244초 후 Exit 124 timeout되어 성공 판정하지 않았다. 전체 Playwright와 공유 Docker DB 쓰기는 실행하지 않았다.
+- 상세 RED/GREEN/뮤테이션 원문과 `partnerId`·`partnerApi.ts` 소비처 전수 결과: `docs/dev-reports/2026-07-23-867-s7-order-merge-partner-first.md` §10.
+
 ## ✅ 2026-07-23 Codex LUNA — PR #892 PM 라이브QA 후속 fix
 
 - 실서버에서 확인된 수신함 페이저 결함의 원인은 API gateway CORS `exposedHeaders`에
@@ -2796,3 +2804,18 @@ PR #660 은 **이미 머지됨** (`579835ef`, 2026-06-28 ewoo14). 집 PC 미설�
   `docs/dev-reports/2026-07-22-825-s6-messenger-chip-bulk.md`에 원문으로 기록했다.
   지정 Gradle 3모듈, Desktop typecheck, Vitest 137/1101은 GREEN. 실서버 재프로브와
   전체 Playwright는 작업 지시상 실행하지 않았다.
+
+## ✅ 2026-07-23 Codex LUNA — PR #907 도달가능 3 범위 추가
+
+- `partner_orders.partner_id`를 새 V12 migration으로 추가했다. 기존 행은 자동 backfill하지 않고 NULL 미해결 상태로 남겨 병합을 409로 거부한다.
+- confirm/estimate 신규 주문은 partner-service UUID를 저장하며, 병합은 UUID 동일성을 판정한다. `partnerCode`/`bizCode`는 표시 snapshot으로만 유지한다.
+- 병합 payload의 UUID를 slip-service까지 전달하고, slip-service는 partnerCode 재조회 대신 전달 UUID를 전표에 저장한다. 동일 코드 재사용으로 최종 전표가 신규 UUID에 오귀속되는 경로를 차단했다.
+- 동일 코드·상이 UUID RED/GREEN/뮤테이션 RED, legacy NULL guard, 신규 저장 경로, slip merge 계약, fresh Postgres probe 결과는 `docs/dev-reports/2026-07-23-867-s7-order-merge-partner-first.md` §11에 기록했다.
+- 전체 mock Playwright와 공유 Docker DB 쓰기는 실행하지 않았다. PM은 최종 전체 CI에서 전체 suite 권위를 확인한다.
+
+## ✅ 2026-07-23 Codex LUNA — PR #907 CI hard gate 후속
+
+- `partners.search:view`가 실제 병합 진입에 필요하지만 mock MASTER 기본 권한 fixture에 빠져 있던 불일치를 수정했다. V34 MASTER/MANAGER/SALES와 V88 ACCOUNTANT 계약을 mock 권한 집합에 반영했다.
+- M3 권한 제거 Playwright 케이스를 추가했다: convert CREATE만 있고 partners.search VIEW가 없으면 병합 버튼 disabled, title과 권한 안내가 표시된다.
+- 관련 Playwright 두 디렉터리만 5회 실행해 매회 9/9 통과했다. fixture에서 partners.search를 제거한 뮤테이션은 disabled 버튼 클릭 timeout으로 RED였고 즉시 복구했다.
+- 최종 typecheck 및 fresh Postgres V12 probe도 통과했다. 전체 mock Playwright와 공유 DB 쓰기는 실행하지 않았다.

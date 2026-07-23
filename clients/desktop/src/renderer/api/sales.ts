@@ -441,6 +441,10 @@ export interface PartnerOrderSummary {
   deletedAt?: string | null
   /** 삭제자 표시명. UUID 는 BE 에서 정제되어 null 로 온다. */
   deletedByName?: string | null
+  /** partnerId가 없는 legacy 주문은 병합 후보에서 제외한다. */
+  mergeEligible?: boolean
+  /** 병합 제외 사유. UUID는 포함하지 않는다. */
+  mergeIneligibilityReason?: string | null
 }
 
 /** 주문 라인 — Bundle EXPAND/KEEP 결과 표시. Phase 2.6a: lineId/convertedQuantity 추가. Phase 2.6d: productId 추가. */
@@ -686,6 +690,8 @@ function normalizePartnerOrderSummary(raw: RawPartnerOrderSummary): PartnerOrder
     isDeleted: raw.isDeleted === true,
     deletedAt: raw.deletedAt ?? null,
     deletedByName: raw.deletedByName ?? null,
+    mergeEligible: raw.mergeEligible,
+    mergeIneligibilityReason: raw.mergeIneligibilityReason ?? null,
   }
 }
 
@@ -720,6 +726,10 @@ export async function listPartnerOrders(
     dateFrom?: string
     dateTo?: string
     partnerId?: string
+    /** 병합 후보 전용 거래처 코드 정확 검색. 기존 partnerId 부분검색과 구분한다. */
+    partnerCode?: string
+    /** 병합 후보 전용 거래처 UUID 정확 검색. 화면에는 노출하지 않는다. */
+    partnerIdExact?: string
     status?: PartnerOrderStatus
     /** 발행실패(FAILED) 또는 재시도 중(PENDING_RETRY) 전용 목록 필터. */
     slipPublishStatus?: 'FAILED' | SlipPublishStatus
@@ -735,6 +745,8 @@ export async function listPartnerOrders(
   if (filters.dateFrom) params['dateFrom'] = filters.dateFrom
   if (filters.dateTo) params['dateTo'] = filters.dateTo
   if (filters.partnerId) params['partnerId'] = filters.partnerId
+  if (filters.partnerCode) params['partnerCode'] = filters.partnerCode
+  if (filters.partnerIdExact) params['partnerIdExact'] = filters.partnerIdExact
   if (filters.status) params['status'] = filters.status
   if (filters.slipPublishStatus) params['slipPublishStatus'] = filters.slipPublishStatus
   if (filters.searchKeyword) params['searchKeyword'] = filters.searchKeyword
