@@ -4,7 +4,53 @@
 
 ---
 
-## 🌙 2026-07-23 (집PC 야간) — **하네스 전면 개편 + 3트랙 2턴째** ◀◀◀ 여기부터 읽으십시오
+## 🌅 2026-07-24 (집PC 새벽 마감) — **머지 4건 + 3트랙 인계** ◀◀◀ 여기부터 읽으십시오 (회사PC)
+
+> 🚩 **회사PC 재개 절차**: `git pull` → `.\scripts\sync-claude-memory.ps1` → 이 문단.
+> 🚨 **codex(SOL/LUNA) 진행분은 집PC 세션 종료로 소멸** — 아래 재개 지점부터 회사PC가 다시 돌립니다. "완료착각 금지".
+
+### ✅ 이번 세션 머지 완료 4건 (전부 도달가능 0 + CI green + 라이브QA)
+| PR | 슬라이스 | 비고 |
+|---|---|---|
+| **#914** | 문서 양식 편집기 잔여 | 6라운드 수렴(카운터로 무음절단 해소) |
+| **#909** | 데스크톱 자동업데이트 하드닝 | 인쇄 오염·닫기 무효화·알림 충돌 |
+| **#881** | 판매조회 담당자명 UUID→성명 | user-service 벌크 resolve, fail-open |
+| **#907** | 거래처 우선 주문 병합 | 성공 병합 실서버 실증(byte-identical 원복) · #881 과 SlipQueryService 통합 IT 통과 |
+
+### 🔧 재개 지점 (회사PC 우선순위 순)
+
+**① #880 / PR #917 (좁은 폭 조작 버튼) — CI RED, 스펙 fix 필요 [최우선]**
+- OPUS 재수렴 **도달가능 0** 이나, **CI mock 회귀 hard gate 에서 `narrow-action-column.spec.ts` 20개 전부 fail**(0 flaky). 로컬 20/20 인데 CI mock 환경 미정합.
+- 원인: 구현자가 만든 게이트 스펙이 **mock 데이터와 정합하지 않음**(수금계획·받을어음·전표·발송금지·권한그룹 화면이 mock 스위트에서 다르게 렌더). → `feedback_verify_playwright_gate_before_adversarial` 함정.
+- 조치: 스펙을 **mock 데이터에 맞게 시드/조정**하거나 `-real-qa` 접미사로 분리(단 상시 게이트 유지 방법 검토). 제품 fix(`PermissionGroupManagePage:208` `mobile-form-grid` class)는 **정상**(도달가능 0 확증). 스펙만 문제.
+- SHA `1addc4aee`. 워크트리 `autoupdate`(브랜치 `feat/880-narrow-action-column`).
+
+**② #877 / PR #918 (CODEF 필터 밖 카테고리 무음 유실) — SOL 2차 재개**
+- OPUS 1차 리뷰 **도달가능 0**(의도적 해제 보존·scopeMode 경계·#915 flaky 5회 안정 전부 통과). SHA `73dc1d9af`.
+- **CODEX SOL 2차 검증 재개 필요**(집PC codex 소멸). 6각도: 라운드트립 반복·stale ref·재진입 후 재저장·동시성·빈배열 vs null·mock↔BE 파리티. 토스트 라벨 seam 은 기획 사전공개·슬라이스 밖(재발견 금지).
+- ⚠️ codex SOL 은 이 환경서 브라우저 백엔드 `[]` 로 멈춤 → **Playwright real-qa 하네스**(5380+ strictPort, mock OFF)로 지시해야 함. 워크트리 `tpl-914`.
+
+**③ chore-A / PR #919 (LIKE escape 전수) — LUNA 구현 재개 (처음부터)**
+- 기획 커밋만(`2e70fc995`). **LUNA 구현 소멸 → 처음부터 재개.** 워크트리 `s7-merge`(브랜치 `chore/like-escape-family`).
+- 범위: 플래그 5검색 + **family 확장**(user EmployeeRepository 4종·accounting normalize 4검색+partnerCode). 로컬 helper. 🔑 뮤테이션은 **서비스 계층 escape 제거**로(PG backslash 기본 escape 라 ESCAPE 절 제거는 false-green).
+
+**④ chore-B (모달 인쇄 배경 차폐) — 미착수**
+- 기획서 `docs/superpowers/plans/2026-07-24-chore-global-escape-modal.md` 축 B. `@media print { body:has([data-testid='ds-modal-backdrop']) .app-main { display:none } }`. FE global.css +2~6줄. **#880 머지 후 그 워크트리에서** or 독립 브랜치.
+- **PR 2분할 확정**(축 A escape / 축 B 인쇄) — 인쇄 3~5회 반복이 BE escape 인질 안 되게.
+
+### 🧭 이번 세션 하네스 검증 (전부 정본 `feedback_harness_defect_zero_design.md` 반영 완료)
+- **Playwright 클릭 성공 ≠ 실사용 도달** — #880 SOL 이 OPUS 가 "클릭 성공=도달"로 넘긴 권한그룹 375px 실화면 찢김(제목 세로 분해·표 5738px 밀림)을 잡음. PM=SOL 채택.
+- **회귀 울타리는 표면을 명시** — #907 F-2 가 3라운드 거짓 green(거래처 검색만 재고 slip 판매관리 미측정).
+- **"X 없애라"="X 담은 것 없애라"**(#914) · **위치 옮기는 fix 는 문제만 옮김**(#909) · **양성 대조군 ≠ 표면 건강**(#907 sweep).
+- fix-유발 결함(r) 이 세 슬라이스 마지막 라운드 전부 0 — fix 가 새 결함 낳던 패턴이 끊김.
+
+### 📌 개발책임자 지시 (이 세션 추가분)
+- **U-gate 도 PM 자율 판단** — #907 을 "지금 머지(신규부터 작동, legacy 는 Phase11 백필)"로 자율 판단·머지함.
+- **판단 대기 3건을 전역 chore 로 묶어 진행**(권고 승인) — #907 escape 5건 + #909 SlipDetailModal → chore A/B. 새 이슈 없이 PR 로 추적.
+
+---
+
+## 🌙 2026-07-23 (집PC 야간) — **하네스 전면 개편 + 3트랙 2턴째**
 
 > 🚩 **다음 세션 시작 절차**: `git pull` → `.\scripts\sync-claude-memory.ps1` → 이 문단.
 > 🚨 **캐논이 이 세션에 크게 바뀌었습니다.** 옛 규칙으로 진행하지 마십시오.
