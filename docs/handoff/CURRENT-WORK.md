@@ -4,7 +4,74 @@
 
 ---
 
-## 🌤️ 2026-07-23 (회사PC 오후) — **#908 DS-4 머지 · 새 트랙 #914 개설** ◀◀◀ 여기부터 읽으십시오
+## 🌆 2026-07-23 (회사PC 저녁 마감, ~17:50) — **세션 종료 인계** ◀◀◀ 여기부터 읽으십시오
+
+> 🚩 **다음 세션 시작 절차**: `git pull` → `.\scripts\sync-claude-memory.ps1` → 이 문단.
+> 🚨 **세션과 함께 죽은 codex 작업이 있습니다.** 아래 "완료 착각 금지" 를 반드시 읽으십시오.
+
+### 3트랙 현황
+
+| 트랙 | PR | SHA | 상태 |
+|---|---|---|---|
+| 1 | **#907** #825 슬7 주문병합 | **`833c3dcdc`** | ✅ 라이브QA 게이트 통과 · **CI queued**(다음 세션에서 판정) · 이후 **SOL 재수렴 라운드** |
+| 2 | **#914** 편집기 잔여 묶음 (#911·#912·#890·#913) | `025013ba9` | 기획 게시 완료 · **LUNA 구현 중단**(RED-first 단계) · WIP 격리됨 |
+| 3 | **#909 / #910** 자동 업데이트 | `03d01c5bd` | 기획 게시 완료 · **미착수** |
+
+### 🚨 완료 착각 금지 — WIP 격리분
+
+**`wip/914-luna-partial-2026-07-23`** (원격 push 완료, 커밋 `6ab3d34e1`)
+
+- 내용: `clients/desktop/playwright/911-912-template-editor-residual.spec.ts` (3 test, 4.6KB) **1개뿐**. 구현 코드는 **없습니다.**
+- 🚨 **한 번도 실행되지 않았고 검증되지 않았습니다.**
+- 🚨 위치가 `playwright/` 루트라 `*-real-qa` 제외 규칙에 안 걸려 **mock CI 게이트에서 돌아갑니다.** RED 스펙이므로 그대로 feature 브랜치에 올리면 **CI 가 빨개집니다.**
+- ⟹ **fresh 재디스패치가 원칙**이고, 이 diff 는 **참조용으로만** 보십시오.
+- feature 브랜치(`fix/911-912-template-editor-residual`)는 **청결**합니다(기획 spec 커밋만).
+
+### #907 — 이 세션에서 한 것
+
+**I7 을 폐기하고 I7′(fail-closed)로 대체**했습니다. 근거는 실서버 스키마:
+```
+ux_partners_partner_code_active  UNIQUE (partner_code) WHERE is_deleted = false
+ux_partners_biz_no_active        UNIQUE (biz_no)       WHERE is_deleted = false
+```
+둘 다 **부분 유니크**라 soft-delete 후 **같은 코드+같은 사업자번호를 새 UUID 로 재등록** 가능 ⟹ "현재 스냅샷 일치"는 과거 정체성의 증거가 아니고 **정규화를 고쳐도 판별 불가**. 🔑 V13 주석이 이미 옳은 설계("NULL partner_id = 병합 금지")를 적어 뒀는데 **PM 의 I7 이 그 예외 통로를 냈던 것**.
+
+I8(코드↔UUID 정합) · I9(계약 위반을 502 로) · I10(connect 2s/read 5s timeout) 도 함께 해소.
+
+**PM 라이브QA 확증** — 🔑 **양성 대조군이 핵심이었습니다**:
+```
+legacy(partner_id IS NULL) 31건 → 전부 mergeEligible=False
+사유: "기존 주문은 거래처 정체성을 확인할 수 없어 병합할 수 없습니다.
+       단건 전표 발행은 계속할 수 있습니다."
+목록 응답 UUID = 0건
+양성 대조(partner_id 주입 후 원복): eligible=True 2 · False 29
+FE 한 화면: "1건 후보 … 1건은 병합에서 제외됨" + 한국어 사유 동시 표시
+실행 후 DB 원상: legacy 31 · total 31 · throwaway 0
+```
+대조군이 없었으면 "0건 후보" 를 성공으로 오독할 뻔했습니다.
+
+⚠️ 정직 고지 — 직원 JWT 로는 주문 생성 API 가 **401**(거래처 self-service 권한)이라 스펙 fixture 는 **DB 임시 삽입**입니다. 즉 `requirePartnerId` 를 실제로 지나지 않고, 그건 BE 단위/IT 담당입니다.
+
+### ⚠️ 이 세션에서 새로 겪은 환경 함정 (메모리 반영 완료분 포함)
+
+| 함정 | 실측 |
+|---|---|
+| **고아 vite 가 stale 코드를 서빙** | 워크트리를 제거해도 그 vite 가 포트를 잡고 있어 **404** 를 내고, `--strictPort` 때문에 새 프로세스가 바인딩 실패. 리스너 커맨드라인이 **메인 트리 경로인지** 확인할 것 |
+| **스펙 해시 라우팅** | `${BASE_URL}/#/…` 는 웹 하네스(BrowserRouter)에서 무시돼 **대시보드가 렌더**. 증상이 *"버튼이 없다"* 라 **기능 결함으로 오진**하게 됨. `error-context.md` 의 page snapshot 으로 판별 |
+| **컨테이너가 브랜치보다 낡음** | `Schema-validation: missing column [supply_amount]` — 코드 결함이 아니라 **로컬 배포가 뒤처진 것**. 브랜치가 main 대비 10 커밋 뒤였다 |
+| **PS 5.1 이 BOM 없는 UTF-8 .ps1 을 ANSI 로 읽음** | 한글이 든 스크립트가 **파싱 실패**. probe 스크립트는 **ASCII 전용**으로 |
+| **`Out-Null` 이 함수 내 `Write-Output` 까지 삼킴** | 로그가 통째로 사라짐 → `Write-Host` 사용 |
+
+### 다음 세션이 할 일 (우선순위)
+
+1. **#907** — CI(`833c3dcdc`) 판정 → green 이면 **CODEX SOL 5.6 재수렴 라운드**. 🚨 SOL 프롬프트에 **실서버 접속 정보·라이브QA 수행 지시·throwaway 쓰기 허용 범위**를 명시할 것(07-23 확정 규칙). 이 PR 은 *"CI green 상태에서 SOL 이 도달가능을 찾은"* 이력이 **두 번** 있다
+2. **#914** — LUNA 구현 **fresh 재디스패치**(WIP diff 는 참조만). 기획서 `docs/superpowers/specs/2026-07-23-911-912-template-editor-residual.md`
+3. **#909/#910** — 착수. ⚠️ **코드 서명 인증서**가 실질 블로커(개발책임자 결정 사항)
+4. 재개 시 **partner-order-service·groupware-service 컨테이너가 최신인지** 먼저 확인(둘 다 이 세션에서 재배포함)
+
+---
+
+## 🌤️ 2026-07-23 (회사PC 오후) — #908 DS-4 머지 · 새 트랙 #914 개설
 
 ### 3트랙 현황
 
