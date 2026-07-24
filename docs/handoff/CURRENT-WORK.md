@@ -22,7 +22,7 @@
 - **브랜치** `fix/831-lookup-unavailable-sweep` · **워크트리** `.claude/worktrees/831-lookup` · **원격 HEAD** `28203e538`(근본 fix, **CI RED**·과잉502)
 - **라운드 이력**: LUNA 구현 → OPUS 1차(도달가능 2 무필터) → SONNET fix(2/14만 덮음) → SOL 2차(도달가능 2·12소비처, 라이브 실증) → LUNA 근본 fix(`findByPartnerIdsBatch` throw=12곳 일괄) → **OPUS 재수렴 BLOCK**(과잉 502: write까지 롤백 + CI RED)
 - **🚨 개발책임자 정책 결정(2026-07-24, PR #924 기록)**: 표시명 조회 UNAVAILABLE 시 — **read 리포트=502 fail-closed**(파트너 신원=행 의미: 에이징·매출집계·원장·자금현황·미수미지급 목록) / **write·detail=공란 성사·롤백 금지**(저널 생성/게시/역분개·입금보고서 확정/취소·저널 상세)
-- **🔧 SONNET5 fix 진행 중**(세션 종료로 중단됐을 수 있음) — `831-lookup` 에 **미커밋 산출물**: `PartnerLookupSupport.java`·`CashReceiptService.java`·`JournalService.java` + 신규 `WriteDetailPartnerLookupBlankFallbackTest.java`. ⚠️ **부분일 수 있음** — 재개 시 `git -C .claude/worktrees/831-lookup status` + diff 확인 → 완성됐으면 커밋+push, 미완이면 SONNET5 재디스패치(정책·불변식은 PR #924 코멘트 참조)
+- **🔧 SONNET5 write/detail 공란 fix = 미완·WIP 격리** — 세션 마감으로 중단, 부분 산출물을 **`wip/924-sonnet-write-blank-partial`** 브랜치로 격리·push(feature 청결 유지). 변경분: `PartnerLookupSupport`·`CashReceiptService`(confirm/cancel)·`JournalService`(create/post/reverse+상세)·`LegacyBatchConsumerFailClosedTest` + 신규 `WriteDetailPartnerLookupBlankFallbackTest`. ⚠️ **미검증(컴파일·테스트·CI 미확인)** — 재개 시 `git fetch` → `wip/924-...` diff 검토 → 완성됐으면 `fix/831-lookup-unavailable-sweep` 에 cherry-pick/이어작업+커밋, 미완이면 버리고 SONNET5 재디스패치(정책·불변식은 PR #924 코멘트 + [[feedback_accounting_enrichment_failclosed_policy]])
 - **다음**: SONNET fix 완성 → 커밋 → CI green(exact SHA·`TaxInvoiceControllerIT` 실 client IT 가 write 502 를 잡음) → OPUS 재수렴 1회 → PM 머지. **Q3 단건/directory 잔여계열**(AccountingPartnerSearchController·Ecount import 등)은 근본 fix 범위 밖·별개(범위 동결)
 
 ### 하네스 교훈 (T7)
