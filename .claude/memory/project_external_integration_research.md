@@ -17,7 +17,7 @@ metadata:
 - 기존 CODEF 배선(`CodefClient(Impl)` 6메서드 · `CodefImportController` · `UserCodefImportScope` · `bank_transaction.source = CODEF_BANK/CARD/LOAN` · FE `CodefImportScopeForm`/`BankTransactionPage`)은 **지금 사용자가 쓰는 화면이므로 현행 유지**하고 **결함은 계속 고친다**(#877 이 그 예 — 실 회계 원장에 잘못 적재되는 결함이었다).
 - 🚫 **CODEF 신규 기능 투자 금지** — 실 API 활성화(`CODEF_SUBMIT_METHOD=DRY_RUN` → 실호출), connectedId 등록/RSA 암호화 플로우, 샌드박스 base-url 확정 등 아래 "실연동 잔여" 항목은 **바로빌 전환 슬라이스로 대체**한다.
 - **`source` 분류 체계가 바뀐다** — `CODEF_BANK/CARD/LOAN` enum 과 그것을 노출하는 화면 열/라벨은 전환 시 개편 대상. (2026-07-24 #877 에서 `소스` 열 제거 결정이 내려진 배경이기도 함.)
-- 전자세금계산서는 **홈택스 일괄 엑셀 유지**(별개 결정, 아래 절) — 바로빌 전환이 그 결정을 되돌리는지는 **미확정**. 전자세금계산서까지 바로빌로 갈지는 개발책임자 확인 필요.
+- 🚩 **전자세금계산서는 바로빌 대상이 아니다** (2026-07-24 개발책임자 확정): *"전자세금계산서는 엑셀로 다운로드하는 GAS 레거시 방식 그대로 사용. 바로빌X"* ⟹ **홈택스 일괄 업로드 엑셀 방식 유지**(아래 절, 이미 구현·머지됨 — PR #161 + PR-E2 BE-A11, 추가 개발 0). **바로빌 전환 범위 = 금융데이터(계좌·카드·대출)뿐.** 바로빌이 전자세금계산서 ASP 로 유명하다고 해서 그쪽까지 끌어오지 말 것.
 - **미확정** — 바로빌 계약/단가, 제공 상품 범위(계좌·카드·대출 각각), 전환 시점, 기존 CODEF 자격증명 폐기 시점, `KftcClient`/`CodefClient` shell 제거 여부.
 
 ---
