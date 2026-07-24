@@ -1,13 +1,28 @@
 ---
 name: external-integration-research
-description: 외부 연동 — 전자(세금)계산서 = 홈택스 일괄 엑셀(✅ 이미 구현·머지됨, 직접/ASP 불요) + 금융데이터(계좌·카드·대출) = 🚩2026-06-29 개발책임자 "전부 CODEF" 결정(하이브리드 폐기, 오픈뱅킹/KFTC 비채택). CODEF 데모·샌드박스 키 발급됨(gitignored .env)
+description: 외부 연동 — 전자(세금)계산서 = 홈택스 일괄 엑셀(✅ 이미 구현·머지됨) + 금융데이터(계좌·카드·대출) = 🚩🚩2026-07-24 개발책임자 "CODEF 사용 안 하고 바로빌로 변경 예정" (2026-06-29 "전부 CODEF" 결정 승계·폐기). 기존 CODEF 배선은 현행 유지, 신규 투자 금지
 metadata:
   type: project
 ---
 
 2026-06-17 개발책임자 딥리서치 요청(우리 = 하루 수백건 발급 고물량 사업자).
 
-## 🚩🚩 2026-06-29 개발책임자 결정 — "전부 CODEF로 가는거야" (하이브리드 승계·폐기)
+## 🚩🚩🚩 2026-07-24 개발책임자 결정 — **CODEF 폐기, 바로빌로 변경 예정** (아래 2026-06-29 "전부 CODEF" 승계·폐기)
+
+> *"참고로 CODEF는 사용하지 않고 바로빌로 변경할예정."*
+
+**금융데이터(계좌 입출금·카드·대출) 채널을 CODEF → 바로빌(barobill)로 교체한다.** 2026-06-29 "전부 CODEF" 결정은 **폐기**. 바로빌은 본 문서 전자세금계산서 ASP 절에서 이미 후보로 조사된 사업자다(Java API 즉시 연동).
+
+**현재 코드에 대한 함의 (PM 판단 — 개발책임자 정정 시 따를 것)**
+- 기존 CODEF 배선(`CodefClient(Impl)` 6메서드 · `CodefImportController` · `UserCodefImportScope` · `bank_transaction.source = CODEF_BANK/CARD/LOAN` · FE `CodefImportScopeForm`/`BankTransactionPage`)은 **지금 사용자가 쓰는 화면이므로 현행 유지**하고 **결함은 계속 고친다**(#877 이 그 예 — 실 회계 원장에 잘못 적재되는 결함이었다).
+- 🚫 **CODEF 신규 기능 투자 금지** — 실 API 활성화(`CODEF_SUBMIT_METHOD=DRY_RUN` → 실호출), connectedId 등록/RSA 암호화 플로우, 샌드박스 base-url 확정 등 아래 "실연동 잔여" 항목은 **바로빌 전환 슬라이스로 대체**한다.
+- **`source` 분류 체계가 바뀐다** — `CODEF_BANK/CARD/LOAN` enum 과 그것을 노출하는 화면 열/라벨은 전환 시 개편 대상. (2026-07-24 #877 에서 `소스` 열 제거 결정이 내려진 배경이기도 함.)
+- 전자세금계산서는 **홈택스 일괄 엑셀 유지**(별개 결정, 아래 절) — 바로빌 전환이 그 결정을 되돌리는지는 **미확정**. 전자세금계산서까지 바로빌로 갈지는 개발책임자 확인 필요.
+- **미확정** — 바로빌 계약/단가, 제공 상품 범위(계좌·카드·대출 각각), 전환 시점, 기존 CODEF 자격증명 폐기 시점, `KftcClient`/`CodefClient` shell 제거 여부.
+
+---
+
+## 🚩🚩 2026-06-29 개발책임자 결정 (폐기됨 — 위 2026-07-24 참조) — "전부 CODEF로 가는거야" (하이브리드 승계·폐기)
 **금융데이터(계좌 입출금·카드·대출) 전부 CODEF 채널로 통일.** 2026-06-17 하이브리드 결정(계좌=오픈뱅킹/KFTC, 카드=CODEF)을 **승계·폐기** — 오픈뱅킹 이용기관 자격(금융보안원 보안점검 수개월) 부담 회피, CODEF 단일 채널. 코드 현실(`CodefClient` 가 이미 은행+카드+대출 6메서드 보유)이 본 결정과 정합. **KFTC/오픈뱅킹(`KftcClient` shell)은 비채택(MOOT)** — 제거/유지 여부는 실연동 슬라이스에서 판단.
 - **CODEF 자격증명 발급(개발책임자 제공 2026-06-29)**: 데모 + 샌드박스 client_id/secret + RSA public_key. **저장=gitignored `services/accounting-service/.env` 단독**(메모리·git 비포함, 프로덕션=AWS Secrets Manager). 현 `CODEF_SUBMIT_METHOD=DRY_RUN` 유지(실 API 미활성).
 - **실연동 잔여(Phase 11 신규 에픽)**: ①CODEF 계정등록(connectedId) + RSA 자격 암호화 플로우 ②`CodefClientImpl` stub → 실 CODEF API 호출(샌드박스 우선) ③샌드박스 base-url 확정(데모/정식=api.codef.io) ④회계 자동화 확장 후보=홈택스 전자세금계산서 통합 조회·현금영수증·사업자등록상태(CODEF public 상품, 미배선). 조사 보고 = 본 세션 2026-06-29.
