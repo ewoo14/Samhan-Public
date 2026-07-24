@@ -162,7 +162,7 @@ export function PermissionGroupManagePage() {
       key: 'actions',
       header: '작업',
       width: '190px',
-      mobilePriority: 'hidden',
+      mobilePriority: 'secondary',
       render: (group) => (
         <span style={{ display: 'inline-flex', gap: 6 }}>
           <Button
@@ -205,7 +205,7 @@ export function PermissionGroupManagePage() {
   }
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.2fr) minmax(320px, 0.8fr)', gap: 16 }}>
+    <div className="mobile-form-grid" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.2fr) minmax(320px, 0.8fr)', gap: 16 }}>
       <section>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
           <div>
