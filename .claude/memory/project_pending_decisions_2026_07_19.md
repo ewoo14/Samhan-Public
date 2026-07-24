@@ -1,6 +1,6 @@
 ---
 name: project_pending_decisions_2026_07_19
-description: 2026-07-19 개발책임자가 남은 전 잔여/이슈에 대해 일괄 확정한 결정 배치 + "이후 전부 PM 자율 진행" 위임. 9개 결정 대기 항목 확정·실행 순서·자율 실행 12건. 각 슬라이스는 캐논 워크플로우 엄수. #827/#773만 Google 자격(clasp) 블로커.
+description: 2026-07-19 개발책임자가 남은 전 잔여/이슈에 대해 일괄 확정한 결정 배치 + "이후 전부 PM 자율 진행" 위임. 9개 결정 대기 항목 확정·실행 순서·자율 실행 12건. 각 슬라이스는 캐논 워크플로우 엄수. 🚨2026-07-24 "#827/#773 Google 자격(clasp) 블로커" 라이브 반증·해제 — 자격은 이미 있고 작동함.
 metadata:
   type: project
 ---
@@ -16,7 +16,7 @@ metadata:
 6. **#838 세금계산서 동일명 거래처 교체 audit = 추가 승인**. oldPartnerCode/partnerId snapshot + audit diff(UUID 미노출·partnerCode/name 조합 인간가독).
 7. **#830 감사 revision 채번 다중화 = 현행 유지 → Phase 11 AWS 다중 인스턴스 시 DB sequence(또는 advisory lock)**. 현 단일 인스턴스 위험 0(psql 중복 0건).
 8. **#832 항목4 BOM(U+FEFF) 정규화 = BE 보존 유지 + mock을 BE에 일치**. 나머지 #832 항목1~3 PM 자율.
-9. **#827 레거시 GAS 통합·#773 일마감 재계산 = Google 자격(clasp login 1회 또는 서비스계정+scriptId) 블로커**. 개발책임자 자격 제공 전 착수 불가·후순위 고정.
+9. ~~**#827 레거시 GAS 통합·#773 일마감 재계산 = Google 자격(clasp) 블로커**~~ → 🚨 **2026-07-24 라이브 반증·해제**. 자격은 **이미 있고 지금 작동**한다: `~/.clasprc.json`(632B·`authorized_user`·refresh_token 103자)로 `oauth2.googleapis.com/token` 갱신 **HTTP 200**(`expires_in=3599`), scope 에 `script.projects`·`script.deployments`·`script.webapp.deploy` 전부 보유, **Apps Script API 가 라이브 프로젝트에 HTTP 200**(`GET /v1/projects/1AKsi6-…` → `title=종합견적서`·`updateTime=2026-07-13`). 프로젝트 바인딩도 레포 루트 `.clasp.json`(`rootDir=tools\legacy-gas\종합견적서-live`)에 이미 존재. 남은 실무 조건은 자격이 아니라 **`clasp` CLI 전역 미설치** 하나뿐이고 `npx @google/clasp` 로 즉시 우회 가능. ⟹ **후순위 고정 해제**. 교훈 = "자격이 없다"는 전제를 **1년 가까이 아무도 실행으로 확인하지 않았다** — 블로커 주장도 [[feedback_pm_verify_what_measurement_proves]] 대상이다.
 
 ## 실행 순서 (PM 자율·의존성 반영)
 1. **회계체인**: #823(reject)✅ → 전표 거래처 필수화(전이 가드)✅`78cb759d9` → **#850 배분 과할당 ✅**(main `3c449244`·PR #855·요청 내 금액+수량 누적 검증·입력 양수 불변식·lockKey 정렬 선잠금·V62 CHECK·2-모델 재수렴 0·라이브QA 실증·별건 #856 CODEF IT 격리) → **#825 슬5(신규만) ◀ 다음** 
@@ -25,7 +25,7 @@ metadata:
 4. **독립 FEAT**: #824 품목행 공급가액·부가세(4결정 확정) · #848 documentType 3저장소 컬럼확장(M·완주)
 5. **chore 배치**: #831 lookup sweep · #832 mock parity · #838 audit · #839 partner_code 100 · #828 a11y
 6. **AC 후속 흡수**: #834 · #836 · #837 · #840 · #842 · #843
-7. **Google 자격 후**: #827 · #773
+7. ~~**Google 자격 후**~~ → **즉시 착수 가능** (2026-07-24 블로커 반증): #827 · #773
 8. **Phase 11 시**: #830 · **cutover-defer**: #826
 
 ## PM 자율 즉시 실행 (결정 불요·12건)

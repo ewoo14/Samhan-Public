@@ -8,6 +8,25 @@
 
 > 🚩 **다음 세션 시작 절차**: `git pull` → `.\scripts\sync-claude-memory.ps1` → 이 문단.
 
+> ## 🚨🚨 2026-07-24 — **"Google clasp 블로커" 는 거짓입니다. 이 문서 곳곳의 🔴블로커 표기를 믿지 마십시오.**
+>
+> 아래 본문 여러 곳(`#827`·`#773` 관련 🔴블로커 표기 전부)이 *"Google clasp 대화형 OAuth 자격이 없어 착수 불가"* 라고 적고 있으나, **2026-07-24 라이브 실측으로 전부 반증**됐습니다:
+>
+> | 검사 | 결과 |
+> |---|---|
+> | `~/.clasprc.json` | **존재** — 632B · `authorized_user` · refresh_token 103자 · access_token 253자 |
+> | refresh token 갱신 | `POST oauth2.googleapis.com/token` → **HTTP 200** (`expires_in=3599`) |
+> | scope | `script.projects` · `script.deployments` · `script.webapp.deploy` · `drive.file` 등 **전부 보유** |
+> | Apps Script API | `GET /v1/projects/1AKsi6-…` → **HTTP 200** · `title=종합견적서` · `updateTime=2026-07-13` |
+> | 프로젝트 바인딩 | 레포 루트 `.clasp.json` — `rootDir=tools\legacy-gas\종합견적서-live` |
+>
+> 남은 실무 조건은 자격이 아니라 **`clasp` CLI 전역 미설치** 하나뿐이고 `npx @google/clasp` 로 즉시 우회됩니다.
+> ⟹ **#827 · #773 의 후순위 고정을 해제**합니다. (이슈 본문에도 게시 완료: #827 · #773)
+>
+> 🔑 교훈 — "자격이 없다"는 전제를 **누구도 실행으로 확인하지 않은 채 여러 문서에 박제**했습니다. 블로커 주장도 측정 대상입니다.
+>
+> ⚠️ 별건 보안(미처리) — 라이브 GAS `교육안내 자동상태변경` `Code.js` **첫 줄에 평문 Notion API 토큰**. `legacy-gas-reverify-2026-06-09.md:58` 의 회전 권고가 **6주째 미이행**. 레포 스냅샷은 redact, **라이브가 평문**.
+
 ### 🚨 개발책임자 결정 (이 세션, 전부 반영 완료)
 
 | # | 결정 | 반영 |
