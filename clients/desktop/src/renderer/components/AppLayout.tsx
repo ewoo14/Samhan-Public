@@ -195,6 +195,40 @@ function pageCodeForPath(pathname: string): { pageCode: string; label: string } 
 }
 
 /**
+ * PR #921 chore-B SONNET5 R1 — 이 pathname 의 `.app-main` 렌더가 "그 자체로 인쇄 대상"인지 판정한다.
+ * ①전체 페이지 인쇄 라우트(20개 — 경로에 `/print` 세그먼트 보유: `/sales/:id/print/statement` 류
+ * prefix/중간/suffix 전부 매치) ②페이지 내 `window.print()` 로 `.app-main` 자신을 인쇄하는 조회
+ * 화면(판매조회/구매조회 일괄 인쇄 — PR #921 R-2 fence #6). global.css `@media print` 의
+ * `.app-main:not(.is-print-surface)` 차폐 규칙과 짝을 이룬다 — 전역 모달 게이트
+ * (AppVersionGate/AppNoticeGate) 나 기타 모달이 이 라우트 위에 열려 있어도 인쇄 대상 자신을
+ * 지우지 않기 위함이다(불변식 I-3). `/print` 판정은 세그먼트 경계(`/` 또는 문자열 끝)까지 확인해
+ * 우연한 부분일치(예: `/imprint`)를 배제한다.
+ *
+ * PR #921 chore-B R4 (CODEX SOL 2차 적대검증 B-1) — `/sales/query`·`/purchases/query` 는
+ * deep-link/bookmark 호환용 **별칭**일 뿐, 사이드바 판매관리/구매관리 메뉴의 실제 진입점은
+ * `/sales`·`/purchases`(routes/index.tsx `{ path: '/sales', element: <SalesQueryPage /> }` —
+ * 별칭과 동일 컴포넌트를 렌더)다. 이 둘이 누락돼 기본 메뉴 경로에서 검색 모달을 열고 인쇄하면
+ * 목록이 차폐됐다. `/sales/closing`(회계)·`/sales/link-dispatch`(그룹웨어) 같은 타 그룹 자식
+ * 경로까지 인쇄 표면으로 오판하지 않도록 prefix 가 아닌 **exact 매칭**만 추가한다.
+ * PR #921 chore-B CODEX LUNA 5.6 B-2 — React Router 와 같은 화면으로 해석되는 trailing slash·
+ * 대소문자 변형도 같은 exact 경로로 판정하도록 비교 전에 정규화한다. 자식 경로는 정규화 후에도
+ * 허용 목록과 exact 일치하지 않으므로 계속 제외된다.
+ */
+function isPrintSurfacePath(pathname: string): boolean {
+  const normalizedPathname = pathname.replace(/\/$/, '').toLowerCase()
+
+  if (
+    normalizedPathname === '/sales' ||
+    normalizedPathname === '/sales/query' ||
+    normalizedPathname === '/purchases' ||
+    normalizedPathname === '/purchases/query'
+  ) {
+    return true
+  }
+  return /(^|\/)print(\/|$)/.test(normalizedPathname)
+}
+
+/**
  * 현재 경로가 사이드바 그룹의 활성 대상(to)에 해당하는지 판정한다.
  *
  * [2026-06-11 P2 #1/#5] cross-group 자동펼침 오탐 차단 —
@@ -321,6 +355,10 @@ export function AppLayout() {
   const location = useLocation()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  // PR #921 chore-B SONNET5 R1 — I-3: 이 라우트 자신이 인쇄 대상이면(20개 인쇄 라우트 +
+  // 판매/구매조회 일괄 인쇄) 전역 모달 게이트가 위에 열려 있어도 .app-main 을 인쇄에서 지우지
+  // 않는다. global.css `.app-main:not(.is-print-surface)` 규칙과 짝.
+  const isPrintSurface = isPrintSurfacePath(location.pathname)
 
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -1625,7 +1663,7 @@ export function AppLayout() {
         onClick={() => setDrawerOpen(false)}
         aria-hidden="true"
       />
-      <main className="app-main">
+      <main className={`app-main${isPrintSurface ? ' is-print-surface' : ''}`}>
         <header className="app-header no-print">
           <div className="app-header-title-row">
             <button
