@@ -4,7 +4,33 @@
 
 ---
 
-## ☀️ 2026-07-24 (회사PC 오전~) — **#880 머지 · 3트랙 진행 · 신규 트랙 개설** ◀◀◀ 여기부터 읽으십시오
+## 🌆 2026-07-24 (회사PC 오후 마감) — **세션 2머지 + T7 진행 중(회계 정책 결정)** ◀◀◀ 여기부터 읽으십시오
+
+> 🚩 **다음 세션 시작 절차**: `git pull` → `.\scripts\sync-claude-memory.ps1` → 이 문단.
+
+### 이 세션(오후) 성과
+| 트랙 | PR | 결과 |
+|---|---|---|
+| T4 | #921 | ✅ **머지** `a6b5e88c2` — 문서 모달 인쇄 배경 차폐(5라운드 수렴) |
+| T6 | #923(#870) | ✅ **머지** `de1601bda` — 권한 캐시 세션전환 폐기 + freshness(3턴 수렴·fan-out 유발→dedupe) |
+| T7 | #924(#831) | 🔄 **진행 중** — 아래 |
+
+- **이슈 전수 정찰 완료**: 닫음 6(#880·#898·#872·#873·#877 + #870 머지) · 본문 갱신 21 · **Google clasp 블로커 라이브 반증→해제**(#827·#773·#875, 자격 실재·Apps Script API 200)
+- **codex 병렬 실측 확인** — 세션 내내 순차로 오해했으나 2 codex 동시 backgrounded 성공. ⚠️ 단 codex 콘텐츠 필터가 "권한/세션/인증" 브리핑을 사이버보안 위험으로 오탐(T6 SOL 2차 1회 FAIL) → **중립 표현(메뉴 목록 데이터·표시 정합성) 재구성 필요**
+
+### 🔴 T7 #924 재개 지점 (미완 — 여기서 이어감)
+- **브랜치** `fix/831-lookup-unavailable-sweep` · **워크트리** `.claude/worktrees/831-lookup` · **원격 HEAD** `28203e538`(근본 fix, **CI RED**·과잉502)
+- **라운드 이력**: LUNA 구현 → OPUS 1차(도달가능 2 무필터) → SONNET fix(2/14만 덮음) → SOL 2차(도달가능 2·12소비처, 라이브 실증) → LUNA 근본 fix(`findByPartnerIdsBatch` throw=12곳 일괄) → **OPUS 재수렴 BLOCK**(과잉 502: write까지 롤백 + CI RED)
+- **🚨 개발책임자 정책 결정(2026-07-24, PR #924 기록)**: 표시명 조회 UNAVAILABLE 시 — **read 리포트=502 fail-closed**(파트너 신원=행 의미: 에이징·매출집계·원장·자금현황·미수미지급 목록) / **write·detail=공란 성사·롤백 금지**(저널 생성/게시/역분개·입금보고서 확정/취소·저널 상세)
+- **🔧 SONNET5 fix 진행 중**(세션 종료로 중단됐을 수 있음) — `831-lookup` 에 **미커밋 산출물**: `PartnerLookupSupport.java`·`CashReceiptService.java`·`JournalService.java` + 신규 `WriteDetailPartnerLookupBlankFallbackTest.java`. ⚠️ **부분일 수 있음** — 재개 시 `git -C .claude/worktrees/831-lookup status` + diff 확인 → 완성됐으면 커밋+push, 미완이면 SONNET5 재디스패치(정책·불변식은 PR #924 코멘트 참조)
+- **다음**: SONNET fix 완성 → 커밋 → CI green(exact SHA·`TaxInvoiceControllerIT` 실 client IT 가 write 502 를 잡음) → OPUS 재수렴 1회 → PM 머지. **Q3 단건/directory 잔여계열**(AccountingPartnerSearchController·Ecount import 등)은 근본 fix 범위 밖·별개(범위 동결)
+
+### 하네스 교훈 (T7)
+적대검증이 스펙을 층층이 관통: **기획 13곳 → 무필터 → 12 소비처 → write 과잉502**. 근본 fix 가 "위치를 옮기는 fix" 함정(무음 붕괴→과잉 롤백)에 빠진 걸 재수렴이 **CI RED 로 실증**. `c` 2연속 1.0(fix 분할 동결 신호) → 회계 무결성 도메인이라 **개발책임자 바운드**로 해결. → [[feedback_accounting_enrichment_failclosed_policy]] 신설
+
+---
+
+## ☀️ 2026-07-24 (회사PC 오전~) — **#880 머지 · 3트랙 진행 · 신규 트랙 개설**
 
 > 🚩 **다음 세션 시작 절차**: `git pull` → `.\scripts\sync-claude-memory.ps1` → 이 문단.
 
