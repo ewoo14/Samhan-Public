@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
 import com.samhanair.logis.security.InternalAuthProperties;
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -14,7 +15,9 @@ import java.util.UUID;
 import java.math.BigDecimal;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
@@ -56,20 +59,109 @@ public class PartnerLookupClient {
         public boolean isUnavailable() { return status == LookupStatus.UNAVAILABLE; }
     }
 
+    /**
+     * partnerId batch 조회 결과 — 부분 성공과 전면 장애를 구분한다.
+     *
+     * <p>조회한 partnerId 중 일부가 결과에 없는 것(삭제/미존재 거래처 혼재)은 partner-service 가
+     * 정상 응답했다는 뜻이므로 {@code FOUND}(부분 맵, 심지어 빈 맵)이다. 5xx/timeout/네트워크
+     * 오류 및 구조적으로 손상된 응답만 {@code UNAVAILABLE} 로 승격해, 호출부가 "조용한 0건"과
+     * "장애"를 구별할 수 있게 한다(#831 B군).
+     */
+    public record BatchLookupResult(LookupStatus status, Map<UUID, PartnerSummary> partners) {
+        public BatchLookupResult {
+            partners = partners == null ? Map.of() : Map.copyOf(partners);
+        }
+
+        public static BatchLookupResult found(Map<UUID, PartnerSummary> partners) {
+            return new BatchLookupResult(LookupStatus.FOUND, partners);
+        }
+
+        public static BatchLookupResult unavailable() {
+            return new BatchLookupResult(LookupStatus.UNAVAILABLE, Map.of());
+        }
+
+        public boolean isUnavailable() { return status == LookupStatus.UNAVAILABLE; }
+    }
+
+    /** directory 목록 조회 결과도 미존재와 partner-service 장애를 구분한다. */
+    public record DirectoryLookupResult(LookupStatus status, List<PartnerSummary> partners) {
+        public DirectoryLookupResult {
+            partners = partners == null ? List.of() : List.copyOf(partners);
+        }
+
+        public static DirectoryLookupResult found(List<PartnerSummary> partners) {
+            return new DirectoryLookupResult(LookupStatus.FOUND, partners);
+        }
+
+        public static DirectoryLookupResult notFound() {
+            return new DirectoryLookupResult(LookupStatus.NOT_FOUND, List.of());
+        }
+
+        public static DirectoryLookupResult unavailable() {
+            return new DirectoryLookupResult(LookupStatus.UNAVAILABLE, List.of());
+        }
+
+        public boolean isFound() { return status == LookupStatus.FOUND; }
+        public boolean isNotFound() { return status == LookupStatus.NOT_FOUND; }
+        public boolean isUnavailable() { return status == LookupStatus.UNAVAILABLE; }
+    }
+
     private static final Logger log = LoggerFactory.getLogger(PartnerLookupClient.class);
     private static final String INTERNAL_TOKEN_HEADER = "X-Internal-Token";
     private static final String PARTNER_SERVICE_BASE = "http://partner-service";
+
+    /**
+     * 연결/응답 제한시간(#831 R-6) — partner-service 가 응답하지 않을 때(docker pause 라이브 실측:
+     * 40초 무응답) {@code CashReceiptService}/{@code JournalService} 의 클래스 레벨
+     * {@code @Transactional} write 오퍼레이션이 열린 DB 커넥션을 붙든 채 무한 대기하는 것을 막는다.
+     * 같은 패키지 형제 client 인 {@link ApprovalLineAuthorizeClient}·{@link AuthAccountLookupClient}
+     * 가 이미 이 값(connect 2s/read 3s)으로 오탐 없이 운용 중이라 동일 값을 채택했다 — partner-service
+     * 단건/배치 조회 모두 단순 indexed 조회이고, 배치 대상도 저널/입금보고서 1건에 실제 등장하는
+     * 거래처 수(보통 한 자릿수~수십)라 형제 client 의 단건 조회와 응답 생성 복잡도가 크게 다르지 않다.
+     */
+    private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(2);
+    private static final Duration READ_TIMEOUT = Duration.ofSeconds(3);
 
     private final RestClient restClient;
     private final InternalAuthProperties internalAuthProperties;
     private final ObjectMapper objectMapper;
 
+    @Autowired
     public PartnerLookupClient(@Qualifier("loadBalancedRestClientBuilder") RestClient.Builder builder,
                                InternalAuthProperties internalAuthProperties,
                                ObjectMapper objectMapper) {
-        this.restClient = builder.baseUrl(PARTNER_SERVICE_BASE).build();
+        this.restClient = builder.baseUrl(PARTNER_SERVICE_BASE)
+                .requestFactory(timeoutRequestFactory())
+                .build();
         this.internalAuthProperties = internalAuthProperties;
         this.objectMapper = objectMapper;
+    }
+
+    /**
+     * 테스트 전용 생성자 — MockRestServiceServer/실 소켓에 바인딩된 RestClient 를 직접 주입한다.
+     *
+     * <p>public — {@code report}/{@code service} 패키지의 기존 테스트(PartnerAgingServiceTest 등)가
+     * client 패키지 밖에서도 이 생성자로 실 client + MockRestServiceServer 조합을 구성해야 한다.
+     * 프로덕션 DI 경로는 위의 {@code @Autowired} 생성자만 사용한다.
+     */
+    public PartnerLookupClient(RestClient restClient, InternalAuthProperties internalAuthProperties,
+                               ObjectMapper objectMapper) {
+        this.restClient = restClient;
+        this.internalAuthProperties = internalAuthProperties;
+        this.objectMapper = objectMapper;
+    }
+
+    /**
+     * {@link #CONNECT_TIMEOUT}/{@link #READ_TIMEOUT} 를 적용한 요청 factory.
+     *
+     * <p>package-private static 로 분리해 테스트가 프로덕션 생성자와 동일한 제한시간 설정을
+     * 재사용할 수 있게 한다(중복 정의 방지 — {@code PartnerLookupClientTimeoutTest}).
+     */
+    static SimpleClientHttpRequestFactory timeoutRequestFactory() {
+        SimpleClientHttpRequestFactory rf = new SimpleClientHttpRequestFactory();
+        rf.setConnectTimeout((int) CONNECT_TIMEOUT.toMillis());
+        rf.setReadTimeout((int) READ_TIMEOUT.toMillis());
+        return rf;
     }
 
     /**
@@ -153,13 +245,32 @@ public class PartnerLookupClient {
      * @return partnerId → PartnerSummary Map
      */
     public Map<UUID, PartnerSummary> findByPartnerIdsBatch(List<UUID> partnerIds) {
+        BatchLookupResult result = findByPartnerIdsBatchResult(partnerIds);
+        if (result == null || result.isUnavailable()) {
+            // 구 Map API도 장애 상태를 빈 맵으로 위장하지 않는다. 이 API는 표시명
+            // enrichment 전용 소비처 12곳이 공통으로 사용하므로 502 fail-closed가 맞다.
+            throw PartnerLookupSupport.unavailable();
+        }
+        return result.partners();
+    }
+
+    /**
+     * partnerId batch 조회의 FOUND(부분 성공 포함)/UNAVAILABLE 결과를 보존한다 (#831 B군).
+     *
+     * <p>요청한 id 중 일부가 매칭되지 않는 것은 partner-service 가 정상 응답한 것이므로
+     * FOUND(부분 맵)이다. 5xx/timeout/네트워크 오류 및 구조 손상 응답만 UNAVAILABLE 로 승격한다.
+     *
+     * @param partnerIds 조회할 거래처 UUID 목록
+     * @return FOUND(부분 성공 포함) 또는 UNAVAILABLE
+     */
+    public BatchLookupResult findByPartnerIdsBatchResult(List<UUID> partnerIds) {
         if (partnerIds == null || partnerIds.isEmpty()) {
-            return Map.of();
+            return BatchLookupResult.found(Map.of());
         }
         LinkedHashSet<UUID> distinct = new LinkedHashSet<>(partnerIds);
         distinct.removeIf(java.util.Objects::isNull);
         if (distinct.isEmpty()) {
-            return Map.of();
+            return BatchLookupResult.found(Map.of());
         }
         String token = internalAuthProperties.getToken();
         if (token == null || token.isBlank()) {
@@ -172,19 +283,19 @@ public class PartnerLookupClient {
                     .body(Map.of("ids", distinct))
                     .retrieve()
                     .body(String.class);
-            return parsePartnerSummaries(body);
+            return parsePartnerSummariesResult(body);
         } catch (RestClientResponseException ex) {
             int status = ex.getStatusCode().value();
             if (status == 401 || status == 403) {
                 throw internalAuthMiss("partnerIds", distinct.size(), status);
             }
-            log.warn("PartnerLookupClient batch — count={} status={} (예외)",
+            log.warn("PartnerLookupClient batch — count={} status={} (일시 장애)",
                     distinct.size(), status);
-            return Map.of();
+            return BatchLookupResult.unavailable();
         } catch (Exception ex) {
             log.warn("PartnerLookupClient batch 호출 실패 — count={}, msg={}",
                     distinct.size(), ex.getMessage());
-            return Map.of();
+            return BatchLookupResult.unavailable();
         }
     }
 
@@ -200,8 +311,14 @@ public class PartnerLookupClient {
      * @return 매칭된 거래처 요약 목록. 실패 시 빈 목록
      */
     public List<PartnerSummary> searchDirectory(String query, int limit) {
+        DirectoryLookupResult result = searchDirectoryResult(query, limit);
+        return result.isFound() ? result.partners() : List.of();
+    }
+
+    /** directory 목록 조회의 FOUND/NOT_FOUND/UNAVAILABLE 결과를 보존한다. */
+    public DirectoryLookupResult searchDirectoryResult(String query, int limit) {
         if (query == null || query.isBlank()) {
-            return List.of();
+            return DirectoryLookupResult.notFound();
         }
         String token = internalAuthProperties.getToken();
         if (token == null || token.isBlank()) {
@@ -217,17 +334,20 @@ public class PartnerLookupClient {
                     .header(INTERNAL_TOKEN_HEADER, token)
                     .retrieve()
                     .body(String.class);
-            return parseSummaryList(body);
+            return parseSummaryListResult(body);
         } catch (RestClientResponseException ex) {
             int status = ex.getStatusCode().value();
             if (status == 401 || status == 403) {
                 throw internalAuthMiss("partnerDirectory", query, status);
             }
+            if (status == 404 || status == 409) {
+                return DirectoryLookupResult.notFound();
+            }
             log.warn("PartnerLookupClient directory — q={} status={} (예외)", query, status);
-            return List.of();
+            return DirectoryLookupResult.unavailable();
         } catch (Exception ex) {
             log.warn("PartnerLookupClient directory 호출 실패 — q={}, msg={}", query, ex.getMessage());
-            return List.of();
+            return DirectoryLookupResult.unavailable();
         }
     }
 
@@ -242,7 +362,13 @@ public class PartnerLookupClient {
      * @return PartnerSummary (성공) 또는 empty (실패)
      */
     public Optional<PartnerSummary> findByPartnerName(String partnerName) {
-        return findByPartnerName(partnerName, false);
+        LookupResult result = findByPartnerNameResult(partnerName);
+        return result == null || !result.isFound() ? Optional.empty() : Optional.of(result.partner());
+    }
+
+    /** 거래처명 조회의 FOUND/NOT_FOUND/UNAVAILABLE 결과를 보존한다. */
+    public LookupResult findByPartnerNameResult(String partnerName) {
+        return findByPartnerNameResult(partnerName, false);
     }
 
     /**
@@ -253,12 +379,13 @@ public class PartnerLookupClient {
      * 404/네트워크 실패는 기존 fail-soft miss 로 둔다.
      */
     public Optional<PartnerSummary> findByPartnerNameStrict(String partnerName) {
-        return findByPartnerName(partnerName, true);
+        LookupResult result = findByPartnerNameResult(partnerName, true);
+        return result == null || !result.isFound() ? Optional.empty() : Optional.of(result.partner());
     }
 
-    private Optional<PartnerSummary> findByPartnerName(String partnerName, boolean strictAmbiguous) {
+    private LookupResult findByPartnerNameResult(String partnerName, boolean strictAmbiguous) {
         if (partnerName == null || partnerName.isBlank()) {
-            return Optional.empty();
+            return LookupResult.notFound();
         }
         String token = internalAuthProperties.getToken();
         if (token == null || token.isBlank()) {
@@ -272,7 +399,7 @@ public class PartnerLookupClient {
                     .header(INTERNAL_TOKEN_HEADER, token)
                     .retrieve()
                     .body(String.class);
-            return parseSummary(body);
+            return parseSummaryResult(body);
         } catch (RestClientResponseException ex) {
             int status = ex.getStatusCode().value();
             if (status == 409 && strictAmbiguous) {
@@ -285,14 +412,14 @@ public class PartnerLookupClient {
             if (status == 404 || status == 409) {
                 log.debug("PartnerLookupClient — partnerName={} status={} (lookup miss/ambiguous)",
                         partnerName, status);
-                return Optional.empty();
+                return LookupResult.notFound();
             }
             log.warn("PartnerLookupClient — partnerName={} status={} (예외)", partnerName, status);
-            return Optional.empty();
+            return LookupResult.unavailable();
         } catch (Exception ex) {
             log.warn("PartnerLookupClient partnerName 호출 실패 — partnerName={}, msg={}",
                     partnerName, ex.getMessage());
-            return Optional.empty();
+            return LookupResult.unavailable();
         }
     }
 
@@ -339,16 +466,18 @@ public class PartnerLookupClient {
     }
 
     /** ApiResponse wrapper 의 data.partners 또는 root.partners → partnerId/summary Map 변환. */
-    private Map<UUID, PartnerSummary> parsePartnerSummaries(String body) {
+    private BatchLookupResult parsePartnerSummariesResult(String body) {
         if (body == null || body.isBlank()) {
-            return Map.of();
+            // 200 인데 body 가 비었다는 것은 구조적으로 손상된 응답 — 장애로 승격한다.
+            return BatchLookupResult.unavailable();
         }
         try {
             JsonNode root = objectMapper.readTree(body);
             JsonNode data = root.has("data") ? root.get("data") : root;
             JsonNode partners = data == null ? null : data.get("partners");
             if (partners == null || !partners.isArray()) {
-                return Map.of();
+                // partners 필드 자체가 없는 것(빈 배열과 다름)은 응답 계약 위반 — 장애로 승격한다.
+                return BatchLookupResult.unavailable();
             }
             Map<UUID, PartnerSummary> result = new LinkedHashMap<>();
             for (JsonNode partner : partners) {
@@ -359,29 +488,40 @@ public class PartnerLookupClient {
                 String address = textOrNull(partner, "address");
                 BigDecimal creditLimit = decimalOrNull(partner, "creditLimit");
                 String status = textOrNull(partner, "status");
-                if (id != null && (partnerCode != null || name != null)) {
-                    result.put(id, new PartnerSummary(id, partnerCode, name, businessNo, address,
-                            creditLimit, status));
+                if (id == null || (partnerCode == null && name == null)) {
+                    // 배열에 원소가 존재하는데 필수 식별/표시 필드가 손상된 것은 정상
+                    // 미존재(요청 id가 배열에서 누락)와 다르다. 전체 응답을 장애로 승격한다.
+                    log.warn("PartnerLookupClient batch response 구조손상 — 필수 partner 필드 누락");
+                    return BatchLookupResult.unavailable();
                 }
+                result.put(id, new PartnerSummary(id, partnerCode, name, businessNo, address,
+                        creditLimit, status));
             }
-            return result;
+            // partners 가 빈 배열([])인 것은 요청한 id 가 하나도 매칭되지 않은 정상 응답이다
+            // (삭제/미존재 거래처 혼재) — UNAVAILABLE 이 아니라 FOUND(부분/빈 맵)로 유지한다.
+            return BatchLookupResult.found(result);
         } catch (Exception ex) {
             log.warn("PartnerLookupClient batch response 파싱 실패 — bodyLen={}, msg={}",
                     body.length(), ex.getMessage());
-            return Map.of();
+            return BatchLookupResult.unavailable();
         }
     }
 
     /** ApiResponse wrapper 의 data 배열 → PartnerSummary 목록 변환. */
     private List<PartnerSummary> parseSummaryList(String body) {
+        DirectoryLookupResult result = parseSummaryListResult(body);
+        return result.isFound() ? result.partners() : List.of();
+    }
+
+    private DirectoryLookupResult parseSummaryListResult(String body) {
         if (body == null || body.isBlank()) {
-            return List.of();
+            return DirectoryLookupResult.unavailable();
         }
         try {
             JsonNode root = objectMapper.readTree(body);
             JsonNode data = root.has("data") ? root.get("data") : root;
             if (data == null || !data.isArray()) {
-                return List.of();
+                return DirectoryLookupResult.unavailable();
             }
             java.util.ArrayList<PartnerSummary> result = new java.util.ArrayList<>();
             for (JsonNode partner : data) {
@@ -397,11 +537,13 @@ public class PartnerLookupClient {
                             creditLimit, status));
                 }
             }
-            return result;
+            return result.isEmpty()
+                    ? DirectoryLookupResult.notFound()
+                    : DirectoryLookupResult.found(result);
         } catch (Exception ex) {
             log.warn("PartnerLookupClient directory response 파싱 실패 — bodyLen={}, msg={}",
                     body.length(), ex.getMessage());
-            return List.of();
+            return DirectoryLookupResult.unavailable();
         }
     }
 
