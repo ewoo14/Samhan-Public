@@ -160,14 +160,29 @@ describe('CodefImportScopeForm — #825 슬5 R1 BLOCKING#1/H-4/item5 회귀', ()
 
     renderForm()
     await waitFor(() => expect((screen.getByTestId('codef-save-scope-button') as HTMLButtonElement).disabled).toBe(false))
+    // #950 R3 flake 흡수 — 이 대기는 accounts/cards/loans/scope 4개 쿼리가 각기 다른
+    // 마이크로태스크에서 resolve되고, 그 뒤를 잇는 복원 useEffect·react-query 알림이 React
+    // 스케줄러(MessageChannel 매크로태스크)를 거쳐 커밋되는 다단 비동기 경계 위에 서 있다.
+    // "disabled=false"를 확인한 시점에도 같은 매크로태스크 큐에 아직 배출되지 않은 후속
+    // 커밋이 남아 있을 수 있어(test-utils/flush.ts의 #933 분석과 동일 계열 경계 — 그 큐
+    // 배출 순서는 격리 실행과 전체 스위트 동시 실행에서 달라질 수 있다), 클릭 전에 그 큐를
+    // 결정적으로 비워 지금 읽은 disabled=false가 이후 취소되지 않을 안정 상태임을 보장한다.
+    await flushZeroDelayTasks()
 
     fireEvent.click(screen.getByTestId('codef-save-scope-button'))
-    await waitFor(() => expect(saveCodefImportScopeMock).toHaveBeenCalledTimes(1))
+    // 저장 스파이 호출 자체가 mutate() 호출 직후 마이크로태스크를 몇 틱 더 거쳐야 관측된다
+    // (RED 조사에서 클릭 직후 동기적으로는 calls.length===0임을 실측). 전체 스위트 동시
+    // 실행처럼 스케줄링 지연이 커지는 환경에서도 이 관측 자체는 무너지지 않도록(assert가
+    // 검증하는 낙관적 잠금 계약은 그대로 두고) 대기 한도만 넉넉히 잡는다.
+    await waitFor(() => expect(saveCodefImportScopeMock).toHaveBeenCalledTimes(1), { timeout: 5000 })
     expect(saveCodefImportScopeMock.mock.calls[0]![0]).toMatchObject({ version: 0 })
 
     fireEvent.click(screen.getByTestId('codef-bank-account-1'))
+    // 체크박스 클릭의 setSelection/setScopeMode 커밋이 저장 버튼 재계산에 반영됐음을 다음
+    // 클릭 전에 보장한다 — 위와 동일한 이유(대기 조건 부재가 아니라 상태 갱신 타이밍).
+    await flushZeroDelayTasks()
     fireEvent.click(screen.getByTestId('codef-save-scope-button'))
-    await waitFor(() => expect(saveCodefImportScopeMock).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(saveCodefImportScopeMock).toHaveBeenCalledTimes(2), { timeout: 5000 })
     expect(saveCodefImportScopeMock.mock.calls[1]![0]).toMatchObject({ version: 1 })
   })
 
@@ -853,13 +868,23 @@ describe('CodefImportScopeForm — #825 슬5 R1 BLOCKING#1/H-4/item5 회귀', ()
 
     renderForm()
     await waitFor(() => expect((screen.getByTestId('codef-import-button') as HTMLButtonElement).disabled).toBe(false))
+    // #950 R3-2 flake 흡수 — 첫 flake(§9)와 같은 근본 원인 계열(비동기 경계 위에서 disabled=
+    // false를 확인한 시점과 그 값에 기대어 행동하는 시점 사이에 아직 배출되지 않은 스케줄러
+    // 작업이 남아 있을 수 있음)이 검증됐다. react-query useMutation 훅은 매 렌더마다
+    // useEffect(패시브, 렌더와 비동기적으로 분리)로 observer.setOptions()를 호출하고,
+    // mutation이 아직 pending이면 그 최신 mutationFn 클로저를 활성 mutation에 즉시 전파한다
+    // (node_modules/@tanstack/query-core mutationObserver.js:44-46 실측 확인). 클릭 전
+    // 이 경계를 결정적으로 비워 restoredScope/scopeMode/type 복원이 완전히 정착된 뒤에만
+    // 클릭이 나가도록 보장한다 — 원인이 100% 동일하다고 단정하지 않되, 검증된 동일 계열의
+    // 경계를 닫는 조치다(dev-report §10 참고).
+    await flushZeroDelayTasks()
     // 화면엔 카드 카테고리만 보인다 — 계좌 체크박스는 아예 렌더되지 않는다(I-1 전제 조건).
     expect(screen.queryByTestId('codef-bank-account-0')).toBeNull()
     expect(screen.getByTestId('codef-card-0')).toBeTruthy()
 
     fireEvent.click(screen.getByTestId('codef-import-button'))
 
-    await waitFor(() => expect(importScopedCodefMock).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(importScopedCodefMock).toHaveBeenCalledTimes(1), { timeout: 5000 })
     // 핵심 단언 — branch B는 저장 여부와 무관하게 현재 화면 범위(type)로 필터링된 선택만
     // 실행 계약에 명시한다. 화면에 없는 계좌(BANK_A)는 accountRefs 에 나타나지 않는다.
     expect(importScopedCodefMock.mock.calls[0]![0]).toMatchObject({
@@ -913,6 +938,99 @@ describe('CodefImportScopeForm — #825 슬5 R1 BLOCKING#1/H-4/item5 회귀', ()
     expect(await screen.findByText('저장된 선택이 없습니다. 필요한 항목을 선택한 뒤 저장하세요.')).toBeTruthy()
     expect((screen.getByTestId('codef-save-scope-button') as HTMLButtonElement).disabled).toBe(true)
     expect((screen.getByTestId('codef-import-button') as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('미선택 안내는 전체 칩과 계좌·카드·대출 개별 선택 경로를 함께 안내한다', async () => {
+    listCodefBankAccountsMock.mockResolvedValue([BANK_A])
+    listCodefCardsMock.mockResolvedValue([CARD_A])
+    listCodefLoansMock.mockResolvedValue([])
+    loadCodefImportScopeMock.mockResolvedValue({
+      connectedId: 'connected-main', accountRefs: [], cardRefs: [], loanRefs: [],
+      defaultImportType: 'ALL', scopeMode: null,
+    })
+
+    renderForm()
+
+    const hint = await screen.findByTestId('codef-scope-hint')
+    expect(hint.textContent).toContain("전체로 처리하려면 '전체' 칩을 선택하세요.")
+    expect(hint.textContent).toContain('특정 항목만 처리하려면 계좌·카드·대출 항목을 선택하세요.')
+  })
+
+  it('전체 범위 칩은 Enter와 Space로 켜고 끄는 왕복 조작이 된다', async () => {
+    listCodefBankAccountsMock.mockResolvedValue([BANK_A])
+    listCodefCardsMock.mockResolvedValue([CARD_A])
+    listCodefLoansMock.mockResolvedValue([])
+    loadCodefImportScopeMock.mockResolvedValue({
+      connectedId: 'connected-main', accountRefs: [], cardRefs: [], loanRefs: [],
+      defaultImportType: 'ALL', scopeMode: null,
+    })
+
+    renderForm()
+
+    await waitFor(() => expect((screen.getByTestId('codef-bank-account-0') as HTMLInputElement).disabled).toBe(false))
+    const pressable = (await screen.findByTestId('codef-all-scope-chip')).querySelector('[role="button"]')
+    expect(pressable).not.toBeNull()
+    fireEvent.keyDown(pressable as Element, { key: 'Enter' })
+    await waitFor(() => expect(pressable?.getAttribute('aria-pressed')).toBe('true'))
+    fireEvent.keyDown(pressable as Element, { key: 'Enter' })
+    await waitFor(() => expect(pressable?.getAttribute('aria-pressed')).toBe('false'))
+    expect(screen.getByTestId('codef-scope-hint')).toBeTruthy()
+
+    fireEvent.keyDown(pressable as Element, { key: ' ' })
+    await waitFor(() => expect(pressable?.getAttribute('aria-pressed')).toBe('true'))
+    fireEvent.keyDown(pressable as Element, { key: ' ' })
+    await waitFor(() => expect(pressable?.getAttribute('aria-pressed')).toBe('false'))
+    expect(screen.getByTestId('codef-scope-hint')).toBeTruthy()
+  })
+
+  it('R1-1(#950) — 저장된 전체가 dirty 해진 뒤 개별 항목을 고르면 가져오기 잠금 사유가 화면에 남고 aria-describedby 는 실재하는 id만 가리킨다', async () => {
+    // 재현 — 개발책임자 R1 브리핑 4단계 그대로: ①전체 저장(=scopeMode:'ALL' 복원) →
+    // ②전체 칩을 다시 눌러 해제(scopeMode:null, restoredScope 는 여전히 ALL이라 dirty) →
+    // ③계좌 목록에서 1건 체크(scopeMode:'SELECTED' 로 전환). 저장까지 왕복하지 않고
+    // "이미 저장된 ALL" 을 mount 복원으로 준비해 같은 클라이언트 상태를 결정적으로 만든다
+    // (H-4 기존 테스트와 동일 관행 — savedAllScopeDirty 는 restoredScope.scopeMode 와
+    // selectionDirty 만으로 계산되어 저장 왕복 여부와 무관하다).
+    listCodefBankAccountsMock.mockResolvedValue([BANK_A])
+    listCodefCardsMock.mockResolvedValue([])
+    listCodefLoansMock.mockResolvedValue([])
+    loadCodefImportScopeMock.mockResolvedValue({
+      connectedId: 'connected-main',
+      accountRefs: [],
+      cardRefs: [],
+      loanRefs: [],
+      defaultImportType: 'ALL',
+      scopeMode: 'ALL',
+      version: 3,
+    } satisfies ScopeWithVersion)
+
+    renderForm()
+    await waitFor(() => expect((screen.getByTestId('codef-save-scope-button') as HTMLButtonElement).disabled).toBe(false))
+    const pressable = screen.getByTestId('codef-all-scope-chip').querySelector('[role="button"]') as HTMLElement
+    expect(pressable.getAttribute('aria-pressed')).toBe('true')
+
+    // ② 전체 칩을 다시 눌러 해제한다.
+    fireEvent.click(pressable)
+    await waitFor(() => expect(pressable.getAttribute('aria-pressed')).toBe('false'))
+
+    // ③ 계좌 목록에서 1건을 체크한다.
+    fireEvent.click(screen.getByTestId('codef-bank-account-0'))
+    await waitFor(() => expect((screen.getByTestId('codef-bank-account-0') as HTMLInputElement).checked).toBe(true))
+
+    const importButton = screen.getByTestId('codef-import-button') as HTMLButtonElement
+    // savedAllScopeDirty 는 scopeMode 값과 무관해 계속 가져오기를 잠근다 — 이 자체는
+    // 버그가 아니다(의도된 게이트). 버그는 "그 이유가 화면에 없다" + "가리키는 id가 없다".
+    expect(importButton.disabled).toBe(true)
+    const describedBy = importButton.getAttribute('aria-describedby')
+    expect(describedBy, 'R1-1 문제2 — 가져오기 버튼에 aria-describedby 가 아예 없음').toBeTruthy()
+    for (const id of (describedBy ?? '').split(' ').filter(Boolean)) {
+      expect(document.getElementById(id), `R1-1 문제2 — aria-describedby 대상 id가 DOM에 없음: ${id}`).not.toBeNull()
+    }
+    // R1-1 문제1 — 비활성 사유(저장된 전체가 아직 반영되지 않았다는 사실)를 설명하는 문구가
+    // scopeMode==='SELECTED' 로 바뀐 뒤에도 화면 어딘가에 실제로 보여야 한다.
+    expect(
+      screen.queryByText('저장된 전체 범위의 유형을 바꾸려면 먼저 저장하세요.'),
+      'R1-1 문제1 — 가져오기가 잠긴 이유가 화면 어디에도 보이지 않음',
+    ).not.toBeNull()
   })
 
   it('기존 빈-ref SELECTED 행은 복원 실패를 안내하고 저장·가져오기를 잠근다', async () => {

@@ -31,6 +31,16 @@
 
 ### 최신 진행 메모 (2026-07-27)
 
+- **#887 슬5 R3 잔여 3건 + R1 적대검증 fix (Issue #887 / PR #950)**: CODEF 오류 힌트 대비
+  미달(3.76:1)을 자매 화면과 같은 `--color-danger-700`로 8.31:1까지 올리고, CODEF·일마감·
+  안전재고 전체 범위 칩이 Enter/Space로 켜고 끄는 왕복 조작이 되도록 고치고, 세 화면 미선택
+  안내를 전체·개별 경로 동시 명시로 통일했다. 이어진 R1 적대검증은 두 결함을 root fix했다 —
+  ① 저장된 전체 범위가 dirty해진 채 개별 항목을 고르면 가져오기 잠금 사유 힌트가 DOM에서
+  사라지고 `aria-describedby`만 대상 없는 id를 가리키던 결함(사유 힌트를 `scopeMode` 값과
+  독립된 블록으로 분리해 항상 렌더), ② `CodefImportScopeForm` 저장/가져오기 오류 토스트
+  (`.bank-transaction-toast--error`)의 실측 대비 3.08:1을 텍스트 색 통일로 6.80:1까지
+  올렸다(같은 클래스를 쓰는 `DepositorMappingPage` 오류 토스트도 함께 해소). RED-first
+  Vitest·Playwright 검증과 typecheck을 통과했다. 상세: `docs/dev-reports/2026-07-27-887-s5-r3-batch.md`.
 - **#863 잔여 R1 fix — 기획 전제 재검증 후 축소, real-QA·mock 공통 overwrite 가드 일반화**:
   PR #952(#863 잔여 — "mock 스펙 41개가 `docs/qa/**` 에 직접 쓴다")의 기획 전제가 R1
   적대검증에서 거짓으로 드러났다 — 전환 대상 35파일 전부가 `main` 에서 이미
