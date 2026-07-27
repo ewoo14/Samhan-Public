@@ -3127,3 +3127,21 @@ OUTBOUND/INBOUND 전표가 committed(SENT+)로 전이 시 거래처(`partner_id`
 | D-928-02 | 웹 버전 안내는 배너/상태 영역으로 표시하고 자동 reload·주기 polling·OTA를 사용하지 않는다. 사용자가 `페이지 새로고침`을 선택했을 때만 이동한다. `MINOR`는 localStorage, `MAJOR`는 sessionStorage에 보류를 기록하며 `CRITICAL`은 보류 없이 안내한다. |
 | D-928-03 | reload 전 dirty 판정은 주문·견적의 실제 작성 DOM에서 `value/defaultValue` 또는 `checked/defaultChecked`를 비교하고 필터 입력은 제외한다. 모바일 퍼블릭은 `EmployeeSignaturePage`의 `empty` 서명 상태를 전달한다. dirty이면 취소 가능한 추가 확인을 먼저 보여 주어 입력을 소리 없이 버리지 않는다. |
 | D-928-04 | 버전 조회의 404·네트워크·응답 형식 오류는 `null`로 수렴해 기존 화면을 계속 사용한다. 개발 빌드는 `0.1.0-dev` sentinel을 사용하고, 릴리스 모드에서만 `YYYY/MM/DD-{번호}` 주입을 필수화한다. |
+| D-S6-04 | 데스크톱 `/messenger`는 design-system의 기존 `MultiSelectAutocomplete`를 무수정 사용한다. 칩과 수신함에는 이름·부서·본문·상태만 표시하고 UUID/opaque user id는 표시하지 않는다. 기존 단건 발송 endpoint는 삭제·변경하지 않고 deprecated 표기만 추가한다. |
+
+## #910 앱별 버전 정책 식별자 (2026-07-25)
+
+| 결정 코드 | 내용 |
+|---|---|
+| D-910-01 | 앱 식별자 정본은 `DESKTOP`(삼한 데스크톱), `SAMHAN_MOBILE`, `SAMHAN_MOBILE_STAFF`, `AROLOGIS_MOBILE`, `SAMHAN_ORDER_WEB`, `SAMHAN_ESTIMATE_WEB`, `SAMHAN_MOBILE_PUBLIC_WEB`, `AROLOGIS_DESKTOP` 8개로 둔다. `mobile-staff`의 EAS slug가 `samhan-estimate`인 것처럼 slug 추론은 금지하고 명시 매핑만 사용한다. |
+| D-910-02 | 기존 `DESKTOP` 레코드는 값을 변경하지 않고 삼한 데스크톱 정책으로 보존한다. 구버전 `WEB`·`MOBILE` 요청은 enum/DB에서 계속 수용하되 신규 관리 화면 선택지에서는 제외한다. 따라서 BE 선배포 후 구버전 클라이언트의 버전 확인 실패는 클라이언트 fail-open 경로로 수렴한다. |
+| D-910-03 | 앱 릴리스 unique/index 조회 축은 `client_type`별로 유지한다. `V7__app_release_client_identity.sql`에서만 CHECK와 길이를 변경하며, 웹/아로로지스 데스크톱 버전 체크 신설·사용 중 알림·OTA 활성화는 후속 슬라이스로 남긴다. |
+| D-910-04 | 개발 버전의 정책 정본은 `YYYY/MM/DD-{번호}`이며 날짜와 일련번호를 숫자로 비교한다. 패키지 semver는 빌드 식별자로만 사용한다. 기존 semver 레코드를 보존하기 위해 V7을 수정하거나 새 DB CHECK로 형식을 강제하지 않고, 신규 등록은 애플리케이션 경계에서 엄격히 검증하며 기존 semver의 버전 필드를 그대로 두는 수정만 허용한다. |
+## #897 입출금·일마감 목록 열 계층화 (2026-07-26)
+
+| 결정 코드 | 내용 |
+|---|---|
+| D-COL-897-01 | `BankTransactionPage`와 `DailyClosingPage`의 화면 목록 열 집합은 각각 `BANK_TRANSACTION_LIST_COLUMN_KEYS`와 `DAILY_CLOSING_LIST_COLUMN_KEYS` 단일 상수로 관리한다. 개발책임자 실사용 확인 전에는 PM 제안(거래일·적요·거래처·입금·출금·잔액·상태 / 일자·구분·건수·금액 합계·마감상태)을 기본값으로 사용하고, 후속 정정은 해당 상수와 열 정의만 조정한다. API 원본 모델은 축소하지 않는다. |
+| D-COL-897-02 | 입출금에서 목록에 감춘 계좌·상대계좌·원문 등은 신규 모달이나 UUID 링크를 만들지 않고 행 내부의 native `<details>` disclosure로 확인한다. 일마감은 기존 `/accounting/closings/daily` 상세 데이터 경로를 행의 `상세` 조작으로 연결한다. |
+| D-COL-897-03 | `소스`는 원천 전체 탭에서만, `매칭상태`는 상태 전체 탭에서만 표시하는 #877/#918 조건을 유지한다. #880이 정한 좁은 폭 조작 버튼의 `mobilePriority: secondary` 계약을 소비 화면에서 계속 사용한다. |
+| D-COL-897-04 | 열 축소는 화면 목록에만 적용한다. 두 화면에서 기존 인쇄·엑셀 export surface는 코드 실측상 존재하지 않으므로 신규 export 경로를 신설하지 않으며, API 원본·기존 상세 데이터의 전체 필드는 보존한다. |

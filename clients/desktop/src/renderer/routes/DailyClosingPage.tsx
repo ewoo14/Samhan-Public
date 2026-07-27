@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Badge,
@@ -58,6 +58,180 @@ const REVALIDATION_STATUS_LABEL: Record<DailyProductRevalidationStatus, string> 
   OUT_OF_SCOPE: '대상외',
 }
 
+function dailyClosingScopeKey(row: DailyClosing): string {
+  return row.partnerCode ?? 'ALL'
+}
+
+function dailyClosingScopeLabel(row: DailyClosing): string {
+  return row.partnerCode ? `거래처 ${row.partnerCode}` : '전체 마감'
+}
+
+function dailyClosingActionTestId(prefix: 'detail' | 'reverse', row: DailyClosing): string {
+  return `daily-closing-${prefix}-button-${row.closingDate}-${dailyClosingScopeKey(row)}-${row.closingKind}-${row.sourceKind}`
+}
+
+function dailyClosingRowKey(row: DailyClosing): string {
+  return `${row.closingDate}-${dailyClosingScopeKey(row)}-${row.closingKind}-${row.sourceKind}`
+}
+
+/**
+ * [#929 재수렴 T1] 마감 시각 표시 라벨 — 단일 출처.
+ *
+ * <p>unlock() 은 감사 이력을 위해 lockedAt 을 보존한다(BE 불변, DailyClosing.java:204-213)
+ * — 역마감 직후에도 값이 남아 라벨이 상태(isLocked)를 반영하지 않으면 '열림' 배지와
+ * 같은 자리에서 자기모순으로 읽힌다. 목록 열과 상세 요약 카드가 각자 이 조건을
+ * 계산하면(S6 가 목록 열만 고치며 실제로 그랬다) 한쪽만 갱신되어 같은 행이 한 화면
+ * 에서 모순된 라벨을 보일 수 있다 — 두 지점 다 이 함수 하나에서만 값을 얻는다.
+ * lockedAt 이 없으면 null(두 지점 모두 렌더하지 않음 — NULL 경계도 단일화).
+ */
+function dailyClosingLockedAtDisplay(row: DailyClosing): string | null {
+  if (!row.lockedAt) return null
+  const label = row.isLocked ? '마감 시각' : '이전 마감 시각'
+  return `${label} ${fmtTimestamp(row.lockedAt)}`
+}
+
+type DailyClosingListColumnKey =
+  | 'closingDate'
+  | 'kind'
+  | 'scope'
+  | 'slipCount'
+  | 'amountSummary'
+  | 'status'
+  | 'actions'
+
+interface DailyClosingColumnContext {
+  canReverse: boolean
+  reversePending: boolean
+  onReveal: (row: DailyClosing) => void
+  onReverse: (row: DailyClosing) => void
+}
+
+interface DailyClosingColumnDefinition {
+  key: DailyClosingListColumnKey
+  header: string
+  width: string
+  align?: 'left' | 'right' | 'center'
+  mobilePriority?: 'primary' | 'secondary' | 'hidden'
+  render: (row: DailyClosing, context: DailyClosingColumnContext) => ReactNode
+}
+
+/**
+ * #897 일마감 목록 열 정의의 단일 출처.
+ *
+ * 전체 마감/거래처 마감 범위와 공급가·부가세·마감 시각은 목록에서 보존한다.
+ * 열을 추가·제거·순서 변경할 때는 이 배열만 수정하고, 날짜 전체 명세인 별도
+ * Daily Detail API는 행 범위 식별의 대체 수단으로 사용하지 않는다.
+ */
+export const DAILY_CLOSING_LIST_COLUMN_DEFINITIONS: readonly DailyClosingColumnDefinition[] = [
+  {
+    key: 'closingDate',
+    header: '마감일',
+    width: '12%',
+    mobilePriority: 'primary',
+    render: (row) => row.closingDate,
+  },
+  {
+    key: 'kind',
+    header: '구분',
+    width: '18%',
+    mobilePriority: 'secondary',
+    render: (row) => `${KIND_LABEL[row.closingKind ?? 'SALES']} · ${SOURCE_LABEL[row.sourceKind ?? 'TAX_INVOICE']}`,
+  },
+  {
+    key: 'scope',
+    header: '마감범위',
+    width: '19%',
+    mobilePriority: 'secondary',
+    render: (row) => (
+      <div style={{ display: 'grid', minWidth: 0, gap: 2, overflowWrap: 'anywhere' }}>
+        <strong>{dailyClosingScopeLabel(row)}</strong>
+        {row.bizNo ? <span style={{ color: 'var(--ink-secondary)', fontSize: 12 }}>사업자번호 {row.bizNo}</span> : null}
+      </div>
+    ),
+  },
+  {
+    key: 'slipCount',
+    header: '건수',
+    width: '9%',
+    align: 'right',
+    mobilePriority: 'secondary',
+    render: (row) => row.slipCount.toLocaleString(),
+  },
+  {
+    key: 'amountSummary',
+    header: '금액 합계',
+    width: '20%',
+    align: 'right',
+    mobilePriority: 'secondary',
+    render: (row) => (
+      <div style={{ display: 'grid', gap: 2, minWidth: 0, overflowWrap: 'anywhere' }}>
+        <strong>{fmtKrwUnit(row.totalAmount)}</strong>
+        <span style={{ color: 'var(--ink-secondary)', fontSize: 12 }}>
+          공급가 {fmtKrwUnit(row.totalSupply)} · 부가세 {fmtKrwUnit(row.totalVat)}
+        </span>
+      </div>
+    ),
+  },
+  {
+    key: 'status',
+    header: '마감상태',
+    width: '14%',
+    mobilePriority: 'secondary',
+    render: (row) => {
+      const status = deriveDailyClosingStatus(row.isLocked)
+      // [머지 전 재수렴 S6 · #929 재수렴 T1] 라벨은 dailyClosingLockedAtDisplay 단일
+      // 출처에서 얻는다 — 상세 요약 카드(아래)도 동일 함수를 쓴다(BE 변경 없음).
+      const lockedAtDisplay = dailyClosingLockedAtDisplay(row)
+      return (
+        <div style={{ display: 'grid', gap: 2, minWidth: 0 }}>
+          <Badge variant={row.isLocked ? 'danger' : 'success'}>
+            {DAILY_CLOSING_STATUS_LABEL[status]}
+          </Badge>
+          {lockedAtDisplay ? (
+            <span style={{ color: 'var(--ink-secondary)', fontSize: 12, overflowWrap: 'anywhere' }}>
+              {lockedAtDisplay}
+            </span>
+          ) : null}
+        </div>
+      )
+    },
+  },
+  {
+    key: 'actions',
+    header: '작업',
+    width: '8%',
+    mobilePriority: 'secondary',
+    render: (row, context) => (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          aria-label="상세 보기"
+          data-testid={dailyClosingActionTestId('detail', row)}
+          onClick={() => context.onReveal(row)}
+        >
+          상세
+        </Button>
+        {row.isLocked && context.canReverse ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            data-testid={dailyClosingActionTestId('reverse', row)}
+            onClick={() => context.onReverse(row)}
+            disabled={context.reversePending}
+          >
+            역마감
+          </Button>
+        ) : null}
+      </div>
+    ),
+  },
+]
+
+/** 목록 순서를 검증·문서화할 때 사용하는 파생 키 목록. 실제 렌더링은 위 정의를 직접 사용한다. */
+export const DAILY_CLOSING_LIST_COLUMN_KEYS = DAILY_CLOSING_LIST_COLUMN_DEFINITIONS.map((column) => column.key)
+
 /** 범위 미선택 안내 문구 id — 잠긴 실행 버튼/칩에서 aria-describedby 로 사유를 연결(#825 슬5 R1 item4). */
 const SCOPE_HINT_ID = 'daily-closing-scope-hint-text'
 
@@ -80,7 +254,10 @@ const toggleButtonStyle: CSSProperties = {
   cursor: 'pointer',
 }
 
-function fmtTimestamp(iso: string | null | undefined): string {
+// export: 테스트가 러너 로컬 타임존에 의존한 하드코딩 문자열 대신 동일 함수로 기대값을
+// 계산할 수 있도록 노출한다(#897 CI TZ 회귀 — 화면 표시 자체는 무변경, KST PC 에선 항상
+// 동일 결과). DailyClosingPage.test.tsx 열 계층화 스펙 참고.
+export function fmtTimestamp(iso: string | null | undefined): string {
   if (!iso) return '-'
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return iso
@@ -107,6 +284,17 @@ function availableSources(kind: ClosingKindFilter): DailyClosingSourceKind[] {
 
 function fmtNullableKrw(value: number | null): string {
   return value === null ? '—' : fmtKrw(String(value))
+}
+
+/**
+ * [머지 전 재수렴 S5] fmtKrw 는 0/null 을 '—'(회계 표시 규약 placeholder)로 반환하는데,
+ * 목록 금액 합계·상세 요약이 그 뒤에 무조건 '원'을 붙여 '—원'이 됐다 — 자릿수 없는
+ * placeholder 가 단위만 있는 값처럼 보이는 자기모순. placeholder 에는 단위를 붙이지
+ * 않는다. 매출 0인 날·면세 거래처 등 정상 업무 경로에서 상시 발생한다.
+ */
+function fmtKrwUnit(value: string): string {
+  const formatted = fmtKrw(value)
+  return formatted === '—' ? formatted : `${formatted}원`
 }
 
 function fmtRate(value: number | null): string {
@@ -177,6 +365,25 @@ export function DailyClosingPage() {
   const [execKind, setExecKind] = useState<DailyClosingKind>('SALES')
   const [execSourceKind, setExecSourceKind] = useState<DailyClosingSourceKind>('TAX_INVOICE')
   const [reverseConfirmRow, setReverseConfirmRow] = useState<DailyClosing | null>(null)
+  /**
+   * [머지 전 재수렴 S4 · #929 재수렴 T2] 상세 요약은 클릭 시점 행을 스냅샷으로 보관하되
+   * 매 렌더 우선 현재 listQuery.data 에서 재도출을 시도한다(BankTransactionPage.
+   * expandedRow 선례와 동일 방향). 재도출(live)이 성공하면(대부분의 경우) 그 값을
+   * 써 신선도를 유지한다 — 재마감/역마감으로 invalidate 되면 클릭 없이도 요약이
+   * 갱신된다(S4 무훼손).
+   *
+   * <p>[T2] revealDailyClosingDetail 이 그 행에 맞춰 filterDate/closingKind/sourceKind
+   * 를 바꾸면 S7 페이지 리셋 이펙트가 page 를 0 으로 되돌리는데, 그 행이 새 필터의
+   * 첫 페이지에 없으면(예: 같은 날짜에 21건 이상) live 재도출이 실패해 "상세를
+   * 눌렀는데 상세가 사라진다"가 됐다 — 클릭 대상 행인데도. live 가 실패하면 이
+   * 스냅샷으로 폴백한다. 사용자가 필터를 직접 조작하면(clearSelectedDetail) 스냅샷도
+   * 함께 지워지므로, filterDate/closingKind/sourceKind/partnerCode 가 사용자 의도로
+   * 바뀔 때 stale 요약이 남지 않는다는 S4 의 원래 보장은 그대로 유지된다.
+   */
+  const [selectedDetailSnapshot, setSelectedDetailSnapshot] = useState<DailyClosing | null>(null)
+  const detailCardRef = useRef<HTMLDivElement | null>(null)
+  /** [머지 전 재수렴 S7] 21건 이상이면 21번째부터 상세/역마감이 화면에서 도달 불가했다. */
+  const [page, setPage] = useState(0)
 
   const focusAllScopeChip = () => {
     setTimeout(() => {
@@ -187,8 +394,14 @@ export function DailyClosingPage() {
   const queryKind = closingKind === 'ALL' ? undefined : closingKind
   const querySourceKind = closingKind === 'ALL' ? undefined : sourceKind
 
+  // [머지 전 재수렴 S7] 필터가 바뀌면 이전 필터 기준 페이지 번호가 새 결과 범위를
+  // 벗어날 수 있다(예: 2페이지에서 필터를 좁혀 1페이지만 남는 경우) — 1페이지로 되돌린다.
+  useEffect(() => {
+    setPage(0)
+  }, [filterDate, partnerCode, queryKind, querySourceKind])
+
   const listQuery = useQuery({
-    queryKey: ['daily-closings', filterDate, partnerCode, queryKind ?? 'ALL', querySourceKind ?? 'ALL'],
+    queryKey: ['daily-closings', filterDate, partnerCode, queryKind ?? 'ALL', querySourceKind ?? 'ALL', page],
     queryFn: () =>
       listDailyClosings({
         from: filterDate,
@@ -196,8 +409,56 @@ export function DailyClosingPage() {
         partnerCode: partnerCode.trim() || undefined,
         closingKind: queryKind,
         sourceKind: querySourceKind,
+        page,
       }),
   })
+
+  /**
+   * 현재 목록 페이지에서 재도출한 그 행 — 서버가 방금 준 값이므로 신선하다.
+   * 재도출에 실패하면 null 이며, 그 상태에서는 이 행의 가변 상태를 아무도 검증할 수 없다.
+   */
+  const selectedDetailLiveRow = useMemo(() => {
+    if (!selectedDetailSnapshot || !listQuery.data) return null
+    const key = dailyClosingRowKey(selectedDetailSnapshot)
+    return listQuery.data.content.find((row) => dailyClosingRowKey(row) === key) ?? null
+  }, [selectedDetailSnapshot, listQuery.data])
+
+  /** 신원(마감 범위·사업자번호)은 스냅샷으로도 불변이므로 카드 자체는 계속 보인다(T2 무훼손). */
+  const selectedDetailRow = selectedDetailLiveRow ?? selectedDetailSnapshot
+
+  /**
+   * [#929 재수렴 4차 ②] 가변 상태(금액 합계·마감 시각/잠금)를 검증할 수 없는 구간.
+   *
+   * <p>revealDailyClosingDetail 이 filterDate/closingKind/sourceKind 를 바꾸면 S7 리셋이
+   * page 를 0 으로 되돌린다 — 클릭한 행이 새 1페이지에 없으면(같은 날짜 21건 이상) live
+   * 재도출이 실패하고 클릭 시점 스냅샷이 그대로 고정된다. 스냅샷은 그 뒤 어떤 갱신도 받지
+   * 못하므로(clearSelectedDetail 은 사용자의 필터 조작에만 걸려 있어 '일마감 실행' 경로는
+   * 스냅샷을 건드리지 않는다) 사용자가 방금 그 범위를 마감해 서버가 isLocked=true 가 되어도
+   * 화면은 '이전 마감 시각'(=열림)을 계속 보여준다 — 회계 잠금 상태를 반대로 읽는다.
+   *
+   * <p>그래서 "어느 페이지에 있는지 다시 찾아내는" 대신 <b>검증하지 못한 값은 주장하지
+   * 않는다</b>. 신원은 남기고 가변 상태 자리에는 확인 불가를 명시한다 — live 가 돌아오면
+   * (같은 페이지로 이동하거나 재마감/역마감 invalidate 로 그 행이 1페이지에 들어오면)
+   * 자동으로 실제 값이 복귀한다.
+   *
+   * <p>단 목록이 아직 도착하지 않은 구간(필터가 바뀌어 새 queryKey 를 받아오는 중)은
+   * "없다"가 아니라 "아직 모른다"다 — 그때의 스냅샷은 사용자가 방금 그 행에서 본, 서버가
+   * 준 가장 최근 값이므로 그대로 두고 확인 불가 문구를 띄우지 않는다. 목록이 도착했는데도
+   * (또는 조회가 실패해 도착하지 못하는 것이 확정됐는데도) 그 행이 없을 때만 주장을 멈춘다.
+   */
+  const selectedDetailListSettled = listQuery.data !== undefined || !listQuery.isFetching
+  const selectedDetailStateUnverified =
+    selectedDetailRow !== null && selectedDetailLiveRow === null && selectedDetailListSettled
+
+  /**
+   * [#929 재수렴 T2 · S4 무훼손] 사용자가 필터를 직접 조작하면 이전 상세 선택(스냅샷
+   * 포함)을 지운다 — revealDailyClosingDetail 이 같은 필터 state 를 프로그램적으로
+   * 바꾸는 경로와 달리, 이 경로는 "다른 범위를 보겠다"는 명시적 의도이므로 stale
+   * 요약이 남으면 안 된다(S4 원래 보장).
+   */
+  function clearSelectedDetail() {
+    setSelectedDetailSnapshot(null)
+  }
 
   const detailQuery = useQuery({
     queryKey: ['daily-closing-detail', filterDate, queryKind, querySourceKind],
@@ -273,94 +534,37 @@ export function DailyClosingPage() {
     },
   })
 
-  const columns: DataTableColumn<DailyClosing>[] = useMemo(
-    () => [
-      { key: 'closingDate', header: '마감일', width: '110px' },
-      {
-        key: 'kind',
-        header: '종류',
-        width: '110px',
-        render: (row) => KIND_LABEL[row.closingKind ?? 'SALES'],
-      },
-      {
-        key: 'source',
-        header: '원천',
-        width: '120px',
-        render: (row) => SOURCE_LABEL[row.sourceKind ?? 'TAX_INVOICE'],
-      },
-      {
-        key: 'bizNo',
-        header: '거래처코드',
-        width: '130px',
-        render: (row) => row.bizNo?.replace(/\D/g, '') || '—',
-      },
-      {
-        key: 'isLocked',
-        header: '상태',
-        width: '80px',
-        render: (row) => {
-          const status = deriveDailyClosingStatus(row.isLocked)
-          return (
-            <Badge variant={row.isLocked ? 'danger' : 'success'}>
-              {DAILY_CLOSING_STATUS_LABEL[status]}
-            </Badge>
-          )
-        },
-      },
-      {
-        key: 'totalSupply',
-        header: '공급가',
-        width: '120px',
-        align: 'right',
-        render: (row) => fmtKrw(row.totalSupply),
-      },
-      {
-        key: 'totalVat',
-        header: '부가세',
-        width: '120px',
-        align: 'right',
-        render: (row) => fmtKrw(row.totalVat),
-      },
-      {
-        key: 'totalAmount',
-        header: '합계',
-        width: '120px',
-        align: 'right',
-        render: (row) => fmtKrw(row.totalAmount),
-      },
-      {
-        key: 'slipCount',
-        header: '건수',
-        width: '80px',
-        align: 'right',
-        render: (row) => row.slipCount.toLocaleString(),
-      },
-      {
-        key: 'lockedAt',
-        header: '마감 시각',
-        width: '140px',
-        render: (row) => fmtTimestamp(row.lockedAt),
-      },
-      {
-        key: 'reverseAction',
-        header: '',
-        width: '100px',
-        render: (row) =>
-          row.isLocked && canReverse ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              data-testid={`daily-closing-reverse-button-${row.closingDate}-${row.closingKind}-${row.sourceKind}`}
-              onClick={() => setReverseConfirmRow(row)}
-              disabled={reverseMutation.isPending}
-            >
-              역마감
-            </Button>
-          ) : null,
-      },
-    ],
-    [canReverse, reverseMutation.isPending],
-  )
+  function revealDailyClosingDetail(row: DailyClosing) {
+    setSelectedDetailSnapshot(row)
+    setFilterDate(row.closingDate)
+    setClosingKind(row.closingKind)
+    setSourceKind(row.sourceKind)
+    window.setTimeout(() => {
+      // preventScroll:true — focus() 기본값(false)이 scrollIntoView 보다 먼저 즉시
+      // 스크롤을 일으켜 뒤이은 smooth 애니메이션을 무의미하게 만드는 동일 결함이
+      // BankTransactionPage 쪽 표에서 더 크게(24,231px 표) 드러났다(S1·S2) — 같은
+      // 코드 모양을 양쪽 다 고쳐 미래 회귀를 막는다.
+      detailCardRef.current?.focus({ preventScroll: true })
+      detailCardRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })
+    }, 0)
+  }
+
+  const columns: DataTableColumn<DailyClosing>[] = useMemo(() => {
+    const context: DailyClosingColumnContext = {
+      canReverse,
+      reversePending: reverseMutation.isPending,
+      onReveal: revealDailyClosingDetail,
+      onReverse: setReverseConfirmRow,
+    }
+    return DAILY_CLOSING_LIST_COLUMN_DEFINITIONS.map((definition) => ({
+      key: definition.key,
+      header: definition.header,
+      width: definition.width,
+      align: definition.align,
+      mobilePriority: definition.mobilePriority,
+      render: (row: DailyClosing) => definition.render(row, context),
+    }))
+  }, [canReverse, reverseMutation.isPending])
 
   const detailColumns: DataTableColumn<DailyTaxInvoiceRow>[] = [
     {
@@ -527,7 +731,10 @@ export function DailyClosingPage() {
             <input
               type="date"
               value={filterDate}
-              onChange={(e) => setFilterDate(e.target.value)}
+              // [#929 재수렴 T2 무훼손] 사용자가 직접 날짜를 바꾸는 것은 "다른 범위를
+              // 보겠다"는 명시적 의도 — 이전 상세 선택(스냅샷 포함)을 지운다(S4 원래
+              // 보장: stale 요약이 남지 않는다).
+              onChange={(e) => { setFilterDate(e.target.value); clearSelectedDetail() }}
               data-testid="daily-closing-filter-date"
               style={inputStyle}
             />
@@ -536,7 +743,7 @@ export function DailyClosingPage() {
             거래처 코드&nbsp;
             <input
               value={partnerCode}
-              onChange={(e) => setPartnerCode(e.target.value)}
+              onChange={(e) => { setPartnerCode(e.target.value); clearSelectedDetail() }}
               placeholder="선택"
               data-testid="daily-closing-filter-partner"
               style={{ ...inputStyle, width: 140 }}
@@ -552,6 +759,13 @@ export function DailyClosingPage() {
                 onClick={() => {
                   setClosingKind(kind)
                   if (kind !== 'ALL') setSourceKind((prev) => compatibleSource(kind, prev))
+                  // [#929 재수렴 T2 무훼손·T5] '매출'/'매입'은 결과를 좁혀 다른 kind 의
+                  // 이전 선택을 구조적으로 배제한다 — 스냅샷 폴백이 그 배제된 선택을
+                  // 계속 보여주면 stale 요약 회귀가 된다(S4 무훼손 위반), 그래서 지운다.
+                  // '통합'은 반대로 결과를 넓힐 뿐이라(이전 선택도 여전히 유효한 범위)
+                  // 지우지 않는다 — 요약 카드는 남고, 표를 가리키는 문구만 별도로
+                  // 조건화한다(T5, 아래 selectedDetailRow 블록).
+                  if (kind !== 'ALL') clearSelectedDetail()
                 }}
                 style={{
                   ...toggleButtonStyle,
@@ -568,7 +782,7 @@ export function DailyClosingPage() {
                 <button
                   key={source}
                   type="button"
-                  onClick={() => setSourceKind(source)}
+                  onClick={() => { setSourceKind(source); clearSelectedDetail() }}
                   style={{
                     ...toggleButtonStyle,
                     background: sourceKind === source ? 'var(--surface-selected)' : toggleButtonStyle.background,
@@ -771,15 +985,96 @@ export function DailyClosingPage() {
             <DataTable
               columns={columns}
               rows={listQuery.data?.content ?? []}
-              rowKey={(row) => `${row.closingDate}-${row.partnerCode ?? 'ALL'}-${row.closingKind}-${row.sourceKind}`}
+              rowKey={dailyClosingRowKey}
               emptyMessage="해당 일자의 일마감 이력이 없습니다."
             />
           </div>
         )}
+        {/* [머지 전 재수렴 S7] 한 날짜의 마감이 21건 이상이면 21번째부터 상세·역마감
+            버튼이 화면에서 도달 불가했다(size=20 고정, page 미전달, 페이저 UI 없음).
+            BlockedPartnersPage 페이저 선례와 동일 형태로 이전/다음을 추가한다. */}
+        {listQuery.data && listQuery.data.totalPages > 1 ? (
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 12, marginTop: 12, fontSize: 13 }}>
+            <button
+              type="button"
+              data-testid="daily-closing-page-prev"
+              disabled={page <= 0}
+              onClick={() => setPage((p) => p - 1)}
+              style={toggleButtonStyle}
+            >
+              이전
+            </button>
+            <span data-testid="daily-closing-page-indicator">
+              {listQuery.data.number + 1} / {listQuery.data.totalPages}
+            </span>
+            <button
+              type="button"
+              data-testid="daily-closing-page-next"
+              disabled={page + 1 >= listQuery.data.totalPages}
+              onClick={() => setPage((p) => p + 1)}
+              style={toggleButtonStyle}
+            >
+              다음
+            </button>
+          </div>
+        ) : null}
       </Card>
 
       <Card>
-        <h3 style={{ margin: '0 0 12px' }}>Daily Detail</h3>
+        <div
+          id="daily-closing-detail"
+          ref={detailCardRef}
+          tabIndex={-1}
+          style={{ outline: 'none' }}
+        >
+        <h3 style={{ margin: '0 0 12px' }}>일마감 상세</h3>
+        {selectedDetailRow ? (
+          <div
+            data-testid="daily-closing-selected-scope"
+            style={{
+              display: 'grid',
+              gap: 4,
+              marginBottom: 12,
+              padding: '10px 12px',
+              border: '1px solid var(--color-neutral-200)',
+              borderRadius: 6,
+              background: 'var(--color-neutral-50)',
+              fontSize: 13,
+            }}
+          >
+            <strong>선택한 마감 범위: {dailyClosingScopeLabel(selectedDetailRow)}</strong>
+            {selectedDetailRow.bizNo ? <span>사업자번호 {selectedDetailRow.bizNo}</span> : null}
+            {/* [#929 재수렴 4차 ②] 금액·마감 시각은 가변 상태다 — 현재 목록에서 그 행을
+                재도출하지 못하면 확인할 방법이 없으므로 값을 주장하지 않는다. */}
+            {selectedDetailStateUnverified ? (
+              <span
+                data-testid="daily-closing-selected-scope-unverified"
+                style={{ color: 'var(--ink-secondary)' }}
+              >
+                이 마감 범위가 현재 목록 페이지에 없어 최신 금액·마감 상태를 표시하지 않습니다. 페이지를 이동하거나 필터를 좁혀 확인하세요.
+              </span>
+            ) : (
+              <>
+                <span>
+                  공급가 {fmtKrwUnit(selectedDetailRow.totalSupply)} · 부가세 {fmtKrwUnit(selectedDetailRow.totalVat)} · 합계 {fmtKrwUnit(selectedDetailRow.totalAmount)}
+                </span>
+                {/* [#929 재수렴 T1] 목록 열과 동일한 dailyClosingLockedAtDisplay 단일 출처 —
+                    무조건 '마감 시각' 이면 열림 상태에서 목록('이전 마감 시각')과 모순됐다. */}
+                {dailyClosingLockedAtDisplay(selectedDetailRow) ? (
+                  <span>{dailyClosingLockedAtDisplay(selectedDetailRow)}</span>
+                ) : null}
+              </>
+            )}
+            {/* [#929 재수렴 T5] 통합(ALL)에서는 아래 DataTable 이 렌더되지 않는다("통합
+                조회에서는 이력만 표시합니다") — 그 표를 가리키는 문구는 표가 실제로
+                렌더되는 조건(closingKind !== 'ALL')과 함께 다닌다. */}
+            {closingKind !== 'ALL' ? (
+              <span style={{ color: 'var(--ink-secondary)', fontSize: 12 }}>
+                아래 전표 명세는 선택한 날짜·구분의 통합 조회입니다. 선택한 마감 범위의 합계는 위 값을 확인하세요.
+              </span>
+            ) : null}
+          </div>
+        ) : null}
         {closingKind === 'ALL' ? (
           <p style={{ margin: 0, fontSize: 13, color: 'var(--ink-secondary)' }}>
             통합 조회에서는 이력만 표시합니다. 상세는 매출 또는 매입을 선택해 확인하세요.
@@ -832,6 +1127,7 @@ export function DailyClosingPage() {
             ) : null}
           </>
         )}
+        </div>
       </Card>
 
       <Modal
@@ -864,7 +1160,11 @@ export function DailyClosingPage() {
       >
         {reverseConfirmRow ? (
           <p style={{ margin: 0, fontSize: 13 }}>
-            {reverseConfirmRow.closingDate} {KIND_LABEL[reverseConfirmRow.closingKind]}{' '}
+            {/* [머지 전 재수렴 S3] 같은 날짜·구분·원천이면서 마감범위(전체/거래처)만 다른
+                두 행의 역마감 확인 문구가 100% 동일해 대상을 특정하지 못했다 — 목록의
+                '마감범위' 열과 동일한 dailyClosingScopeLabel 을 확인 문구 맨 앞에 낸다. */}
+            <strong>{dailyClosingScopeLabel(reverseConfirmRow)}</strong> · {reverseConfirmRow.closingDate}{' '}
+            {KIND_LABEL[reverseConfirmRow.closingKind]}{' '}
             {SOURCE_LABEL[reverseConfirmRow.sourceKind]} 마감을 해제합니다.
           </p>
         ) : null}

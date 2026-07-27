@@ -191,13 +191,44 @@ public class DailyClosingService {
     @Transactional(readOnly = true)
     public Page<DailyClosingResponse> list(LocalDate from, LocalDate to, Pageable pageable,
                                            String actorRole) {
-        return list(from, to, null, null, pageable, actorRole);
+        return list(from, to, null, null, null, pageable, actorRole);
     }
 
     @Transactional(readOnly = true)
     public Page<DailyClosingResponse> list(LocalDate from, LocalDate to,
                                            DailyClosingKind closingKind,
                                            DailyClosingSourceKind sourceKind,
+                                           Pageable pageable,
+                                           String actorRole) {
+        return list(from, to, closingKind, sourceKind, null, pageable, actorRole);
+    }
+
+    /**
+     * 일마감 기간 조회 (페이지네이션) — 거래처코드 필터 포함.
+     *
+     * <p>[#929 재수렴 T6] partnerCode 는 이전에 이 쿼리가 전혀 받지 않아 조용히
+     * 버려졌다(#929 D) — FE 필터 입력이 페이지 결과에 아무 효과가 없어 "필터를
+     * 넣었는데 페이지만 잃는다"는 결함이었다. close()/unlock() 과 동일하게
+     * partnerCode → partnerId 를 도출해 repository 에 전달한다.
+     *
+     * <p>존재하지 않는 partnerCode 는 read 리포트 정책(#924 회계 enrichment
+     * fail-closed)을 따른다 — NOT_FOUND(단순 미존재)는 "그 거래처의 마감은 있을 수
+     * 없다"는 뜻이므로 빈 페이지로 성사시키고(하드 오류 아님, 필터 입력 오타에 페이지
+     * 전체가 깨지지 않는다), partner-service 장애(UNAVAILABLE)만 502 로 표면화한다
+     * (PartnerLookupSupport.foundOrNull).
+     *
+     * <p>[#929 재수렴 4차 D1·D2] "필터 입력 오타에 페이지 전체가 깨지지 않는다"는 위 불변식은
+     * partnerCode 를 URI path 세그먼트로 전달할 수 없을 때도 지켜져야 한다. 그 판정은 계약이
+     * 있는 {@link PartnerLookupClient#isAddressableAsPathSegment} 한 곳에서만 하며, 전달 불가
+     * 입력은 NOT_FOUND 로 돌아와 위 빈 페이지 경로가 그대로 받는다.
+     *
+     * @param partnerCode 거래처코드 필터 (선택 — null/blank 면 미지정)
+     */
+    @Transactional(readOnly = true)
+    public Page<DailyClosingResponse> list(LocalDate from, LocalDate to,
+                                           DailyClosingKind closingKind,
+                                           DailyClosingSourceKind sourceKind,
+                                           String partnerCode,
                                            Pageable pageable,
                                            String actorRole) {
         checkViewPermission(actorRole);
@@ -210,8 +241,23 @@ public class DailyClosingService {
         if (closingKind != null && sourceKind != null) {
             validateKindSourceMatch(closingKind, sourceKind);
         }
+        UUID filterPartnerId = null;
+        if (partnerCode != null && !partnerCode.isBlank()) {
+            // [#929 재수렴 4차 D1·D2] path 세그먼트로 전달 불가한 입력('%'·'/'·'\'·';'·단독
+            // "."/".."·제어/분리 문자)의 단락 처리는 PartnerLookupClient 가 계약 지점에서
+            // 수행한다 — 여기서 다시 판정하면 같은 값을 두 곳에서 계산하게 되고(3차 가드가
+            // 실제로 그랬다: ';' 를 빠뜨려 자기 화면에서 우회됨), 같은 계약을 쓰는 나머지
+            // 15개 호출부는 여전히 깨진 채 남는다. NOT_FOUND 로 돌아오므로 아래 빈 페이지 경로가 받는다.
+            PartnerSummary filterPartner = PartnerLookupSupport.foundOrNull(
+                    PartnerLookupSupport.byCode(partnerLookupClient, partnerCode));
+            if (filterPartner == null) {
+                // 존재하지 않는 거래처코드 — 그 코드로 매칭될 마감은 있을 수 없다.
+                return new PageImpl<>(List.of(), pageable, 0);
+            }
+            filterPartnerId = filterPartner.partnerId();
+        }
         Page<DailyClosing> page = dailyClosingRepository.findByDateRangeAndKinds(
-                from, to, closingKind, sourceKind, pageable);
+                from, to, closingKind, sourceKind, filterPartnerId, pageable);
         List<DailyClosing> closings = page.getContent();
         Map<UUID, PartnerSummary> partners = resolvePartners(closings);
         List<DailyClosingResponse> rows = closings.stream()
