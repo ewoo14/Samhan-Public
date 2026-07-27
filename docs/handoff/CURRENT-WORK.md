@@ -13,7 +13,36 @@
 
 ---
 
-## 🏠 2026-07-27 (집PC 야간~오전) — **3트랙 재수렴 7차까지 · 머지 0건** ◀◀◀ 여기부터 읽으십시오
+## 🏢 2026-07-27 (회사PC) — **#937 머지 완료 · #938·#929 잔여** ◀◀◀ 여기부터 읽으십시오
+
+> 🚩 시작 절차: `git pull` → `.\scripts\sync-claude-memory.ps1` → 이 문단.
+
+### ✅ #937 머지 (`37bd02ff4`, squash)
+
+집PC WIP(`wip/937-fix7-history-total-domain`)를 이어받아 재수렴 8·9차로 수렴·머지.
+
+- **A안 (R7-1/R7-2)** — 버전이력 "단가·합계" = 전표 라인 표 "단가·합계(VAT포함)" 같은 도메인. **저장 스냅샷 불변, 파생 표시값만 정규화**(감사 위조 아님). RED-first(pre-fix 4 RED→GREEN)·FE/BE 반올림 parity 정수 원 0..2,000,000 전수 0불일치.
+- **캡처 게이트 fix(흡수)** — SOL 2차 라이브QA가 **"부가세만 편집→revision 미캡처(감사 이력 누락)"** pre-existing 결함 발견 → 개발책임자 결정 = 흡수 → CODEX LUNA fix(매출 `SalesSlipUpdateService`·매입 `SlipUpdateService` `summarizeLines`에 supply/vat/lineTotal 추가). 부가세 편집도 revision 캡처, **무편집 재저장 idempotent 유지**(`normalize(stripTrailingZeros)`). 감사 캡처 정책 = "금액 변경 편집은 모두 이력 기록".
+- **잔존(수용)** — 버전이력 diff에 "부가세" 행은 없고 그 귀결인 "합계"만 표시(pre-existing LINE_FIELDS). **표기 granularity**(스냅샷 데이터 완전·오류 아님), 개발책임자 수용.
+- 검증: OPUS 양표면 도달가능 0(316 라인 전수) · SOL 라이브QA(R7-1 표+이력 한화면·부가세 캡처·over-capture 0) · CI 35/35 green(exact `f5ba1a2a2`). dev-report `docs/dev-reports/2026-07-27-937-slip-revision-tax-domain.md` + QA증거 `docs/qa/937-slip-revision-tax-domain/`.
+
+### 잔여 2트랙 (재수렴 상한 9차, [feedback_canonical_workflow] 준수)
+
+| PR | 브랜치 | 다음 |
+|---|---|---|
+| **#938** | `chore/harness-false-green-batch` | 재수렴 8차 — 도출 한계 ⓐ~ⓓ(네이밍 미준수 가드·조립 경로·읽기/쓰기 미구분·`testIgnore`만 반영) 공격. **열 번 연속 "열거 좁음" 실패** 이력 |
+| **#929** | `feat/897-column-hierarchy` | 재수렴 7차 재착수 — `isAddressableAsPathSegment("")`=true 안전성(호출부 유일 전제)·`trim()` NBSP/전각공백 실측·GitGuardian 판정 |
+
+### 환경 (회사PC, 이 세션)
+
+- Docker 풀스택 healthy(2h+). slip-service = round-9 배포본(= merged main 동일). DB `slip_db` 149 리비전(집PC 2,510과 상이).
+- 🚩 알려진 flake `CodefImportScopeForm.test.tsx` **1-in-7**(재실행 확정) — #937 CI서 1회 발생, 재실행 green.
+- ⚠️ 워크트리 `.claude/worktrees/937-history-total` 삭제 실패(gradle 데몬 점유) — 데몬 종료 후 `git worktree prune`.
+- 개발책임자 지시(이 세션): **직접 실행 최소화·Codex 위임**(토큰 절약) · **#937 라운드 과다 인지·바운드** · **3트랙은 #937 머지 후 순차**.
+
+---
+
+## 🏠 2026-07-27 (집PC 야간~오전) — **3트랙 재수렴 7차까지 · 머지 0건**
 
 > 🚩 **회사 PC 시작 절차**: `git pull` → `.\scripts\sync-claude-memory.ps1` → 이 문단.
 
