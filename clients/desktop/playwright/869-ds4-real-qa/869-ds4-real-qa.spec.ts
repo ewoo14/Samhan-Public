@@ -13,6 +13,14 @@ import { resolveQaShotsDir } from '../support/qa-screenshot-dir'
 import { expect, test } from '@playwright/test'
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
+import {
+  cleanupDs4Template,
+  extendDs4CleanupTimeout,
+  rememberDs4TemplateIdFromSaveBody,
+  startDs4RunScope,
+  stopDs4RunScope,
+  sweepStaleDs4Templates,
+} from '../support/ds4-real-qa-cleanup'
 
 // SONNET5 R5 라운드 fix: 하네스가 HashRouter(5191)에서 BrowserRouter(5291)로 바뀐 뒤 갱신되지 않았던
 // fallback — AUDIT_BASE_URL 미지정 시 고아 vite/구 라우팅으로 false-RED 를 냈다(동일 패턴 전수 스윕,
@@ -40,7 +48,9 @@ test('DS-4 — 품목행·이미지 요소가 실 BE 를 왕복한다', async ({
 
   const preview = page.getByTestId('document-template-live-preview')
   const detailLayer = page.getByTestId('document-template-detail-layer')
-  const templateName = `DS4 실서버QA ${Date.now()}`
+  const runScope = await startDs4RunScope('DS4 실서버QA', API_BASE, PASSWORD)
+  const templateName = runScope.templateName
+  let savedTemplateId = ''
 
   try {
   await test.step('D1 편집기 진입 후 품목행·이미지 추가', async () => {
@@ -75,7 +85,6 @@ test('DS-4 — 품목행·이미지 요소가 실 BE 를 왕복한다', async ({
     console.log(`■ 이미지 naturalWidth = ${natural}`)
   })
 
-  let savedTemplateId = ''
   await test.step('D2 실 BE 저장·활성화 게이트 — 신규 타입은 저장되지만 ACTIVE 승격은 막힌다', async () => {
     // 🚨 문서 유형을 고르지 않으면 예약 docType(GROUPWARE_DEFAULT)이 나가 422 로 거절된다.
     //    기존 L1~L6 하네스와 동일하게 실제 옵션을 골라야 저장 경로에 도달한다(PM 실측).
@@ -91,8 +100,6 @@ test('DS-4 — 품목행·이미지 요소가 실 BE 를 왕복한다', async ({
     await page.getByRole('button', { name: '저장' }).click()
     const res = await saved
     const savedBody = await res.json()
-    savedTemplateId = String(savedBody.data?.id ?? '')
-    console.log(`■ 저장 응답 = ${res.request().method()} ${res.status()}`)
     if (res.status() >= 400) {
       console.log(`■ 422 본문 = ${(await res.text()).slice(0, 500)}`)
       const req = res.request().postData() ?? ''
@@ -100,8 +107,12 @@ test('DS-4 — 품목행·이미지 요소가 실 BE 를 왕복한다', async ({
     }
     expect(res.status(), `실 BE 저장 실패 — DocumentPayloadValidator 가 신규 요소를 거부했을 수 있다`)
       .toBeLessThan(400)
-    await expect(page.getByText('저장된 상태입니다.')).toBeVisible({ timeout: 15000 })
+    // 서버 UUID를 얻은 즉시 기록한다. 저장 완료 문구를 최대 15초 기다리는 동안 강제 종료돼도
+    // worker/reaper가 이 run의 정확한 ID를 회수할 수 있어야 한다.
+    savedTemplateId = rememberDs4TemplateIdFromSaveBody(runScope, savedBody)
+    console.log(`■ 저장 응답 = ${res.request().method()} ${res.status()}`)
     expect(savedTemplateId, '저장 응답에 template id가 없다').not.toBe('')
+    await expect(page.getByText('저장된 상태입니다.')).toBeVisible({ timeout: 15000 })
     const activation = await page.request.post(`${API_BASE}/admin/groupware/document-templates/${savedTemplateId}/activate`, {
       headers: { Authorization: `Bearer ${d.token}`, 'X-User-Id': d.userId, 'X-User-Role': d.role ?? 'MASTER' },
     })
@@ -162,19 +173,25 @@ test('DS-4 — 품목행·이미지 요소가 실 BE 를 왕복한다', async ({
   // 🚨 공유 실 DB 에 throwaway 가 남지 않게 한다(라이브QA 공유데이터 규칙).
   //    하네스가 자기 정리를 하지 않으면 실행할 때마다 실 양식 목록이 오염된다.
   } finally {
-    await test.step('QA 잔재 정리 — 생성한 양식 삭제', async () => {
-    const listRes = await page.request.get(`${API_BASE}/admin/groupware/document-templates`, {
-      headers: { Authorization: `Bearer ${d.token}`, 'X-User-Id': d.userId, 'X-User-Role': d.role ?? 'MASTER' },
-    })
-    const items: Array<{ id: string; name: string }> = listRes.ok() ? ((await listRes.json()).data ?? []) : []
-    const mine = items.filter((t) => t.name?.startsWith('DS4 실서버QA'))
-    for (const t of mine) {
-      const del = await page.request.delete(`${API_BASE}/admin/groupware/document-templates/${t.id}`, {
-        headers: { Authorization: `Bearer ${d.token}`, 'X-User-Id': d.userId, 'X-User-Role': d.role ?? 'MASTER' },
+    extendDs4CleanupTimeout(test.info())
+    try {
+      await test.step('QA 잔재 정리 — 현재 run 양식만 삭제', async () => {
+        if (!savedTemplateId) return
+        const result = await cleanupDs4Template(page.request, API_BASE, {
+          token: d.token,
+          userId: d.userId,
+          role: d.role ?? 'MASTER',
+        }, savedTemplateId)
+        console.log(`■ 정리 run=${runScope.runId}(spawn=${runScope.spawnMethod}) 대상=${result.matched}건 삭제=${result.deleted}건`)
       })
-      console.log(`■ 정리 ${t.name} → HTTP ${del.status()}`)
+      // 🚨 R1-1/R1-2 self-healing — 이 run 자신이 아니라 "이전에 죽고 아무도 못 지운" run 을
+      // 이번 실행이 대신 회수한다(도구 자체가 wmic/reap 로 즉시 회수하지 못한 예외적 경우의 안전망).
+      await test.step('QA 잔재 정리 — 이전 run 중 소유자가 죽은 stale 항목도 함께 회수', async () => {
+        const swept = await sweepStaleDs4Templates(API_BASE, { token: d.token, userId: d.userId, role: d.role ?? 'MASTER' })
+        console.log(`■ stale sweep 조회=${swept.checked}건 stale=${swept.stale}건 삭제=${swept.deleted}건 실패=${swept.failed}건`)
+      })
+    } finally {
+      stopDs4RunScope(runScope)
     }
-    console.log(`■ 정리 대상 ${mine.length}건`)
-    })
   }
 })

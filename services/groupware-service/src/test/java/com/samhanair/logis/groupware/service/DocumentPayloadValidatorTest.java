@@ -16,7 +16,10 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
 import java.util.zip.CRC32;
@@ -325,6 +328,188 @@ class DocumentPayloadValidatorTest {
 
         assertThatThrownBy(() -> validator.validate((short) 2, document))
                 .as("MIME과 Base64 길이만 맞는 손상 PNG는 저장되면 안 된다")
+                .isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    void DS4_imageSourcePolicy_rejectsSignatureValidButTruncatedPngThroughImageIO() throws Exception {
+        // PNG signature/IHDR/CRC는 맞지만 IDAT scanline이 비어 있는 실제 ImageIO 입력이다.
+        String truncatedPng = Base64.getEncoder().encodeToString(realPngBomb(1, 1, 6, 0));
+        byte[] decoded = Base64.getDecoder().decode(truncatedPng);
+        assertThat(decoded).hasSizeGreaterThan(8);
+        assertThat(Arrays.copyOf(decoded, 8))
+                .containsExactly((byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A);
+        try {
+            assertThat(ImageIO.read(new ByteArrayInputStream(decoded)))
+                    .as("사전조건: 손상 PNG는 ImageIO에서 이미지로 디코드되지 않아야 한다")
+                    .isNull();
+        } catch (IOException expected) {
+            // ImageIO 구현에 따라 빈 IDAT은 null 대신 IIOException으로 보고할 수 있다.
+        }
+
+        var document = fixture("valid-default.json").get("document").deepCopy();
+        ((com.fasterxml.jackson.databind.node.ArrayNode) document.at("/bands/0/elements"))
+                .addObject().put("key", "truncated-png").put("type", "IMAGE")
+                .put("src", "data:image/png;base64," + truncatedPng).put("alt", "잘린 PNG");
+
+        assertThatThrownBy(() -> validator.validate((short) 2, document))
+                .as("PNG signature만 맞고 실제로 디코드할 수 없는 입력은 ImageIO 분기에서 거부되어야 한다")
+                .isInstanceOf(BusinessException.class);
+    }
+
+    /** R1-4 회귀 울타리 — 정상 WebP(단순 손실 VP8) 업로드가 fix 이후에도 막히면 안 된다. */
+    @Test
+    void R1_4_webp_acceptsStructurallyValidVp8Lossy() throws Exception {
+        byte[] webp = minimalValidWebpVp8(4, 4);
+        assertThat(new String(Arrays.copyOfRange(webp, 0, 4), StandardCharsets.US_ASCII)).isEqualTo("RIFF");
+        assertThat(new String(Arrays.copyOfRange(webp, 8, 12), StandardCharsets.US_ASCII)).isEqualTo("WEBP");
+
+        var document = fixture("valid-default.json").get("document").deepCopy();
+        ((com.fasterxml.jackson.databind.node.ArrayNode) document.at("/bands/0/elements"))
+                .addObject().put("key", "valid-webp").put("type", "IMAGE")
+                .put("src", "data:image/webp;base64," + Base64.getEncoder().encodeToString(webp))
+                .put("alt", "정상 WebP 로고");
+
+        assertThat(validator.validate((short) 2, document)).isNotNull();
+    }
+
+    /** R1-4 회귀 울타리 — 정상 WebP(무손실 VP8L) 업로드도 fix 이후 막히면 안 된다. */
+    @Test
+    void R1_4_webp_acceptsStructurallyValidVp8Lossless() throws Exception {
+        byte[] webp = minimalValidWebpVp8L(4, 4);
+
+        var document = fixture("valid-default.json").get("document").deepCopy();
+        ((com.fasterxml.jackson.databind.node.ArrayNode) document.at("/bands/0/elements"))
+                .addObject().put("key", "valid-webp-lossless").put("type", "IMAGE")
+                .put("src", "data:image/webp;base64," + Base64.getEncoder().encodeToString(webp))
+                .put("alt", "정상 WebP(무손실) 로고");
+
+        assertThat(validator.validate((short) 2, document)).isNotNull();
+    }
+
+    @Test
+    void R3_webp_rejectsVp8lHeaderWithoutImagePayload() throws Exception {
+        byte[] headerOnly = headerOnlyWebpVp8L(4, 4);
+
+        var document = fixture("valid-default.json").get("document").deepCopy();
+        ((com.fasterxml.jackson.databind.node.ArrayNode) document.at("/bands/0/elements"))
+                .addObject().put("key", "header-only-vp8l").put("type", "IMAGE")
+                .put("src", "data:image/webp;base64," + Base64.getEncoder().encodeToString(headerOnly))
+                .put("alt", "헤더만 있는 VP8L");
+
+        assertThatThrownBy(() -> validator.validate((short) 2, document))
+                .as("VP8L 시그니처와 5바이트 헤더만 있는 입력은 디코드 가능한 이미지가 아니다")
+                .isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    void R3_webp_rejectsVp8xWithoutImageSubchunk() throws Exception {
+        byte[] extensionHeaderOnly = buildWebp("VP8X", new byte[10]);
+
+        var document = fixture("valid-default.json").get("document").deepCopy();
+        ((com.fasterxml.jackson.databind.node.ArrayNode) document.at("/bands/0/elements"))
+                .addObject().put("key", "header-only-vp8x").put("type", "IMAGE")
+                .put("src", "data:image/webp;base64," + Base64.getEncoder().encodeToString(extensionHeaderOnly))
+                .put("alt", "이미지 청크 없는 VP8X");
+
+        assertThatThrownBy(() -> validator.validate((short) 2, document))
+                .as("VP8X 확장 헤더만 있고 이미지 서브청크가 없는 입력은 디코드 가능한 이미지가 아니다")
+                .isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    void R3_webp_acceptsVp8xContainerWithVp8ImageSubchunk() throws Exception {
+        byte[] extended = minimalValidWebpVp8xWithVp8Image();
+
+        var document = fixture("valid-default.json").get("document").deepCopy();
+        ((com.fasterxml.jackson.databind.node.ArrayNode) document.at("/bands/0/elements"))
+                .addObject().put("key", "valid-vp8x").put("type", "IMAGE")
+                .put("src", "data:image/webp;base64," + Base64.getEncoder().encodeToString(extended))
+                .put("alt", "정상 VP8X 컨테이너");
+
+        assertThat(validator.validate((short) 2, document)).isNotNull();
+    }
+
+    @Test
+    void R3_webp_acceptsChromiumProducedVp8xWithMetadata() throws Exception {
+        // Chromium canvas.toDataURL('image/webp')가 실제로 생성한 4x4 WebP(ICC 메타데이터 + VP8X + VP8).
+        String chromiumWebp = "UklGRhwCAABXRUJQVlA4WAoAAAAgAAAAAwAAAwAASUNDUMgBAAAAAAHIAAAAAAQwAABtbnRyUkdCIFhZWiAH4AABAAEAAAAAAABhY3NwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAQAA9tYAAQAAAADTLQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAlkZXNjAAAA8AAAACRyWFlaAAABFAAAABRnWFlaAAABKAAAABRiWFlaAAABPAAAABR3dHB0AAABUAAAABRyVFJDAAABZAAAAChnVFJDAAABZAAAAChiVFJDAAABZAAAAChjcHJ0AAABjAAAADxtbHVjAAAAAAAAAAEAAAAMZW5VUwAAAAgAAAAcAHMAUgBHAEJYWVogAAAAAAAAb6IAADj1AAADkFhZWiAAAAAAAABimQAAt4UAABjaWFlaIAAAAAAAACSgAAAPhAAAts9YWVogAAAAAAAA9tYAAQAAAADTLXBhcmEAAAAAAAQAAAACZmYAAPKnAAANWQAAE9AAAApbAAAAAAAAAABtbHVjAAAAAAAAAAEAAAAMZW5VUwAAACAAAAAcAEcAbwBvAGcAbABlACAASQBuAGMALgAgADIAMAAxADZWUDggLgAAANABAJ0BKgQABAABQCYloAJ0ugH4AAOwAP7lCv/4s5GI7PN/9tD+tD+tD/pQAAA=";
+
+        var document = fixture("valid-default.json").get("document").deepCopy();
+        ((com.fasterxml.jackson.databind.node.ArrayNode) document.at("/bands/0/elements"))
+                .addObject().put("key", "chromium-webp").put("type", "IMAGE")
+                .put("src", "data:image/webp;base64," + chromiumWebp)
+                .put("alt", "Chromium WebP 로고");
+
+        assertThat(validator.validate((short) 2, document)).isNotNull();
+    }
+
+    /** K-3 회귀 울타리 — 저장소 실제 마스코트의 첫 ANMF 프레임을 포함한 애니메이션 WebP. */
+    @Test
+    void R5_webp_acceptsRepositoryAnimationAssetFrame() throws Exception {
+        byte[] webp = firstAnimationFrameFromRepositoryAsset();
+        assertThat(new String(Arrays.copyOfRange(webp, 12, 16), StandardCharsets.US_ASCII))
+                .isEqualTo("VP8X");
+        assertThat(new String(Arrays.copyOfRange(webp, 30, 34), StandardCharsets.US_ASCII))
+                .isEqualTo("ANIM");
+        assertThat(new String(Arrays.copyOfRange(webp, 44, 48), StandardCharsets.US_ASCII))
+                .isEqualTo("ANMF");
+
+        var document = fixture("valid-default.json").get("document").deepCopy();
+        ((com.fasterxml.jackson.databind.node.ArrayNode) document.at("/bands/0/elements"))
+                .addObject().put("key", "repository-animation-webp").put("type", "IMAGE")
+                .put("src", "data:image/webp;base64," + Base64.getEncoder().encodeToString(webp))
+                .put("alt", "저장소 실제 애니메이션 마스코트 자산");
+
+        assertThat(validator.validate((short) 2, document)).isNotNull();
+    }
+
+    /**
+     * 🔴 R1-4 RED-first(이슈 #913 코멘트 "손상 WebP" — 개발책임자 결정 2026-07-27로 이 PR에
+     * 흡수): RIFF/WEBP 시그니처(offset 0~11)는 유효하지만 그 뒤 VP8 청크 데이터가 통째로
+     * 잘렸다. 구 코드(RIFF/WEBP 12바이트만 보고 webp면 즉시 true)라면 이 파일도 통과했다 —
+     * 아래 사전조건 단언이 그 사실을 직접 확인한다.
+     */
+    @Test
+    void R1_4_webp_rejectsSignatureValidButTruncatedContent() throws Exception {
+        byte[] truncated = truncatedWebpMissingChunkData();
+        assertThat(new String(Arrays.copyOfRange(truncated, 0, 4), StandardCharsets.US_ASCII))
+                .as("사전조건: RIFF 시그니처는 유효해야 한다(구 코드라면 이미 여기서 통과했다)")
+                .isEqualTo("RIFF");
+        assertThat(new String(Arrays.copyOfRange(truncated, 8, 12), StandardCharsets.US_ASCII))
+                .as("사전조건: WEBP 시그니처는 유효해야 한다(구 코드라면 이미 여기서 통과했다)")
+                .isEqualTo("WEBP");
+
+        var document = fixture("valid-default.json").get("document").deepCopy();
+        ((com.fasterxml.jackson.databind.node.ArrayNode) document.at("/bands/0/elements"))
+                .addObject().put("key", "truncated-webp").put("type", "IMAGE")
+                .put("src", "data:image/webp;base64," + Base64.getEncoder().encodeToString(truncated))
+                .put("alt", "잘린 WebP");
+
+        assertThatThrownBy(() -> validator.validate((short) 2, document))
+                .as("RIFF/WEBP signature만 맞고 청크 데이터가 잘린 입력은 거부되어야 한다")
+                .isInstanceOf(BusinessException.class);
+    }
+
+    /**
+     * 🔴 R1-4: 파일 길이는 정상 WebP와 완전히 동일하지만(길이/RIFF 크기 일치 검사만으로는
+     * 못 잡는다) VP8 시작 코드 바이트만 조용히 손상된 경우 — "내용이 깨진" 손상을 길이
+     * 불일치가 아니라 시작 코드 검사가 잡아야 함을 보여준다.
+     */
+    @Test
+    void R1_4_webp_rejectsSignatureValidButCorruptStartCode() throws Exception {
+        byte[] valid = minimalValidWebpVp8(4, 4);
+        byte[] corrupted = corruptWebpStartCode(valid);
+        assertThat(corrupted).hasSize(valid.length);
+
+        var document = fixture("valid-default.json").get("document").deepCopy();
+        ((com.fasterxml.jackson.databind.node.ArrayNode) document.at("/bands/0/elements"))
+                .addObject().put("key", "corrupt-startcode-webp").put("type", "IMAGE")
+                .put("src", "data:image/webp;base64," + Base64.getEncoder().encodeToString(corrupted))
+                .put("alt", "손상 WebP");
+
+        assertThatThrownBy(() -> validator.validate((short) 2, document))
+                .as("길이는 정상이지만 VP8 시작 코드가 깨진 입력은 거부되어야 한다")
                 .isInstanceOf(BusinessException.class);
     }
 
@@ -732,6 +917,155 @@ class DocumentPayloadValidatorTest {
             writer.dispose();
         }
         return out.toByteArray();
+    }
+
+    /** libwebp이 유효한 VP8(단순 손실) 키프레임으로 인정하는 최소 구조 — RIFF 크기 ·
+     * VP8 청크 크기 · 3바이트 시작 코드(0x9D 0x01 0x2A)까지 전부 올바른 "진짜" 최소 WebP.
+     * frame tag(3바이트) = key_frame=0(bit0) · version=0(bits1-3) · show_frame=1(bit4) ·
+     * first_part_size=3(bits5-23) → 0x70,0x00,0x00. width/height는 14bit 이하라 스케일=0. */
+    private static byte[] minimalValidWebpVp8(int width, int height) throws IOException {
+        byte[] chunkData = new byte[]{
+                0x70, 0x00, 0x00,
+                (byte) 0x9D, 0x01, 0x2A,
+                (byte) (width & 0xFF), (byte) ((width >> 8) & 0xFF),
+                (byte) (height & 0xFF), (byte) ((height >> 8) & 0xFF),
+        };
+        return buildWebp("VP8 ", chunkData);
+    }
+
+    /** libwebp이 유효한 VP8L(무손실) 이미지로 인정하는 최소 구조 — 1바이트 시그니처
+     * (0x2F) + packed(width-1(14bit)|height-1(14bit)|alpha(1bit)|version(3bit)). */
+    private static byte[] minimalValidWebpVp8L(int width, int height) throws IOException {
+        long bits = (long) (width - 1) | ((long) (height - 1) << 14);
+        byte[] chunkData = new byte[]{
+                0x2F,
+                (byte) (bits & 0xFF), (byte) ((bits >> 8) & 0xFF),
+                (byte) ((bits >> 16) & 0xFF), (byte) ((bits >> 24) & 0xFF),
+                0x00, // packed header 뒤의 최소 bitstream payload
+        };
+        return buildWebp("VP8L", chunkData);
+    }
+
+    private static byte[] headerOnlyWebpVp8L(int width, int height) throws IOException {
+        long bits = (long) (width - 1) | ((long) (height - 1) << 14);
+        byte[] chunkData = new byte[]{
+                0x2F,
+                (byte) (bits & 0xFF), (byte) ((bits >> 8) & 0xFF),
+                (byte) ((bits >> 16) & 0xFF), (byte) ((bits >> 24) & 0xFF),
+        };
+        return buildWebp("VP8L", chunkData);
+    }
+
+    /** VP8X 확장 헤더만으로 통과하지 않도록 실제 VP8 이미지 서브청크를 함께 둔 변형. */
+    private static byte[] minimalValidWebpVp8xWithVp8Image() throws IOException {
+        byte[] extensionData = new byte[10];
+        extensionData[4] = 0x03; // canvas width - 1 (4px)
+        extensionData[7] = 0x03; // canvas height - 1 (4px)
+        byte[] vp8Data = new byte[]{
+                0x70, 0x00, 0x00,
+                (byte) 0x9D, 0x01, 0x2A,
+                0x04, 0x00, 0x04, 0x00,
+        };
+        var out = new ByteArrayOutputStream();
+        int riffSize = 4 + 8 + extensionData.length + 8 + vp8Data.length;
+        out.write(new byte[]{'R', 'I', 'F', 'F'});
+        writeUInt32LE(out, riffSize);
+        out.write(new byte[]{'W', 'E', 'B', 'P'});
+        writeWebpChunk(out, "VP8X", extensionData);
+        writeWebpChunk(out, "VP8 ", vp8Data);
+        return out.toByteArray();
+    }
+
+    /** RIFF/WEBP/VP8 헤더(시그니처 포함)는 온전하지만 청크 데이터가 통째로 잘린 —
+     * "손상 WebP"(이슈 #913 코멘트)의 가장 단순한 재현. RIFF가 선언한 크기(22바이트,
+     * WEBP4+청크헤더8+데이터10)에 실제 파일은 훨씬 못 미친다. */
+    private static byte[] truncatedWebpMissingChunkData() throws IOException {
+        var out = new ByteArrayOutputStream();
+        out.write(new byte[]{'R', 'I', 'F', 'F'});
+        writeUInt32LE(out, 22); // 정상 파일이라면 가졌을 크기(거짓 선언 — 실제로는 데이터가 없다)
+        out.write(new byte[]{'W', 'E', 'B', 'P'});
+        out.write(new byte[]{'V', 'P', '8', ' '});
+        writeUInt32LE(out, 10);
+        // 청크 데이터 없이 여기서 파일이 끝난다.
+        return out.toByteArray();
+    }
+
+    /** 파일 길이·RIFF 선언 크기는 정상 WebP와 동일하게 유지한 채 VP8 시작 코드 첫 바이트만
+     * 깨서("내용이 조용히 손상된") 길이 기반 검사로는 못 잡는 손상을 재현한다. */
+    private static byte[] corruptWebpStartCode(byte[] valid) {
+        byte[] corrupted = valid.clone();
+        corrupted[23] = 0x00; // 시작 코드 0x9D → 0x00
+        return corrupted;
+    }
+
+    private static byte[] firstAnimationFrameFromRepositoryAsset() throws IOException {
+        Path relativeAsset = Path.of("clients/web/design-system/src/assets/mascot/samhani.webp");
+        Path asset = null;
+        for (Path current = Path.of(System.getProperty("user.dir")).toAbsolutePath();
+                current != null; current = current.getParent()) {
+            Path candidate = current.resolve(relativeAsset);
+            if (Files.exists(candidate)) {
+                asset = candidate;
+                break;
+            }
+        }
+        assertThat(asset).as("저장소 실제 WebP 마스코트 자산 경로를 찾을 수 있어야 한다").isNotNull();
+        assertThat(Files.exists(asset)).as("저장소 실제 WebP 마스코트 자산이 있어야 한다").isTrue();
+        byte[] source = Files.readAllBytes(asset);
+        int anmfOffset = findChunk(source, "ANMF", 12);
+        assertThat(anmfOffset).as("마스코트 자산은 실제 애니메이션 ANMF 프레임을 가져야 한다")
+                .isGreaterThan(0);
+        int anmfSize = (int) readUInt32LE(source, anmfOffset + 4);
+        int frameEnd = anmfOffset + 8 + anmfSize + (anmfSize & 1);
+        byte[] singleFrame = Arrays.copyOf(source, frameEnd);
+        int riffSize = singleFrame.length - 8;
+        singleFrame[4] = (byte) riffSize;
+        singleFrame[5] = (byte) (riffSize >> 8);
+        singleFrame[6] = (byte) (riffSize >> 16);
+        singleFrame[7] = (byte) (riffSize >> 24);
+        return singleFrame;
+    }
+
+    private static int findChunk(byte[] bytes, String fourCc, int start) {
+        int offset = start;
+        while (offset + 8 <= bytes.length) {
+            String current = new String(bytes, offset, 4, StandardCharsets.US_ASCII);
+            int chunkSize = (int) readUInt32LE(bytes, offset + 4);
+            if (fourCc.equals(current)) return offset;
+            offset += 8 + chunkSize + (chunkSize & 1);
+        }
+        return -1;
+    }
+
+    private static long readUInt32LE(byte[] bytes, int offset) {
+        return (bytes[offset] & 0xFFL)
+                | ((bytes[offset + 1] & 0xFFL) << 8)
+                | ((bytes[offset + 2] & 0xFFL) << 16)
+                | ((bytes[offset + 3] & 0xFFL) << 24);
+    }
+
+    private static byte[] buildWebp(String fourCc, byte[] chunkData) throws IOException {
+        var out = new ByteArrayOutputStream();
+        int riffSize = 4 /* "WEBP" */ + 8 /* 청크 헤더 */ + chunkData.length;
+        out.write(new byte[]{'R', 'I', 'F', 'F'});
+        writeUInt32LE(out, riffSize);
+        out.write(new byte[]{'W', 'E', 'B', 'P'});
+        writeWebpChunk(out, fourCc, chunkData);
+        return out.toByteArray();
+    }
+
+    private static void writeWebpChunk(ByteArrayOutputStream out, String fourCc, byte[] chunkData) throws IOException {
+        out.write(fourCc.getBytes(StandardCharsets.US_ASCII));
+        writeUInt32LE(out, chunkData.length);
+        out.write(chunkData);
+        if ((chunkData.length & 1) != 0) out.write(0);
+    }
+
+    private static void writeUInt32LE(ByteArrayOutputStream out, int value) {
+        out.write(value & 0xFF);
+        out.write((value >> 8) & 0xFF);
+        out.write((value >> 16) & 0xFF);
+        out.write((value >> 24) & 0xFF);
     }
 
     private JsonNode fixture(String name) throws IOException {

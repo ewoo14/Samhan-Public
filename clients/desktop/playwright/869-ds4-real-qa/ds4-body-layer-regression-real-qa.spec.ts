@@ -17,6 +17,14 @@ import { resolveQaShotsDir } from '../support/qa-screenshot-dir'
 import { expect, test } from '@playwright/test'
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
+import {
+  cleanupDs4Template,
+  extendDs4CleanupTimeout,
+  rememberDs4TemplateId,
+  startDs4RunScope,
+  stopDs4RunScope,
+  sweepStaleDs4Templates,
+} from '../support/ds4-real-qa-cleanup'
 
 // SONNET5 R5 fix: 하네스가 HashRouter(5191)에서 BrowserRouter(5291)로 바뀐 뒤 갱신되지 않았던
 // fallback — AUDIT_BASE_URL 미지정 시 고아 vite/구 라우팅으로 false-RED 를 냈다([[feedback_realqa_run_and_false_red]]).
@@ -43,7 +51,9 @@ test('DS-4 회귀 — BODY % geometry 레이어가 flow 높이를 예약하고 �
 
   const preview = page.getByTestId('document-template-live-preview')
   const addText = page.getByRole('button', { name: '문구 추가' })
-  const templateName = `DS4 회귀실측 ${Date.now()}`
+  const runScope = await startDs4RunScope('DS4 회귀실측', API_BASE, PASSWORD)
+  const templateName = runScope.templateName
+  let savedTemplateId = ''
 
   try {
   /** `% geometry`가 실제 적용된 요소와 그 부모 BODY의 rect를 함께 측정한다. */
@@ -144,8 +154,9 @@ test('DS-4 회귀 — BODY % geometry 레이어가 flow 높이를 예약하고 �
     await page.getByRole('button', { name: '저장' }).click()
     const res = await saved
     expect(res.status(), `실 BE 저장 실패 HTTP ${res.status()}`).toBeLessThan(400)
-    const savedTemplateId = String((await res.json()).data?.id ?? '')
+    savedTemplateId = String((await res.json()).data?.id ?? '')
     expect(savedTemplateId, '저장 응답에 template id가 없다').not.toBe('')
+    rememberDs4TemplateId(runScope, savedTemplateId)
 
     await page.getByRole('button', { name: '목록' }).click()
     await expect(page.getByRole('heading', { name: '결재 문서 양식', level: 1 })).toBeVisible({ timeout: 15000 })
@@ -182,19 +193,25 @@ test('DS-4 회귀 — BODY % geometry 레이어가 flow 높이를 예약하고 �
 
   // ── 정리 — 공유 실 DB에 throwaway를 남기지 않는다 ───────────────
   } finally {
-    await test.step('QA 잔재 정리', async () => {
-    const listRes = await page.request.get(`${API_BASE}/admin/groupware/document-templates`, {
-      headers: { Authorization: `Bearer ${d.token}`, 'X-User-Id': d.userId, 'X-User-Role': d.role ?? 'MASTER' },
-    })
-    const items: Array<{ id: string; name: string }> = listRes.ok() ? ((await listRes.json()).data ?? []) : []
-    const mine = items.filter((t) => t.name?.startsWith('DS4 회귀실측'))
-    for (const t of mine) {
-      const del = await page.request.delete(`${API_BASE}/admin/groupware/document-templates/${t.id}`, {
-        headers: { Authorization: `Bearer ${d.token}`, 'X-User-Id': d.userId, 'X-User-Role': d.role ?? 'MASTER' },
+    extendDs4CleanupTimeout(test.info())
+    try {
+      await test.step('QA 잔재 정리 — 현재 run 양식만 삭제', async () => {
+        if (!savedTemplateId) return
+        const result = await cleanupDs4Template(page.request, API_BASE, {
+          token: d.token,
+          userId: d.userId,
+          role: d.role ?? 'MASTER',
+        }, savedTemplateId)
+        console.log(`■ 정리 run=${runScope.runId}(spawn=${runScope.spawnMethod}) 대상=${result.matched}건 삭제=${result.deleted}건`)
       })
-      console.log(`■ 정리 ${t.name} → HTTP ${del.status()}`)
+      // 🚨 R1-1/R1-2 self-healing — 이 run 자신이 아니라 "이전에 죽고 아무도 못 지운" run 을
+      // 이번 실행이 대신 회수한다(도구 자체가 wmic/reap 로 즉시 회수하지 못한 예외적 경우의 안전망).
+      await test.step('QA 잔재 정리 — 이전 run 중 소유자가 죽은 stale 항목도 함께 회수', async () => {
+        const swept = await sweepStaleDs4Templates(API_BASE, { token: d.token, userId: d.userId, role: d.role ?? 'MASTER' })
+        console.log(`■ stale sweep 조회=${swept.checked}건 stale=${swept.stale}건 삭제=${swept.deleted}건 실패=${swept.failed}건`)
+      })
+    } finally {
+      stopDs4RunScope(runScope)
     }
-    console.log(`■ 정리 대상 ${mine.length}건`)
-    })
   }
 })

@@ -350,6 +350,56 @@ class GroupwareAdminControllerIT extends AbstractPostgresIT {
                 .andExpect(MockMvcResultMatchers.jsonPath("$.data.document.bands[0].key").value("new-layout"));
     }
 
+    @Test
+    @org.springframework.security.test.context.support.WithMockUser(username = "r2-missing-revision-it",
+            authorities = {"ROLE_MANAGER"})
+    void httpApproval_whenActiveTemplateRevisionIsMissing_selfHealsBeforePin() throws Exception {
+        UUID templateId = UUID.randomUUID();
+        String docType = "GROUPWARE_R2_MISSING_REVISION";
+        insertRawTemplate(templateId, docType, "revision 없는 ACTIVE 양식", "ACTIVE",
+                "{\"paper\":\"A4_PORTRAIT\",\"bands\":[]}");
+        UUID approver = UUID.randomUUID();
+        ApprovalLine line = ApprovalLine.open("2099/01/01-851", UUID.randomUUID(), "R2 self-heal 결재", "본문");
+        line.linkGroupwareDocument(docType, null).appendStep(approver);
+        UUID approvalId = approvalLineRepository.saveAndFlush(line).getId();
+
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM document_template_revisions WHERE template_id = ?", Integer.class,
+                templateId)).isZero();
+
+        mvcApprovalApprove(approvalId, approver)
+                .andExpect(MockMvcResultMatchers.status().isOk())
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.status").value("APPROVED"))
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.documentTemplateId")
+                        .value(templateId.toString()))
+                .andExpect(MockMvcResultMatchers.jsonPath("$.data.documentTemplateRevision").value(1));
+
+        Map<String, Object> row = jdbcTemplate.queryForMap(
+                "SELECT status, version, document_template_id, document_template_revision, "
+                        + "document_template_default_pinned FROM approval_lines WHERE id = ?", approvalId);
+        assertThat(row.get("status")).isEqualTo("APPROVED");
+        assertThat(row.get("version")).isEqualTo(1L);
+        assertThat(row.get("document_template_id")).isEqualTo(templateId);
+        assertThat(row.get("document_template_revision")).isEqualTo(1);
+        assertThat(row.get("document_template_default_pinned")).isEqualTo(false);
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM document_template_revisions WHERE template_id = ? AND revision = 1",
+                Integer.class, templateId)).isEqualTo(1);
+
+        assertThatThrownBy(() -> jdbcTemplate.update(
+                "UPDATE approval_lines SET document_template_id = NULL, "
+                        + "document_template_revision = NULL, document_template_default_pinned = FALSE "
+                        + "WHERE id = ?", approvalId))
+                .isInstanceOf(org.springframework.dao.DataAccessException.class);
+        Map<String, Object> immutableRow = jdbcTemplate.queryForMap(
+                "SELECT status, document_template_id, document_template_revision, "
+                        + "document_template_default_pinned FROM approval_lines WHERE id = ?", approvalId);
+        assertThat(immutableRow.get("status")).isEqualTo("APPROVED");
+        assertThat(immutableRow.get("document_template_id")).isEqualTo(templateId);
+        assertThat(immutableRow.get("document_template_revision")).isEqualTo(1);
+        assertThat(immutableRow.get("document_template_default_pinned")).isEqualTo(false);
+    }
+
     /**
      * R3 B-1 fix — V12이 신설한 CHECK {@code ck_approval_lines_document_template_default_pin}에
      * 대한 직접 테스트가 0건이었다. 형제 제약(append-only 트리거는 {@code DocumentTemplateIT},
@@ -470,6 +520,18 @@ class GroupwareAdminControllerIT extends AbstractPostgresIT {
                 .andExpect(MockMvcResultMatchers.jsonPath("$.data.documentTemplateRevision").doesNotExist())
                 .andExpect(MockMvcResultMatchers.jsonPath("$.data.documentTemplateDefaultPinned").value(true));
 
+        // ACTIVE-0 각인은 default=true 자체가 감사 사실이므로 직접 철회할 수 없어야 한다.
+        assertThatThrownBy(() -> jdbcTemplate.update(
+                "UPDATE approval_lines SET document_template_default_pinned = FALSE WHERE id = ?",
+                approvalId))
+                .isInstanceOf(org.springframework.dao.DataAccessException.class);
+        Map<String, Object> defaultPinRow = jdbcTemplate.queryForMap(
+                "SELECT document_template_id, document_template_revision, document_template_default_pinned "
+                        + "FROM approval_lines WHERE id = ?", approvalId);
+        assertThat(defaultPinRow.get("document_template_id")).isNull();
+        assertThat(defaultPinRow.get("document_template_revision")).isNull();
+        assertThat(defaultPinRow.get("document_template_default_pinned")).isEqualTo(true);
+
         DocumentTemplateCreateRequest newRequest = new DocumentTemplateCreateRequest(
                 docType, "승인 이후 새 양식", (short) 1, payloadJson("new-active-after-approval"));
         UUID newTemplateId = documentTemplateService.create(newRequest).id();
@@ -486,6 +548,58 @@ class GroupwareAdminControllerIT extends AbstractPostgresIT {
         assertThat(documentTemplateRepository.findById(draftId)).isPresent();
         assertThat(documentTemplateRepository.findById(newTemplateId).orElseThrow().getStatus())
                 .isEqualTo(com.samhanair.logis.groupware.domain.DocumentTemplateStatus.ACTIVE);
+    }
+
+    @Test
+    @org.springframework.security.test.context.support.WithMockUser(username = "ds3a-default-pin-trigger-it",
+            authorities = {"ROLE_MANAGER"})
+    void directSql_defaultPinFactCannotBeWithdrawnAfterItsFirstWrite() {
+        ApprovalLine line = ApprovalLine.open("2099/01/01-850", UUID.randomUUID(), "기본 양식 pin 불변성", "pending");
+        line.appendStep(UUID.randomUUID());
+        UUID approvalId = approvalLineRepository.saveAndFlush(line).getId();
+
+        // V13의 OLD.document_template_default_pinned disjunct만 독립적으로 검증한다.
+        jdbcTemplate.update("UPDATE approval_lines SET document_template_default_pinned = TRUE WHERE id = ?",
+                approvalId);
+        assertThatThrownBy(() -> jdbcTemplate.update(
+                "UPDATE approval_lines SET document_template_default_pinned = FALSE WHERE id = ?",
+                approvalId))
+                .isInstanceOf(org.springframework.dao.DataAccessException.class);
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT document_template_default_pinned FROM approval_lines WHERE id = ?", Boolean.class,
+                approvalId)).isTrue();
+    }
+
+    @Test
+    @org.springframework.security.test.context.support.WithMockUser(username = "ds3a-approved-legacy-it",
+            authorities = {"ROLE_MANAGER"})
+    void directSql_approvedLegacyUnpinnedCannotReceiveFirstDocumentTemplatePin() throws Exception {
+        String docType = "GROUPWARE_APPROVED_LEGACY_PIN";
+        DocumentTemplate template = documentTemplateRepository.findById(documentTemplateService.create(
+                new DocumentTemplateCreateRequest(docType, "legacy 승인 행 검증용", (short) 1,
+                        payloadJson("legacy-pin-layout"))).id()).orElseThrow();
+        documentTemplateService.activate(template.getId(), "ds3a-approved-legacy-it");
+
+        ApprovalLine line = ApprovalLine.open("2099/01/01-847", UUID.randomUUID(), "legacy 승인 행", "legacy");
+        line.appendStep(UUID.randomUUID());
+        UUID approvalId = approvalLineRepository.saveAndFlush(line).getId();
+
+        // 과거 데이터에 있을 수 있는 APPROVED + 미pin 행을 직접 재현한다.
+        jdbcTemplate.update("UPDATE approval_lines SET status = 'APPROVED' WHERE id = ?", approvalId);
+
+        assertThatThrownBy(() -> jdbcTemplate.update(
+                "UPDATE approval_lines SET document_template_id = ?, document_template_revision = ?, "
+                        + "document_template_default_pinned = FALSE WHERE id = ?",
+                template.getId(), 1, approvalId))
+                .isInstanceOf(org.springframework.dao.DataAccessException.class);
+
+        Map<String, Object> row = jdbcTemplate.queryForMap(
+                "SELECT status, document_template_id, document_template_revision, "
+                        + "document_template_default_pinned FROM approval_lines WHERE id = ?", approvalId);
+        assertThat(row.get("status")).isEqualTo("APPROVED");
+        assertThat(row.get("document_template_id")).isNull();
+        assertThat(row.get("document_template_revision")).isNull();
+        assertThat(row.get("document_template_default_pinned")).isEqualTo(false);
     }
 
     private org.springframework.test.web.servlet.ResultActions mvcApprovalApprove(UUID approvalId, UUID approver)
@@ -506,6 +620,14 @@ class GroupwareAdminControllerIT extends AbstractPostgresIT {
                         new DocumentPayload.Element("content", "CONTENT_PARAGRAPHS"))),
                 new DocumentPayload.Band("footer", "FOOTER", List.of(
                         new DocumentPayload.Element("closing", "CLOSING")))));
+    }
+
+    private void insertRawTemplate(UUID id, String docType, String name, String status, String document) {
+        jdbcTemplate.update("INSERT INTO document_templates (id,doc_type,name,revision,status,schema_version,"
+                        + "lock_version,document,created_at,created_by,is_deleted) "
+                        + "VALUES (?,?,?,?,?,?,?,?::jsonb,?,?,false)",
+                id, docType, name, 1, status, (short) 1, 0L, document,
+                java.sql.Timestamp.valueOf(LocalDateTime.now()), "r2-missing-revision-it");
     }
 
     private JsonNode payloadJson(String bandKey) {

@@ -272,9 +272,9 @@ public class DocumentPayloadValidator {
                 return false;
             }
             // ImageIO는 PNG/JPEG의 실제 파일 구조와 checksum/truncation을 검사한다.
-            // 표준 JDK에는 WebP reader가 없으므로 WebP는 RIFF/WEBP 컨테이너 signature까지 검사한다.
+            // 표준 JDK에는 WebP reader가 없으므로 WebP는 컨테이너 구조를 직접 검사한다(R1-4).
             if ("webp".equals(matcher.group(1))) {
-                return true;
+                return isStructurallyValidWebp(decoded);
             }
             // H15: ImageIO.read()는 PNG/JPEG 모두 IHDR/SOF에 선언된 가로×세로 치수(+색상 정보)만으로
             // 목적지 픽셀 버퍼를 "먼저" 할당하고, 그 다음에야 IDAT/scan 데이터를 실제로 읽는다 — IDAT이
@@ -360,6 +360,97 @@ public class DocumentPayloadValidator {
         return "webp".equals(mime) && bytes.length >= 12
                 && bytes[0] == 'R' && bytes[1] == 'I' && bytes[2] == 'F' && bytes[3] == 'F'
                 && bytes[8] == 'W' && bytes[9] == 'E' && bytes[10] == 'B' && bytes[11] == 'P';
+    }
+
+    /**
+     * R1-4/R3: WebP는 표준 JDK ImageIO reader가 없어 실제 픽셀 디코드로 무결성을 검증할 수
+     * 없다. 따라서 RIFF 전체 청크를 끝까지 순회하고, 실제 이미지 서브청크가 하나 이상 있는지
+     * 확인하는 보수적 구조 검사를 수행한다. 특히 VP8L의 5바이트 헤더만 있는 입력과 VP8X
+     * 확장 헤더만 있는 입력은 저장 전에 거부한다. 애니메이션 WebP의 ANMF 프레임은 16바이트
+     * 프레임 헤더 뒤에 VP8/VP8L 이미지 청크를 중첩하므로 그 내부도 같은 방식으로 검사한다.
+     */
+    private static boolean isStructurallyValidWebp(byte[] decoded) {
+        if (decoded.length < 20) return false; // RIFF 헤더(12) + 첫 서브청크 헤더(8)
+        long riffDeclaredSize = readUInt32LE(decoded, 4);
+        if (riffDeclaredSize != decoded.length - 8L) return false; // 잘림/덧붙음 검출
+        int offset = 12;
+        boolean hasImageChunk = false;
+        boolean hasExtendedHeader = false;
+        while (offset < decoded.length) {
+            if (decoded.length - offset < 8) return false;
+            String fourCc = new String(decoded, offset, 4, StandardCharsets.US_ASCII);
+            long chunkSize = readUInt32LE(decoded, offset + 4);
+            long paddedChunkSize = chunkSize + (chunkSize & 1L);
+            if (chunkSize > decoded.length - offset - 8L
+                    || paddedChunkSize > decoded.length - offset - 8L) {
+                return false;
+            }
+            int dataOffset = offset + 8;
+            if ("VP8X".equals(fourCc)) {
+                if (chunkSize != 10) return false;
+                hasExtendedHeader = true;
+            } else if ("VP8 ".equals(fourCc)) {
+                if (!isStructurallyValidVp8(decoded, dataOffset, chunkSize)) return false;
+                hasImageChunk = true;
+            } else if ("VP8L".equals(fourCc)) {
+                if (!isStructurallyValidVp8l(decoded, dataOffset, chunkSize)) return false;
+                hasImageChunk = true;
+            } else if ("ANMF".equals(fourCc)) {
+                if (!isStructurallyValidAnmf(decoded, dataOffset, chunkSize)) return false;
+                hasImageChunk = true;
+            }
+            offset += 8 + (int) paddedChunkSize;
+        }
+        // VP8X는 컨테이너 헤더만으로는 이미지가 아니다. VP8/VP8L 서브청크가 있어야 한다.
+        return offset == decoded.length && hasImageChunk && (hasExtendedHeader || decoded[12] != 'V'
+                || decoded[13] != 'P' || decoded[14] != '8' || decoded[15] != 'X');
+    }
+
+    private static boolean isStructurallyValidAnmf(byte[] bytes, int dataOffset, long chunkSize) {
+        // ANMF 고정 프레임 헤더(좌표·크기·duration·blend/dispose) 뒤에 nested chunk가 온다.
+        if (chunkSize < 16) return false;
+        int frameEnd = dataOffset + (int) chunkSize;
+        int offset = dataOffset + 16;
+        boolean hasImageChunk = false;
+        while (offset < frameEnd) {
+            if (frameEnd - offset < 8) return false;
+            String fourCc = new String(bytes, offset, 4, StandardCharsets.US_ASCII);
+            long nestedChunkSize = readUInt32LE(bytes, offset + 4);
+            long paddedChunkSize = nestedChunkSize + (nestedChunkSize & 1L);
+            if (nestedChunkSize > frameEnd - offset - 8L
+                    || paddedChunkSize > frameEnd - offset - 8L) {
+                return false;
+            }
+            int nestedDataOffset = offset + 8;
+            if ("VP8 ".equals(fourCc)) {
+                if (!isStructurallyValidVp8(bytes, nestedDataOffset, nestedChunkSize)) return false;
+                hasImageChunk = true;
+            } else if ("VP8L".equals(fourCc)) {
+                if (!isStructurallyValidVp8l(bytes, nestedDataOffset, nestedChunkSize)) return false;
+                hasImageChunk = true;
+            }
+            offset += 8 + (int) paddedChunkSize;
+        }
+        return offset == frameEnd && hasImageChunk;
+    }
+
+    private static boolean isStructurallyValidVp8(byte[] bytes, int dataOffset, long chunkSize) {
+        return chunkSize >= 10
+                && (bytes[dataOffset + 3] & 0xFF) == 0x9D
+                && (bytes[dataOffset + 4] & 0xFF) == 0x01
+                && (bytes[dataOffset + 5] & 0xFF) == 0x2A;
+    }
+
+    private static boolean isStructurallyValidVp8l(byte[] bytes, int dataOffset, long chunkSize) {
+        // 0x2F + 4바이트 packed canvas는 헤더일 뿐이며, 뒤에 실제 bitstream payload가 있어야 한다.
+        return chunkSize > 5 && (bytes[dataOffset] & 0xFF) == 0x2F;
+    }
+
+    private static long readUInt32LE(byte[] bytes, int offset) {
+        return (bytes[offset] & 0xFFL)
+                | ((bytes[offset + 1] & 0xFFL) << 8)
+                | ((bytes[offset + 2] & 0xFFL) << 16)
+                | ((bytes[offset + 3] & 0xFFL) << 24);
     }
 
     private static void checkGeometry(JsonNode geometry) {
