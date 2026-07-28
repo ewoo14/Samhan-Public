@@ -4,7 +4,7 @@
  * 1단계는 template/model slot을 compiled PrintLayout props로 만들고, 2단계는
  * 기존 PrintLayout shell에 compiled body를 children으로 전달한다.
  */
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { PrintLayout, type PaperSize, type PrintApprovalStep, type PrintDocHeader } from './PrintLayout'
 import type { ApprovalRenderModel } from './approvalRenderModel'
 import { krw } from './PrintLayout'
@@ -26,6 +26,7 @@ import {
   type ImageElement,
   type TextElement,
   DETAIL_COLUMN_LABEL,
+  BAND_KIND_LABEL,
   isAllowedImageSource,
 } from './templateSchema'
 
@@ -236,26 +237,164 @@ function renderDetailElement(element: DetailElement, model: ApprovalRenderModel)
   )
 }
 
-function renderImageElement(element: ImageElement, measurement = false) {
-  if (!isAllowedImageSource(element.src)) return null
+const IMAGE_DECODE_NOTICE = '이 이미지는 현재 화면에서 표시할 수 없습니다. 인쇄 전에 이미지를 교체하고 저장하세요.'
+
+interface ImageDecodeIssue {
+  key: string
+  alt: string
+  bandLabel: string
+}
+
+interface ImageDecodeIssueReporter {
+  report: (issue: ImageDecodeIssue) => void
+  clear: (key: string) => void
+}
+
+const imageDecodeIssueReporterContext = createContext<ImageDecodeIssueReporter | null>(null)
+
+type ImageDecodeStatus = 'pending' | 'decoded' | 'failed'
+
+function ImageDecodeIssueSummary({ issues }: { issues: ImageDecodeIssue[] }) {
+  if (issues.length === 0) return null
+
+  return (
+    <section
+      className="no-print"
+      role="alert"
+      aria-live="assertive"
+      data-testid="document-template-image-error-summary"
+      style={{
+        display: 'grid',
+        gap: 6,
+        marginBottom: 12,
+        padding: 12,
+        color: 'var(--color-danger-700, #a12622)',
+        background: 'var(--color-danger-50, #fff3f2)',
+        border: '1px solid var(--color-danger-300, #e0a29e)',
+      }}
+    >
+      <strong>표시할 수 없는 이미지 {issues.length}개가 있습니다.</strong>
+      <span>{IMAGE_DECODE_NOTICE}</span>
+      <ul style={{ margin: 0, paddingInlineStart: 20 }}>
+        {issues.map((issue) => (
+          <li key={issue.key} data-testid={`document-template-image-error-item-${issue.key}`}>
+            {issue.bandLabel} · {issue.alt || '대체 문구 없음'} ({issue.key})
+          </li>
+        ))}
+      </ul>
+      <span>위 요소의 이미지를 교체하고 저장하세요.</span>
+    </section>
+  )
+}
+
+/**
+ * C3(#968 R1 결함1 fix): `onError`만으로는 좌표 배치(FIELD/TEXT/IMAGE 밴드) IMAGE의 첫 진입에서
+ * 경고가 한 번도 뜨지 않았다(라이브 실측 5/5) — React가 `<img>`를 DOM에 삽입하기 전에 `src`를
+ * 세팅해 data URL 디코드 실패가 그 시점에 이미 일어나고, 마운트 경로의 synthetic `onError`가 그
+ * 이벤트를 못 받는다(브라우저 native error는 실제로 발생하지만 React가 놓친다 — DOM은 이미
+ * `complete:true, naturalWidth:0`). `PositionedElementBand`(layout effect + ResizeObserver + 화면/
+ * 인쇄 2벌 렌더) 아래라 이 순서가 항상 불리했다.
+ *
+ * 마운트 이후 `imgRef`로 `HTMLImageElement#decode()`를 직접 호출하면 이 레이스와 무관하게 항상
+ * 정확한 답을 얻는다 — decode()는 이벤트 버블링에 기대지 않고 "이 리소스가 지금 디코드 가능한가"를
+ * 그 자리에서 판정하므로, 실패가 effect 실행 이전에 이미 일어났어도(마운트 전 실패) 올바르게
+ * reject된다. C1(`canDecodeImageSource`)이 저장 전 판정에 쓰는 것과 동일한 원리다 — 렌더 경로와
+ * 저장 경로가 "디코드 가능성"을 같은 방식으로 묻는다. `onError`는 마운트 이후 src가 바뀌는 경로
+ * (예: 인스펙터에서 직접 URL 재입력)의 즉시 반응용으로 그대로 둔다 — 두 메커니즘 모두 같은
+ * 이미지 요소의 보고 함수로 수렴하므로 충돌하지 않는다.
+ */
+function RenderedImageElement({
+  element,
+  measurement = false,
+  bandLabel = '문서',
+}: {
+  element: ImageElement
+  measurement?: boolean
+  bandLabel?: string
+}) {
+  const imgRef = useRef<HTMLImageElement | null>(null)
+  const reporter = useContext(imageDecodeIssueReporterContext)
+  const issue = useMemo(() => ({ key: element.key, alt: element.alt, bandLabel }), [bandLabel, element.alt, element.key])
+  const sourceIsAllowed = isAllowedImageSource(element.src)
+  const [decodeState, setDecodeState] = useState<{ src: string; status: ImageDecodeStatus }>(() => ({
+    src: element.src,
+    status: sourceIsAllowed ? 'pending' : 'failed',
+  }))
+  const decodeStatus = !sourceIsAllowed || decodeState.src !== element.src ? 'pending' : decodeState.status
+
+  const setStatus = useCallback((status: ImageDecodeStatus) => {
+    setDecodeState({ src: element.src, status })
+  }, [element.src])
+
+  useIsomorphicLayoutEffect(() => {
+    if (!sourceIsAllowed) {
+      setStatus('failed')
+      if (!measurement) reporter?.report(issue)
+      return () => { if (!measurement) reporter?.clear(element.key) }
+    }
+    setStatus('pending')
+    if (!measurement) reporter?.clear(element.key)
+    const img = imgRef.current
+    if (!img) return undefined
+    let cancelled = false
+    const markDecoded = () => {
+      if (cancelled) return
+      setStatus('decoded')
+      if (!measurement) reporter?.clear(element.key)
+    }
+    const markFailed = () => {
+      if (cancelled) return
+      setStatus('failed')
+      if (!measurement) reporter?.report(issue)
+    }
+    if (typeof img.decode !== 'function') {
+      if (img.complete && img.naturalWidth > 0) markDecoded()
+      return () => { cancelled = true }
+    }
+    img.decode().then(markDecoded, markFailed)
+    return () => {
+      cancelled = true
+      if (!measurement) reporter?.clear(element.key)
+    }
+  }, [element.key, issue, measurement, reporter, setStatus, sourceIsAllowed])
+
+  const dataAttribute = measurement ? { 'data-template-print-image': element.key } : { 'data-template-image': element.key }
+  const placeholderAttribute = measurement
+    ? { 'data-template-print-image-placeholder': element.key }
+    : { 'data-template-image-placeholder': element.key }
+
+  if (!sourceIsAllowed || decodeStatus === 'failed') {
+    return <span aria-hidden="true" {...placeholderAttribute} style={{ display: 'none' }} />
+  }
+
+  const handleDecodeFailure = () => {
+    setStatus('failed')
+    if (!measurement) reporter?.report(issue)
+  }
+
   return (
     <img
-      key={element.key}
+      ref={imgRef}
       className="document-template-image"
-      {...(measurement
-        ? { 'data-template-print-image': element.key }
-        : { 'data-template-image': element.key })}
+      {...dataAttribute}
       src={element.src}
       alt={element.alt}
+      aria-hidden={decodeStatus === 'decoded' ? undefined : true}
+      onError={measurement ? undefined : handleDecodeFailure}
       style={{
         // IMAGE는 replaced element라 글꼴/굵기/정렬이 그려지지 않는다.
         // 인스펙터도 해당 컨트롤을 숨기고, 출력에는 실제 반영 가능한 테두리만 전달한다.
         ...geometryStyle(element.geometry, element.style?.border === undefined ? undefined : { border: element.style.border }),
         display: 'block',
         objectFit: 'contain',
+        visibility: decodeStatus === 'decoded' ? 'visible' : 'hidden',
       }}
     />
   )
+}
+
+function renderImageElement(element: ImageElement, measurement = false, bandLabel = '문서') {
+  return <RenderedImageElement key={element.key} element={element} measurement={measurement} bandLabel={bandLabel} />
 }
 
 /** % geometry 좌표계의 기준(ruler) 높이(mm). H1 — 절대 변경 금지: 바뀌면 저장된 모든 geometry 값의
@@ -286,6 +425,7 @@ interface PositionedElementBandProps {
   elements: Array<FieldElement | TextElement | ImageElement>
   model: ApprovalRenderModel
   testId: string
+  bandLabel: string
 }
 
 /**
@@ -310,7 +450,7 @@ interface PositionedElementBandProps {
  * 요소 수와 무관하게 밴드당 하나의 ruler/spacer만 존재한다(H4) — 여러 요소 중 가장 많이 넘친
  * 요소 기준으로 한 번만 예약한다.
  */
-function PositionedElementBand({ elements, model, testId }: PositionedElementBandProps) {
+function PositionedElementBand({ elements, model, testId, bandLabel }: PositionedElementBandProps) {
   const rulerRef = useRef<HTMLDivElement | null>(null)
   const printRulerRef = useRef<HTMLDivElement | null>(null)
   const [screenOverflowPx, setScreenOverflowPx] = useState(0)
@@ -360,7 +500,7 @@ function PositionedElementBand({ elements, model, testId }: PositionedElementBan
   }, [contentSignature])
 
   const renderElements = (measurement = false) => elements.map((element) => element.type === 'IMAGE'
-    ? renderImageElement(element, measurement)
+    ? renderImageElement(element, measurement, bandLabel)
     : renderPositionedElement(element, model, measurement))
 
   return (
@@ -420,14 +560,36 @@ function positionedElementLayer(
   model: ApprovalRenderModel,
   testId: string,
   key?: string,
+  bandLabel = '문서',
 ): ReactNode {
   if (elements.length === 0) return null
-  return <PositionedElementBand key={key} elements={elements} model={model} testId={testId} />
+  return <PositionedElementBand key={key} elements={elements} model={model} testId={testId} bandLabel={bandLabel} />
 }
 
 function positionedElementsOf(elements: DocElement[]): Array<FieldElement | TextElement | ImageElement> {
   return elements.filter(
     (element): element is FieldElement | TextElement | ImageElement => element.type === 'FIELD' || element.type === 'TEXT' || element.type === 'IMAGE',
+  )
+}
+
+function renderBandElements(
+  elements: DocElement[],
+  model: ApprovalRenderModel,
+  bandKind: 'HEADER' | 'FOOTER',
+  testId: string,
+): ReactNode {
+  const renderable = positionedElementsOf(elements)
+  // HEADER/FOOTER의 FIELD/TEXT flow는 기존 밴드 레이어 안에서 유지한다. IMAGE flow만 별도
+  // normal-flow 형제로 꺼내야, IMAGE 실패 상태가 좌표 TEXT와 같은 레이어에서 형제 글자를 덮지 않는다.
+  const layerElements = renderable.filter((element) => element.type !== 'IMAGE' || element.geometry !== undefined)
+  const flowImages = renderable.filter(
+    (element): element is ImageElement => element.type === 'IMAGE' && element.geometry === undefined,
+  )
+  return (
+    <>
+      {positionedElementLayer(layerElements, model, testId, `${testId}-positioned`, BAND_KIND_LABEL[bandKind])}
+      {flowImages.map((element) => renderImageElement(element, false, BAND_KIND_LABEL[bandKind]))}
+    </>
   )
 }
 
@@ -451,10 +613,9 @@ export function compileApprovalDocument(
     .flatMap((band) => band.elements)
   const bodyDetails = bodyElements.filter((element): element is DetailElement => element.type === 'DETAIL')
 
-  const headerPositioned = positionedElementsOf(headerElements)
-  const footerPositioned = positionedElementsOf(
-    template.document.bands.filter((band) => band.kind === 'FOOTER').flatMap((band) => band.elements),
-  )
+  const footerElements = template.document.bands
+    .filter((band) => band.kind === 'FOOTER')
+    .flatMap((band) => band.elements)
   const bodyPositioned = positionedElementsOf(bodyElements).filter((element) => element.geometry !== undefined)
   const firstBodyPositionedIndex = bodyElements.findIndex(isGeometryPositionedElement)
 
@@ -473,6 +634,7 @@ export function compileApprovalDocument(
         model,
         'document-template-v2-elements-body',
         'document-template-v2-elements-body',
+        BAND_KIND_LABEL.BODY,
       )
     }
     const section = sectionForElement(element, model)
@@ -490,7 +652,7 @@ export function compileApprovalDocument(
       return element.geometry !== undefined
         ? null
         : element.type === 'IMAGE'
-        ? renderImageElement(element)
+        ? renderImageElement(element, false, BAND_KIND_LABEL.BODY)
         : renderPositionedElement(element, model)
     }
     return null
@@ -504,8 +666,8 @@ export function compileApprovalDocument(
     // BODY flow는 band의 원래 element 순서를 유지한다. geometry 요소만 선언상 첫 위치에
     // 하나의 고정 24mm flow layer로 모아, legacy/DETAIL의 가변 높이가 % 좌표 원점이 되지 않게 한다.
     body: <LegacyApprovalDocBody positionedLayer={bodyPositioned.length > 0}>{bodyChildren}</LegacyApprovalDocBody>,
-    headerExtra: positionedElementLayer(headerPositioned, model, 'document-template-v2-elements-header'),
-    footerExtra: positionedElementLayer(footerPositioned, model, 'document-template-v2-elements-footer'),
+    headerExtra: renderBandElements(headerElements, model, 'HEADER', 'document-template-v2-elements-header'),
+    footerExtra: renderBandElements(footerElements, model, 'FOOTER', 'document-template-v2-elements-footer'),
     hasRepeatingDetail: bodyDetails.length > 0,
   }
 }
@@ -513,19 +675,49 @@ export function compileApprovalDocument(
 /** compiled document를 현 PrintLayout approvalDoc JSX에 연결한다. */
 export function DocumentRenderer({ template, model, backTo }: DocumentRendererProps) {
   const compiled = compileApprovalDocument(template, model)
+  const initialInvalidImageIssues = template.document.bands.flatMap((band) => band.elements
+    .filter((element): element is ImageElement => element.type === 'IMAGE' && !isAllowedImageSource(element.src))
+    .map((element) => ({ key: element.key, alt: element.alt, bandLabel: BAND_KIND_LABEL[band.kind] })))
+  const [imageIssues, setImageIssues] = useState<ImageDecodeIssue[]>(initialInvalidImageIssues)
+  const reportImageIssue = useCallback((issue: ImageDecodeIssue) => {
+    setImageIssues((current) => {
+      const withoutSameKey = current.filter((candidate) => candidate.key !== issue.key)
+      return [...withoutSameKey, issue]
+    })
+  }, [])
+  const clearImageIssue = useCallback((key: string) => {
+    setImageIssues((current) => current.filter((issue) => issue.key !== key))
+  }, [])
+  const imageOrder = useMemo(() => new Map(
+    template.document.bands.flatMap((band) => band.elements)
+      .filter((element): element is ImageElement => element.type === 'IMAGE')
+      .map((element, index) => [element.key, index] as const),
+  ), [template.document.bands])
+  const orderedImageIssues = useMemo(() => [...imageIssues].sort((left, right) => (
+    (imageOrder.get(left.key) ?? Number.MAX_SAFE_INTEGER) - (imageOrder.get(right.key) ?? Number.MAX_SAFE_INTEGER)
+      || left.key.localeCompare(right.key)
+  )), [imageIssues, imageOrder])
+  const reporter = useMemo<ImageDecodeIssueReporter>(() => ({
+    report: reportImageIssue,
+    clear: clearImageIssue,
+  }), [clearImageIssue, reportImageIssue])
+
   return (
-    <PrintLayout
-      approvalDoc
-      paper={compiled.paper}
-      backTo={backTo}
-      docHeader={compiled.docHeader}
-      approvalSteps={compiled.approvalSteps}
-      closingNote={compiled.closingNote}
-      headerExtra={compiled.headerExtra}
-      footerExtra={compiled.footerExtra}
-      hasRepeatingDetail={compiled.hasRepeatingDetail}
-    >
-      {compiled.body}
-    </PrintLayout>
+      <imageDecodeIssueReporterContext.Provider value={reporter}>
+      <ImageDecodeIssueSummary issues={orderedImageIssues} />
+      <PrintLayout
+        approvalDoc
+        paper={compiled.paper}
+        backTo={backTo}
+        docHeader={compiled.docHeader}
+        approvalSteps={compiled.approvalSteps}
+        closingNote={compiled.closingNote}
+        headerExtra={compiled.headerExtra}
+        footerExtra={compiled.footerExtra}
+        hasRepeatingDetail={compiled.hasRepeatingDetail}
+      >
+        {compiled.body}
+      </PrintLayout>
+    </imageDecodeIssueReporterContext.Provider>
   )
 }

@@ -7,7 +7,8 @@ import {
   DETAIL_COLUMN_LABEL,
   ELEMENT_TYPE_LABEL,
   BAND_KIND_LABEL,
-  isAllowedImageSource,
+  canDecodeImageSource,
+  isAllowedImageSourceFormat,
   maxImageBytesForDocument,
   MAX_ALT_LENGTH,
   MAX_TEXT_LENGTH,
@@ -121,6 +122,7 @@ export function ElementInspector({
       <div className="document-template-inspector-selected">
         <span className="document-template-selected-caption">현재 선택</span>
         <strong>{ELEMENT_TYPE_LABEL[element.type]}</strong>
+        <span data-testid="document-template-selected-key">요소 key: {element.key}</span>
       </div>
       {element.type === 'TEXT' ? (
         <label>
@@ -254,12 +256,20 @@ export function ElementInspector({
                 const file = event.target.files?.[0]
                 if (!file) return
                 const reader = new FileReader()
-                reader.onload = () => {
+                reader.onload = async () => {
                   const src = String(reader.result ?? '')
                   const base64 = src.split(',')[1] ?? ''
                   const decodedBytes = Math.max(0, Math.floor((base64.length * 3) / 4) - (base64.match(/=+$/)?.[0].length ?? 0))
-                  if (!isAllowedImageSource(src) || decodedBytes > imageMaxBytes) {
+                  if (!isAllowedImageSourceFormat(src)) {
+                    setImageError('이미지 파일이 비어 있거나 지원되는 PNG/JPEG/WebP 형식이 아니어서 저장할 수 없습니다.')
+                    return
+                  }
+                  if (decodedBytes > imageMaxBytes) {
                     setImageError(`현재 양식 기준 이미지 최대 ${imageMaxKilobytes}KB까지 저장할 수 있습니다.`)
+                    return
+                  }
+                  if (!(await canDecodeImageSource(src))) {
+                    setImageError('이 이미지는 현재 화면에서 표시할 수 없어 저장할 수 없습니다. 다른 이미지를 선택하세요.')
                     return
                   }
                   setImageError(null)

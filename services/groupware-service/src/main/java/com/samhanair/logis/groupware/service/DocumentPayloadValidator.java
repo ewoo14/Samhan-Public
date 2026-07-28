@@ -219,7 +219,7 @@ public class DocumentPayloadValidator {
                 reject("IMAGE 요소 src가 허용 정책을 만족하지 않습니다");
             }
             if (!validImageSource(element.get("src"))) {
-                reject("IMAGE 요소 src는 실제로 열 수 있는 PNG/JPEG/WebP 이미지여야 합니다.");
+                reject("IMAGE 요소 src는 허용된 PNG/JPEG/WebP data URL 또는 기본 로고여야 하며, 크기·구조 제한을 만족해야 합니다.");
             }
             if (!validString(element.get("alt"), MAX_ALT_LENGTH)) {
                 reject("IMAGE 요소 alt는 비어 있지 않은 문자열이어야 합니다");
@@ -271,10 +271,24 @@ public class DocumentPayloadValidator {
                     || !hasImageSignature(matcher.group(1), decoded)) {
                 return false;
             }
-            // ImageIO는 PNG/JPEG의 실제 파일 구조와 checksum/truncation을 검사한다.
-            // 표준 JDK에는 WebP reader가 없으므로 WebP는 컨테이너 구조를 직접 검사한다(R1-4).
+            // ImageIO는 PNG/JPEG의 파일 구조를 검사하지만, 이 결과가 실제 browser renderer의
+            // 판정과 같다고 보장하지 않는다. 표준 JDK에는 WebP reader가 없으므로 WebP는 컨테이너
+            // 구조만 검사한다. 최종 renderer 디코드 계약은 FE의 <img>.decode()가 담당한다.
             if ("webp".equals(matcher.group(1))) {
                 return isStructurallyValidWebp(decoded);
+            }
+            // 🔴 I-3(#968 R1 실측): PNG는 이미 진짜 디코더(ImageIO.read())를 돌리는데도 렌더 엔진과
+            // 어긋난다 — 저장소 pwa-192.png(2,743B)를 51%(1,409B)에서 자른 "다운로드 중단" 재현과
+            // IDAT 페이로드만 손상시킨(CRC 재계산) 재현 둘 다, Chromium <img>는 192x192로 정상
+            // load하지만 ImageIO.read()는 IIOException("Error reading PNG image data")을 던진다.
+            // 완전한 픽셀 디코드 성공을 요구하면 C1(FE <img>.decode())이 통과시킨 이미지를 BE가
+            // 거부해 저장을 막는다(I-3 위반). WebP와 동일한 계약으로 통일한다 — BE는 구조(IHDR
+            // 파싱 가능 여부)와 자원예산만 확인하고, 최종 디코드 판정은 FE에 맡긴다(C2). IHDR 자체가
+            // 손상되어 치수를 판독할 수 없는 입력은 checkImageDecodedByteBudget()의 header 파싱
+            // 단계에서 여전히 거부된다("I/O error reading PNG header!" — IDAT 단계 실패와는 다른
+            // 예외로, jshell 실측상 명확히 구분된다).
+            if ("png".equals(matcher.group(1))) {
+                return checkImageDecodedByteBudget(decoded);
             }
             // H15: ImageIO.read()는 PNG/JPEG 모두 IHDR/SOF에 선언된 가로×세로 치수(+색상 정보)만으로
             // 목적지 픽셀 버퍼를 "먼저" 할당하고, 그 다음에야 IDAT/scan 데이터를 실제로 읽는다 — IDAT이
@@ -286,8 +300,9 @@ public class DocumentPayloadValidator {
             // 실제 위험이 최대 8배(16bit RGBA=8B/px vs 8bit Gray=1B/px) 벌어진다 — 예산 바로 아래
             // 픽셀 수의 RGBA 이미지(7999×7999=63,984,001px)가 여전히 실제로는 ~244MiB 를 할당했다
             // (실측: 컨테이너 메모리 376.1→621.6MiB). checkImageDecodedByteBudget()은 픽셀 개수가
-            // 아니라 실제 디코드 목적지 "바이트 수"를 예산으로 삼는다.
-            checkImageDecodedByteBudget(decoded);
+            // 아니라 실제 디코드 목적지 "바이트 수"를 예산으로 삼는다. JPEG는 I-3 불일치가 실측되지
+            // 않아(#968 R1 — 60% 절단 JPEG도 이미 ACCEPTED) 완전 디코드 요구를 그대로 유지한다.
+            if (!checkImageDecodedByteBudget(decoded)) return false;
             return ImageIO.read(new ByteArrayInputStream(decoded)) != null;
         } catch (IllegalArgumentException | IOException ex) {
             return false;
@@ -302,21 +317,28 @@ public class DocumentPayloadValidator {
      * 인터레이스/진행형(progressive)/CMYK 여부와 무관하게 항상 헤더 전용이다(실측: 16bit RGBA
      * 64bpp·8bit RGBA 32bpp·8bit Gray/팔레트 8bpp 전부 실제 디코드 버퍼 크기와 1% 이내로 일치).
      *
-     * <p>예산을 넘으면 {@link BusinessException}을 직접 던져 "실제로 열 수 없는 이미지"라는 뭉뚱그린
-     * 문구 대신 원인(해상도 초과)을 구체적으로 안내한다(H15-b).
+     * <p>예산을 넘으면 {@link BusinessException}을 직접 던져 구조 검사 실패와 구분되는
+     * 원인(해상도 초과)을 구체적으로 안내한다(H15-b).
      *
-     * <p>reader를 찾지 못하거나 치수를 읽을 수 없는 경우는 뒤이은 {@code ImageIO.read()}가 결국
-     * null을 반환하거나 예외를 던져 기존 "실제로 열 수 있는 이미지" 문구로 거부되므로 그대로 둔다.
-     * 다만 {@code getRawImageType()}이 픽셀 형식을 특정하지 못해 {@code null}을 반환하는 경우는
-     * "판단 보류"로 비싼 read()를 그냥 허용하지 않는다 — 폭 계산 이전에 이 판별 불가 자체가 이미
-     * 위험 신호이므로 보수적 최악값({@link #WORST_CASE_BYTES_PER_PIXEL_FALLBACK})으로 예산을
-     * 강제한다(과소평가로 인한 우회를 막는다).
+     * <p>reader를 찾지 못하거나 치수를 읽을 수 없는 경우 {@code false}를 반환한다. PNG 호출자(I-3,
+     * #968 R1)는 이 메서드의 반환값을 그대로 최종 구조 판정으로 쓰므로(뒤이은 전체 픽셀 디코드를
+     * 더 이상 요구하지 않는다), 여기서 판별 불가를 그냥 통과시키면 그 판정이 최종이 되어 버린다 —
+     * 그래서 이제 명시적으로 {@code false}를 반환한다(과거에는 뒤이은 {@code ImageIO.read()}가
+     * 결국 null을 반환하거나 예외를 던져 구조 검사 실패 문구로 거부되는 것에 기대어 조용히
+     * 통과시켰다). JPEG 호출자는 이 메서드가 {@code false}면 즉시 거부하고, {@code true}면 여전히
+     * {@code ImageIO.read()} 전체 디코드를 추가로 요구한다(동작 변화 없음 — 판별 불가 시 원래도
+     * 뒤이은 read()가 결국 거부했다). {@code getRawImageType()}이 픽셀 형식을 특정하지 못해
+     * {@code null}을 반환하는 경우는 "판단 보류"로 비싼 read()를 그냥 허용하지 않는다 — 폭 계산
+     * 이전에 이 판별 불가 자체가 이미 위험 신호이므로 보수적 최악값
+     * ({@link #WORST_CASE_BYTES_PER_PIXEL_FALLBACK})으로 예산을 강제한다(과소평가로 인한 우회를 막는다).
+     *
+     * @return IHDR/SOF 헤더가 파싱 가능하고 예측 디코드 바이트 수가 예산 이내이면 {@code true}
      */
-    private static void checkImageDecodedByteBudget(byte[] decoded) throws IOException {
+    private static boolean checkImageDecodedByteBudget(byte[] decoded) throws IOException {
         try (var inputStream = ImageIO.createImageInputStream(new ByteArrayInputStream(decoded))) {
-            if (inputStream == null) return;
+            if (inputStream == null) return false;
             var readers = ImageIO.getImageReaders(inputStream);
-            if (!readers.hasNext()) return;
+            if (!readers.hasNext()) return false;
             var reader = readers.next();
             try {
                 // seekForwardOnly=true, ignoreMetadata=true — EXIF/ICC 등 부가 메타데이터 파싱까지
@@ -324,7 +346,7 @@ public class DocumentPayloadValidator {
                 reader.setInput(inputStream, true, true);
                 long width = reader.getWidth(0);
                 long height = reader.getHeight(0);
-                if (width <= 0 || height <= 0) return;
+                if (width <= 0 || height <= 0) return false;
 
                 int bytesPerPixel;
                 var rawType = reader.getRawImageType(0);
@@ -340,6 +362,7 @@ public class DocumentPayloadValidator {
                     reject("IMAGE 요소 이미지가 너무 커서 처리할 수 없습니다(가로×세로 픽셀 수와 색상 "
                             + "정보 기준 상한 초과). 해상도를 줄이거나 이미지를 단순화해 다시 시도하세요.");
                 }
+                return true;
             } finally {
                 reader.dispose();
             }
@@ -365,8 +388,8 @@ public class DocumentPayloadValidator {
     /**
      * R1-4/R3: WebP는 표준 JDK ImageIO reader가 없어 실제 픽셀 디코드로 무결성을 검증할 수
      * 없다. 따라서 RIFF 전체 청크를 끝까지 순회하고, 실제 이미지 서브청크가 하나 이상 있는지
-     * 확인하는 보수적 구조 검사를 수행한다. 특히 VP8L의 5바이트 헤더만 있는 입력과 VP8X
-     * 확장 헤더만 있는 입력은 저장 전에 거부한다. 애니메이션 WebP의 ANMF 프레임은 16바이트
+     * 확인하는 보수적 구조 검사를 수행한다. VP8L의 5바이트 헤더는 Chromium <img>가 4x4로
+     * 로드하는 실측이 있으므로 허용하고, VP8X 확장 헤더만 있는 입력은 저장 전에 거부한다. 애니메이션 WebP의 ANMF 프레임은 16바이트
      * 프레임 헤더 뒤에 VP8/VP8L 이미지 청크를 중첩하므로 그 내부도 같은 방식으로 검사한다.
      */
     private static boolean isStructurallyValidWebp(byte[] decoded) {
@@ -442,8 +465,10 @@ public class DocumentPayloadValidator {
     }
 
     private static boolean isStructurallyValidVp8l(byte[] bytes, int dataOffset, long chunkSize) {
-        // 0x2F + 4바이트 packed canvas는 헤더일 뿐이며, 뒤에 실제 bitstream payload가 있어야 한다.
-        return chunkSize > 5 && (bytes[dataOffset] & 0xFF) == 0x2F;
+        // Chromium <img>는 0x2F + 4바이트 packed canvas만 있는 5바이트 VP8L도 4x4로
+        // 로드한다. BE 구조 검사가 이 정상 렌더 입력을 거부하면 I-3을 깨므로 payload 길이를
+        // 열거해 추가 방어하지 않는다.
+        return chunkSize >= 5 && (bytes[dataOffset] & 0xFF) == 0x2F;
     }
 
     private static long readUInt32LE(byte[] bytes, int offset) {

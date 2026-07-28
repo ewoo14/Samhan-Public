@@ -332,7 +332,32 @@ class DocumentPayloadValidatorTest {
     }
 
     @Test
-    void DS4_imageSourcePolicy_rejectsSignatureValidButTruncatedPngThroughImageIO() throws Exception {
+    void DS4_imageSourcePolicy_messageDescribesStructurePolicyNotRendererDecodability() throws Exception {
+        var document = fixture("valid-default.json").get("document").deepCopy();
+        ((com.fasterxml.jackson.databind.node.ArrayNode) document.at("/bands/0/elements"))
+                .addObject().put("key", "contract-message-image").put("type", "IMAGE")
+                .put("src", "data:image/png;base64,bm90IGFuIGltYWdl").put("alt", "손상 이미지");
+
+        assertThatThrownBy(() -> validator.validate((short) 2, document))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("허용된 PNG/JPEG/WebP data URL")
+                .hasMessageNotContaining("실제로 열 수 있는");
+    }
+
+    /**
+     * 🔴 PR#968 R1 정책 반전(구 {@code DS4_imageSourcePolicy_rejectsSignatureValidButTruncatedPngThroughImageIO}):
+     * R1 적대검증이 저장소 실 자산(pwa-192.png)을 51%(1,409/2,743B)에서 자른 입력으로 라이브 Chromium을
+     * 실측했다 — {@code <img>}는 192x192로 정상 load하는데 BE(구 코드)는 {@code ImageIO.read()}가
+     * IIOException("Error reading PNG image data")을 던져 거부했다(I-3 위반, C1이 통과시킨 것을 BE가
+     * 거부). jshell 실측(#968 R1 fix): 이 "IDAT scanline이 비어 있는" 합성 fixture와 실 다운로드 중단
+     * 재현 fixture는 Java ImageIO 관점에서 **동일한 예외·동일한 메시지**를 던져 구분할 수 없다 —
+     * 즉 "완전히 빈 IDAT"과 "부분적으로 존재하는 IDAT"을 헤더 파싱만으로 갈라낼 신뢰할 수 있는 신호가
+     * 없다. 기획 C2("BE는 디코드 가능성을 보장하지 않는다")를 PNG에도 WebP와 동일하게 적용해 —
+     * IHDR가 파싱 가능하고 예산 내이면 구조적으로 유효하다고 본다. 실제 렌더 가능 여부는 C1(FE
+     * {@code <img>.decode()})과 C3(렌더 시점 경고)가 담당한다.
+     */
+    @Test
+    void PR968R1_D2_png_acceptsHeaderValidButEmptyIdatBecauseBeNoLongerGuaranteesDecodability() throws Exception {
         // PNG signature/IHDR/CRC는 맞지만 IDAT scanline이 비어 있는 실제 ImageIO 입력이다.
         String truncatedPng = Base64.getEncoder().encodeToString(realPngBomb(1, 1, 6, 0));
         byte[] decoded = Base64.getDecoder().decode(truncatedPng);
@@ -341,7 +366,8 @@ class DocumentPayloadValidatorTest {
                 .containsExactly((byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A);
         try {
             assertThat(ImageIO.read(new ByteArrayInputStream(decoded)))
-                    .as("사전조건: 손상 PNG는 ImageIO에서 이미지로 디코드되지 않아야 한다")
+                    .as("사전조건(회귀 불변): ImageIO 완전 디코드는 여전히 이 입력에서 실패한다"
+                            + " — fix는 이 실패를 더 이상 거부 사유로 쓰지 않을 뿐이다")
                     .isNull();
         } catch (IOException expected) {
             // ImageIO 구현에 따라 빈 IDAT은 null 대신 IIOException으로 보고할 수 있다.
@@ -352,9 +378,102 @@ class DocumentPayloadValidatorTest {
                 .addObject().put("key", "truncated-png").put("type", "IMAGE")
                 .put("src", "data:image/png;base64," + truncatedPng).put("alt", "잘린 PNG");
 
-        assertThatThrownBy(() -> validator.validate((short) 2, document))
-                .as("PNG signature만 맞고 실제로 디코드할 수 없는 입력은 ImageIO 분기에서 거부되어야 한다")
-                .isInstanceOf(BusinessException.class);
+        assertThat(validator.validate((short) 2, document))
+                .as("IHDR가 파싱 가능하고 예산 내이면 IDAT 완전 디코드 실패만으로 거부하지 않는다(정책 반전)")
+                .isNotNull();
+    }
+
+    /**
+     * 🔴 PR#968 R1 D2 RED-first(실 사용자 경로 — I-3): 저장소 실 자산 pwa-192.png(2,743B)을 R1이
+     * 라이브 Chromium으로 실측한 것과 동일하게 1,409B(≈51%)에서 자른다 — "다운로드가 51%에서 끊긴
+     * PNG"의 정확한 재현이다. Chromium {@code <img>}는 이 입력을 192x192로 정상 load한다(R1 실측,
+     * 여기서는 재실행하지 않고 스펙 원문 수치를 인용). fix 전 BE는 {@code ImageIO.read()} 완전 디코드
+     * 실패로 이 입력을 거부해 I-3(정상 이미지를 거부하지 않는다)을 위반했다.
+     */
+    @Test
+    void PR968R1_D2_png_acceptsRealAssetTruncatedAtDownloadInterruptionPoint() throws Exception {
+        byte[] original = repositoryAsset("clients/desktop/public/pwa-192.png");
+        assertThat(original).hasSize(2_743);
+        byte[] truncated = Arrays.copyOf(original, 1_409);
+        assertThat(Arrays.copyOf(truncated, 8))
+                .as("사전조건: PNG 시그니처는 살아 있어야 한다")
+                .containsExactly((byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A);
+        try {
+            assertThat(ImageIO.read(new ByteArrayInputStream(truncated)))
+                    .as("사전조건(회귀 불변): 51% 절단은 ImageIO 완전 디코드를 여전히 실패시킨다")
+                    .isNull();
+        } catch (IOException expected) {
+            // 구현에 따라 null 대신 IIOException으로 보고될 수 있다(위 정책 반전 테스트와 동일 사유).
+        }
+
+        var document = fixture("valid-default.json").get("document").deepCopy();
+        ((com.fasterxml.jackson.databind.node.ArrayNode) document.at("/bands/0/elements"))
+                .addObject().put("key", "half-truncated-download-png").put("type", "IMAGE")
+                .put("src", "data:image/png;base64," + Base64.getEncoder().encodeToString(truncated))
+                .put("alt", "다운로드 중단 PNG");
+
+        assertThat(validator.validate((short) 2, document))
+                .as("R1 실측: 51% 절단 pwa-192.png은 Chromium에서 192x192로 정상 load되므로 BE가 거부하면 I-3 위반이다")
+                .isNotNull();
+    }
+
+    /**
+     * 🔴 PR#968 R1 D2 RED-first(실 사용자 경로 — I-3): 저장소 실 자산 pwa-192.png의 첫 IDAT 페이로드
+     * 중간 바이트를 뒤집고 CRC32를 그 손상된 바이트 기준으로 재계산한다 — "PNG signature/IHDR/CRC는
+     * 맞지만 압축 스트림 내용 자체가 손상된"(R1 스펙 PNG_IDAT_PAYLOAD_CORRUPT_CRC_FIXED, BYTES=2743)
+     * 재현이다. R1 라이브 실측에서 Chromium {@code <img>}는 이 입력도 192x192로 정상 load했다.
+     */
+    @Test
+    void PR968R1_D2_png_acceptsIdatPayloadCorruptedWithCrcRecalculated() throws Exception {
+        byte[] original = repositoryAsset("clients/desktop/public/pwa-192.png");
+        byte[] corrupted = corruptFirstIdatPayloadKeepCrcValid(original);
+        assertThat(corrupted).hasSize(original.length);
+        assertThat(corrupted).isNotEqualTo(original);
+        try {
+            assertThat(ImageIO.read(new ByteArrayInputStream(corrupted)))
+                    .as("사전조건(회귀 불변): IDAT 페이로드 손상은 ImageIO 완전 디코드를 여전히 실패시킨다")
+                    .isNull();
+        } catch (IOException expected) {
+            // 구현에 따라 null 대신 IIOException으로 보고될 수 있다.
+        }
+
+        var document = fixture("valid-default.json").get("document").deepCopy();
+        ((com.fasterxml.jackson.databind.node.ArrayNode) document.at("/bands/0/elements"))
+                .addObject().put("key", "corrupt-idat-crc-fixed-png").put("type", "IMAGE")
+                .put("src", "data:image/png;base64," + Base64.getEncoder().encodeToString(corrupted))
+                .put("alt", "IDAT 손상 PNG");
+
+        assertThat(validator.validate((short) 2, document))
+                .as("R1 실측: IDAT 내용 손상(CRC는 유효) PNG도 Chromium에서 192x192로 정상 load되므로 BE가 거부하면 I-3 위반이다")
+                .isNotNull();
+    }
+
+    /**
+     * 회귀 울타리(PR#968 R1 D2 fix가 과잉 완화하지 않았는지 확인) — IHDR 자체가 손상되어 치수를
+     * 판독할 수 없는 입력은 여전히 거부되어야 한다. jshell 실측: 아래 세 형태 전부 header 파싱
+     * 단계({@code reader.getWidth(0)})에서 "I/O error reading PNG header!"로 실패하며, 이는 IDAT
+     * 단계 실패("Error reading PNG image data")와 구분되는 별도 예외 메시지다 — fix는 IDAT 단계
+     * 실패만 관대하게 다루고 header 단계 실패는 그대로 거부한다.
+     */
+    @Test
+    void PR968R1_D2_png_stillRejectsHeaderLevelCorruption() throws Exception {
+        byte[] invalidColorType = realPngBomb(4, 4, 5, 4); // colorType=5는 PNG 스펙상 존재하지 않는다
+        byte[] zeroWidth = realPngBomb(0, 4, 6, 4);
+        byte[] garbageAfterSignature = new byte[64];
+        System.arraycopy(new byte[]{(byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}, 0, garbageAfterSignature, 0, 8);
+        new java.util.Random(42).nextBytes(garbageAfterSignature);
+        System.arraycopy(new byte[]{(byte) 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}, 0, garbageAfterSignature, 0, 8);
+
+        for (byte[] bytes : List.of(invalidColorType, zeroWidth, garbageAfterSignature)) {
+            var document = fixture("valid-default.json").get("document").deepCopy();
+            ((com.fasterxml.jackson.databind.node.ArrayNode) document.at("/bands/0/elements"))
+                    .addObject().put("key", "header-corrupt-png").put("type", "IMAGE")
+                    .put("src", "data:image/png;base64," + Base64.getEncoder().encodeToString(bytes))
+                    .put("alt", "헤더 손상 PNG");
+            assertThatThrownBy(() -> validator.validate((short) 2, document))
+                    .as("IHDR 자체가 파싱 불가능한 입력은 계속 거부되어야 한다")
+                    .isInstanceOf(BusinessException.class);
+        }
     }
 
     /** R1-4 회귀 울타리 — 정상 WebP(단순 손실 VP8) 업로드가 fix 이후에도 막히면 안 된다. */
@@ -388,7 +507,7 @@ class DocumentPayloadValidatorTest {
     }
 
     @Test
-    void R3_webp_rejectsVp8lHeaderWithoutImagePayload() throws Exception {
+    void R3_webp_acceptsVp8lHeaderWithoutImagePayloadBecauseChromiumLoadsIt() throws Exception {
         byte[] headerOnly = headerOnlyWebpVp8L(4, 4);
 
         var document = fixture("valid-default.json").get("document").deepCopy();
@@ -397,9 +516,10 @@ class DocumentPayloadValidatorTest {
                 .put("src", "data:image/webp;base64," + Base64.getEncoder().encodeToString(headerOnly))
                 .put("alt", "헤더만 있는 VP8L");
 
-        assertThatThrownBy(() -> validator.validate((short) 2, document))
-                .as("VP8L 시그니처와 5바이트 헤더만 있는 입력은 디코드 가능한 이미지가 아니다")
-                .isInstanceOf(BusinessException.class);
+        // #951 R3의 거부 기대를 반전한다. 새 Chromium 실측에서 동일한 5바이트 VP8L
+        // 입력은 <img> load 4x4로 정상 렌더된다. 이를 계속 거부하면 I-3(정상 이미지
+        // 거부 금지)를 위반하므로, 형태별 방어를 추가하지 않고 렌더 엔진 판정을 따른다.
+        assertThat(validator.validate((short) 2, document)).isNotNull();
     }
 
     @Test
@@ -462,6 +582,53 @@ class DocumentPayloadValidatorTest {
                 .put("alt", "저장소 실제 애니메이션 마스코트 자산");
 
         assertThat(validator.validate((short) 2, document)).isNotNull();
+    }
+
+    /**
+     * #965 회귀 울타리: 합성 fixture가 아니라 저장소 실재 이미지의 현재 계약을 고정한다.
+     * 원본 애니메이션 WebP는 50KB 상한으로 거부하고, 같은 원본에서 실제 ANMF 첫 프레임만
+     * 잘라 만든 8,876B 파생본과 저장소 실 PNG 4종은 validator가 허용해야 한다.
+     */
+    @Test
+    void R5_realRepositoryImageFence_preservesAllowlistSizeAndBudgetContract() throws Exception {
+        byte[] originalMascot = repositoryAsset("clients/web/design-system/src/assets/mascot/samhani.webp");
+        assertThat(originalMascot).hasSize(71_880);
+        var oversizedDocument = fixture("valid-default.json").get("document").deepCopy();
+        ((com.fasterxml.jackson.databind.node.ArrayNode) oversizedDocument.at("/bands/0/elements"))
+                .addObject().put("key", "repository-mascot-original").put("type", "IMAGE")
+                .put("src", "data:image/webp;base64," + Base64.getEncoder().encodeToString(originalMascot))
+                .put("alt", "저장소 마스코트 원본");
+        assertThatThrownBy(() -> validator.validate((short) 2, oversizedDocument))
+                .as("원본 71,880B는 50KB 상한을 넘어 거부되어야 한다")
+                .isInstanceOf(BusinessException.class);
+
+        byte[] animationFrame = firstAnimationFrameFromRepositoryAsset();
+        assertThat(animationFrame).hasSize(8_876);
+        var frameDocument = fixture("valid-default.json").get("document").deepCopy();
+        ((com.fasterxml.jackson.databind.node.ArrayNode) frameDocument.at("/bands/0/elements"))
+                .addObject().put("key", "repository-mascot-frame").put("type", "IMAGE")
+                .put("src", "data:image/webp;base64," + Base64.getEncoder().encodeToString(animationFrame))
+                .put("alt", "저장소 마스코트 첫 프레임");
+        assertThat(validator.validate((short) 2, frameDocument)).isNotNull();
+
+        List<Path> pngAssets = List.of(
+                Path.of("clients/desktop/public/pwa-192.png"),
+                Path.of("clients/desktop/public/pwa-512.png"),
+                Path.of("clients/desktop/android/app/src/main/res/drawable/splash.png"),
+                Path.of("clients/desktop/android/app/src/main/res/mipmap-mdpi/ic_launcher.png"));
+        List<Integer> expectedSizes = List.of(2_743, 9_707, 4_040, 1_869);
+        for (int index = 0; index < pngAssets.size(); index++) {
+            byte[] png = repositoryAsset(pngAssets.get(index).toString());
+            assertThat(png).hasSize(expectedSizes.get(index));
+            var pngDocument = fixture("valid-default.json").get("document").deepCopy();
+            ((com.fasterxml.jackson.databind.node.ArrayNode) pngDocument.at("/bands/0/elements"))
+                    .addObject().put("key", "repository-png-" + index).put("type", "IMAGE")
+                    .put("src", "data:image/png;base64," + Base64.getEncoder().encodeToString(png))
+                    .put("alt", "저장소 실 PNG " + index);
+            assertThat(validator.validate((short) 2, pngDocument))
+                    .as("저장소 실 PNG %s가 거부되지 않아야 한다", pngAssets.get(index))
+                    .isNotNull();
+        }
     }
 
     /**
@@ -819,6 +986,37 @@ class DocumentPayloadValidatorTest {
         out.write(ByteBuffer.allocate(4).putInt((int) crc.getValue()).array());
     }
 
+    /**
+     * PR#968 R1 D2 재현: 첫 IDAT 청크의 페이로드 중간 바이트를 뒤집고 CRC32를 그 손상된 바이트
+     * 기준으로 재계산한다 — "CRC 검사는 통과하지만 압축 스트림 내용 자체는 손상된" 입력(R1 스펙
+     * PNG_IDAT_PAYLOAD_CORRUPT_CRC_FIXED)을 만든다. 파일 길이는 원본과 동일하게 유지된다.
+     */
+    private static byte[] corruptFirstIdatPayloadKeepCrcValid(byte[] png) {
+        byte[] out = png.clone();
+        int offset = 8; // PNG 시그니처 뒤
+        while (offset + 8 <= out.length) {
+            int length = ((out[offset] & 0xFF) << 24) | ((out[offset + 1] & 0xFF) << 16)
+                    | ((out[offset + 2] & 0xFF) << 8) | (out[offset + 3] & 0xFF);
+            String type = new String(out, offset + 4, 4, StandardCharsets.US_ASCII);
+            int dataStart = offset + 8;
+            if ("IDAT".equals(type) && length > 4) {
+                int flipAt = dataStart + length / 2;
+                out[flipAt] = (byte) (out[flipAt] ^ 0xFF);
+                CRC32 crc = new CRC32();
+                crc.update(out, offset + 4, 4 + length);
+                int crcValue = (int) crc.getValue();
+                int crcOffset = dataStart + length;
+                out[crcOffset] = (byte) (crcValue >>> 24);
+                out[crcOffset + 1] = (byte) (crcValue >>> 16);
+                out[crcOffset + 2] = (byte) (crcValue >>> 8);
+                out[crcOffset + 3] = (byte) crcValue;
+                return out;
+            }
+            offset = dataStart + length + 4;
+        }
+        throw new IllegalStateException("IDAT 청크를 찾을 수 없습니다");
+    }
+
     /** SOF0(0xFFC0)에 (width, height)를 선언한 최소 JPEG. Huffman/quant 테이블·scan 데이터는 없다 —
      * getWidth()/getHeight() 헤더 피크는 SOF만으로 충분하다. */
     private static byte[] minimalJpegWithDeclaredDimensions(int width, int height) throws IOException {
@@ -999,19 +1197,7 @@ class DocumentPayloadValidatorTest {
     }
 
     private static byte[] firstAnimationFrameFromRepositoryAsset() throws IOException {
-        Path relativeAsset = Path.of("clients/web/design-system/src/assets/mascot/samhani.webp");
-        Path asset = null;
-        for (Path current = Path.of(System.getProperty("user.dir")).toAbsolutePath();
-                current != null; current = current.getParent()) {
-            Path candidate = current.resolve(relativeAsset);
-            if (Files.exists(candidate)) {
-                asset = candidate;
-                break;
-            }
-        }
-        assertThat(asset).as("저장소 실제 WebP 마스코트 자산 경로를 찾을 수 있어야 한다").isNotNull();
-        assertThat(Files.exists(asset)).as("저장소 실제 WebP 마스코트 자산이 있어야 한다").isTrue();
-        byte[] source = Files.readAllBytes(asset);
+        byte[] source = repositoryAsset("clients/web/design-system/src/assets/mascot/samhani.webp");
         int anmfOffset = findChunk(source, "ANMF", 12);
         assertThat(anmfOffset).as("마스코트 자산은 실제 애니메이션 ANMF 프레임을 가져야 한다")
                 .isGreaterThan(0);
@@ -1024,6 +1210,22 @@ class DocumentPayloadValidatorTest {
         singleFrame[6] = (byte) (riffSize >> 16);
         singleFrame[7] = (byte) (riffSize >> 24);
         return singleFrame;
+    }
+
+    private static byte[] repositoryAsset(String relativePath) throws IOException {
+        Path relativeAsset = Path.of(relativePath);
+        Path asset = null;
+        for (Path current = Path.of(System.getProperty("user.dir")).toAbsolutePath();
+                current != null; current = current.getParent()) {
+            Path candidate = current.resolve(relativeAsset);
+            if (Files.exists(candidate)) {
+                asset = candidate;
+                break;
+            }
+        }
+        assertThat(asset).as("저장소 실재 이미지 자산 경로를 찾을 수 있어야 한다").isNotNull();
+        assertThat(Files.exists(asset)).as("저장소 실재 이미지 자산이 있어야 한다").isTrue();
+        return Files.readAllBytes(asset);
     }
 
     private static int findChunk(byte[] bytes, String fourCc, int start) {
@@ -1046,7 +1248,7 @@ class DocumentPayloadValidatorTest {
 
     private static byte[] buildWebp(String fourCc, byte[] chunkData) throws IOException {
         var out = new ByteArrayOutputStream();
-        int riffSize = 4 /* "WEBP" */ + 8 /* 청크 헤더 */ + chunkData.length;
+        int riffSize = 4 /* "WEBP" */ + 8 /* 청크 헤더 */ + chunkData.length + (chunkData.length & 1);
         out.write(new byte[]{'R', 'I', 'F', 'F'});
         writeUInt32LE(out, riffSize);
         out.write(new byte[]{'W', 'E', 'B', 'P'});
