@@ -263,3 +263,76 @@ npx cap open android
   실행 가능, CI `qa-e2e.yml`의 `desktop-playwright` 잡에도 등재).
 
 제약: N1은 Android 스캐폴드와 자산 sync 기반 구축 단계다. 실제 APK/스토어 배포, iOS 스캐폴드/빌드, secure storage 승격, 푸시/생체인증/스캔은 후속 N2~N5 범위다. 실기기 운영 검증은 Phase 11 HTTPS 게이트웨이 확보 후 진행한다.
+
+## 공유 real-QA 수집 범위와 로컬 파생물 신선도 (2026-07-28, #964 · 2026-07-28 R1 fix)
+
+🚨 **[SONNET5 #969 재수렴 결함3 fix]** `playwright.real-qa.config.ts`는 **위치 인자(파일·
+디렉터리·글롭·조각·정규식)를 하나도 안 주면 무조건 실행을 차단한다** — 추적/디스크 집합이
+일치하는지와 무관하다(`8869d18ed`, 2026-07-28 계약 변경. 아래 문단은 그 이전 버전을 서술하고
+있었다). 전체 172개 파일·548개 테스트를 돌리려면 `playwright/` 디렉터리 자체를 위치 인자로
+명시해야 한다:
+
+```powershell
+cd clients/desktop
+node_modules\.bin\playwright.cmd test --config=playwright.real-qa.config.ts `
+  --reporter=line --timeout=60000 playwright/
+```
+
+위치 인자가 실제로 미추적·누락 스펙을 가리키는 경우(narrow 실행이 그 파일 자신을 가리킬 때,
+또는 `playwright/` 처럼 전체를 가리켜 그 안의 불일치가 걸릴 때)에만 정확한 파일명을 출력하고
+중단하므로, 로컬 결과를 CI 수치로 오인하지 않는다. `.gitignore`에 적힌 경로라도 이미 추적된
+스펙은 공식 집합에 포함된다.
+
+**추적 스펙만 가리키는 명시 경로 실행은 플래그 없이 항상 통과한다.** 트리 어딘가에 미추적
+로컬 스펙(`.gitignore`가 권장하는 7개 디렉터리 등)이 있어도, 아래처럼 추적된 파일 하나만
+지정해 격리 실행하면 그 미추적 스펙과 무관하므로 막지 않는다.
+
+```powershell
+cd clients/desktop
+node_modules\.bin\playwright.cmd test --config=playwright.real-qa.config.ts `
+  playwright/manual/slip-form-3d-real-qa.spec.ts --reporter=line
+```
+
+로컬에서 만든 **미추적** 스펙 자신을 의도적으로 실행할 때만 아래처럼 환경변수와 명시 경로를
+함께 쓴다. 이 모드는 공식 수치에 사용하지 않으며, 실행 시 경고가 stdout·stderr 양쪽에 남는다.
+
+```powershell
+cd clients/desktop
+$env:REAL_QA_ALLOW_UNTRACKED='1'
+node_modules\.bin\playwright.cmd test --config=playwright.real-qa.config.ts `
+  playwright/n1b-native-qa/my-local-real-qa.spec.ts --reporter=line
+```
+
+🚨 **`REAL_QA_ALLOW_UNTRACKED`는 좁은 명시 경로가 있는 실행에만 적용된다.** PowerShell 세션에
+설정해 두고 그다음 **명시 경로 없이 전체 실행**하거나 `playwright/`로 알려진 전체 집합을
+선택하면(공식 실행) 이 값은 아예 참조되지 않는다
+— 세션에 남은 값이 공식 수치를 오염시키지 않는다. **`8869d18ed`(2026-07-28) 이후로는 위치
+인자 없는 실행은 미추적·누락 스펙 유무와 무관하게 무조건 차단된다**(집합이 완전히
+일치하더라도 `playwright/`처럼 위치 인자를 반드시 명시해야 시작한다 — 위 "공유 real-QA
+수집 범위" 절 참고). 또한 이 값은
+"디스크에는 있는데 추적 안 된" 스펙에만 통하고, "추적은 됐는데 디스크에 없는" 스펙(집합이
+줄어드는 방향, #864 사고 형태)은 이 값으로도 절대 넘어가지 않는다.
+
+🚨 **[SONNET5 #969 재수렴 결함1 fix] `npm run typecheck`(`typecheck:real-qa` 단위 테스트)는
+이 `.gitignore`가 허용한 로컬 스펙이 있다는 이유만으로 RED 가 되지 않는다.** 위 7개 디렉터리
+안의 미추적 스펙은 "untracked 이지만 `.gitignore` 로도 커버됨"으로 분류돼 이 단위 테스트의
+불일치 판정에서 제외된다 — `.gitignore` 로도 커버되지 않는 진짜 미추적 스펙(신규 스펙을 만들고
+`git add` 를 잊은 경우, #864 계열)만 여전히 잡는다. 이전에는 이 PC 처럼 그 7개 디렉터리 중
+하나라도 로컬 QA 세션 산출물이 남아 있으면 `npm run typecheck` 가 영구 RED 였다.
+
+`npm run typecheck`와 `npm test`는 다음 산출물의 mtime/버전만 먼저 확인한다: **design-system
+`dist`가 그 소스보다 최신인지, 설치된 `electron-updater` 버전이 lock과 일치하는지, (npm test만)
+Electron `out/main/index.js`가 main/preload 소스보다 최신인지.** stale 또는 누락이면 코드
+오류로 표시하지 않고 필요한 빌드·설치 명령을 안내한다. **이 확인은 위 3종(typecheck는 2종)의
+mtime/버전만 보며 `node_modules`의 `file:` 심볼릭 링크 무결성이나 그 외 일반 의존성 설치
+상태는 다루지 않는다** — 그런 문제는 이 확인을 통과한 뒤 이어지는 tsc/vitest 원본 오류로
+드러난다.
+
+내용은 그대로인데 `git restore`·브랜치 왕복·`stash pop`·새 워크트리 생성처럼 mtime만 바뀌는
+동작 이후에는 이 확인이 오탐으로 막을 수 있다. 산출물이 실제로 최신임을 알고 있다면 아래
+탈출구로 건너뛴다(건너뛴 사실은 항상 표준출력에 남는다 — 침묵 우회 아님).
+
+```powershell
+$env:REAL_QA_SKIP_FRESHNESS_CHECK='1'
+npm test
+```

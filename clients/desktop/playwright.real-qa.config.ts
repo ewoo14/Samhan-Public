@@ -2,7 +2,16 @@
  * playwright.real-qa.config.ts
  *
  * 실서버 QA 전용 Playwright 설정 — repo 공유 하네스(전체 real-QA 스펙 대상).
- * testIgnore 없이 *-real-qa.spec.ts 파일을 직접 실행한다.
+ * 미추적 스펙이 섞이면(위치 인자가 그 파일을 가리킬 때) 파일명을 출력하고 실행을 중단한다.
+ *
+ * 🚨 [SONNET5 #969 재수렴 결함3 fix] `8869d18ed`(2026-07-28) 이후 계약이 바뀌었는데 이 문서가
+ * 갱신되지 않았었다 — **위치 인자(파일·디렉터리·글롭·조각·정규식)를 하나도 안 주면 "집합이
+ * 일치하는지"와 무관하게 무조건 차단**한다(narrow 실행 여부만 본다). 집합 불일치
+ * (untracked/missing)는 위치 인자가 실제로 그 파일을 가리킬 때만 문제가 된다. 전체 real-QA
+ * 스펙을 돌리려면 `playwright/` 디렉터리 자체를 위치 인자로 명시해야 한다(아래 "사용:" 예시
+ * 참고 — `playwright/` 를 지정하면 결과적으로 전체 172개 파일 · 548개 테스트가 선택된다.
+ * 실측: `playwright test --config=playwright.real-qa.config.ts --list --reporter=line
+ * playwright/` → `Total: 548 tests in 172 files`, EXIT=0).
  *
  * 🚨 [SONNET5 R3 HIGH-2 fix] R2 가 testMatch 를 이 슬라이스 스펙 1개로 좁혀 repo 전체
  * real-QA 스펙(172개 파일 · 548개 테스트, 2026-07-27 실측)을 무력화했었다(공유 하네스를
@@ -45,12 +54,44 @@
  *   #   $env:VITE_API_BASE_URL='http://localhost:8080/api/v1'
  *   #   $env:VITE_APP_VERSION='2026/07/26-92700'
  *   #   npm run preview -- --host 127.0.0.1 --port 5181 --strictPort
- *   node_modules\.bin\playwright test --config=playwright.real-qa.config.ts --reporter=line --timeout=60000
+ *   # 🚨 [SONNET5 #969 재수렴 결함3 fix] 위치 인자 없이 실행하면 항상 EXIT=1(전체 실행 차단)
+ *   # 이다 — 전체를 돌리려면 `playwright/` 디렉터리 자체를 위치 인자로 줘야 한다(실측 확인,
+ *   # 아래가 유일한 "전체" 실행 형태):
+ *   node_modules\.bin\playwright test --config=playwright.real-qa.config.ts --reporter=line --timeout=60000 playwright/
  *   # 이 슬라이스(#825 슬5)만 격리 실행:
  *   node_modules\.bin\playwright test --config=playwright.real-qa.config.ts --reporter=line --timeout=60000 `
  *     playwright/825-s5-null-semantics-real-qa/825-s5-null-semantics-real-qa.spec.ts
+ *
+ * 의도적인 미추적 로컬 스펙 실행(공식 수치에 사용하지 않음):
+ *   $env:REAL_QA_ALLOW_UNTRACKED='1'
+ *   node_modules\.bin\playwright test --config=playwright.real-qa.config.ts `
+ *     playwright/n1b-native-qa/my-local-real-qa.spec.ts --reporter=line
+ *
+ * 🚨 [SONNET5 R1 결함1·2·3 fix] REAL_QA_ALLOW_UNTRACKED 는 위처럼 "명시 경로"와 함께 쓸 때만
+ * 뜻이 있다 — 이제 코드도 그렇게 강제한다(scripts/real-qa-scope.cjs 의 decideRealQaScope).
+ *   - 명시 경로 없는 전체 실행(공식 실행)은 이 값을 아예 참조하지 않는다. 그래서 PowerShell
+ *     세션에 이 값이 남아 있어도(터미널을 새로 안 열어도) 다음 전체 실행은 항상 정상적으로
+ *     막힌다 — "예외 모드"가 다음 실행으로 새지 않는다.
+ *   - 추적 스펙만 가리키는 명시 경로 실행(위 "이 슬라이스만 격리 실행" 예시)은 트리 어딘가에
+ *     미추적 로컬 스펙이 있어도 이 값 없이 통과한다 — 무관한 미추적 스펙이 격리 실행을 막지
+ *     않는다.
+ *   - "집합이 줄어드는 방향"(Git 추적 목록엔 있는데 디스크에 없는 스펙)은 이 값으로도 절대
+ *     못 넘어간다(#864 사고 재발 방지).
  */
+import { createRequire } from 'node:module'
 import { defineConfig, devices } from '@playwright/test'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const require = createRequire(import.meta.url)
+const { assertRealQaScope } = require('./scripts/real-qa-scope.cjs') as {
+  assertRealQaScope: (options: { repoRoot: string; allowUntracked?: boolean }) => unknown
+}
+const desktopRoot = path.dirname(fileURLToPath(import.meta.url))
+assertRealQaScope({
+  repoRoot: path.resolve(desktopRoot, '../..'),
+  allowUntracked: process.env['REAL_QA_ALLOW_UNTRACKED'] === '1',
+})
 
 /**
  * 배치 실행 기본 오리진 — 데스크톱 렌더러(HashRouter). repo 대다수 real-QA 스펙의 목표이며
