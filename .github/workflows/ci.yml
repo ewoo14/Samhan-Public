@@ -56,6 +56,11 @@ jobs:
           - name: user+product+inventory+logging
             timeout: 30
             test-tasks: ':services:user-service:test :services:product-service:test :services:inventory-service:test :services:logging-service:test'
+          - name: product-quantity-sync-schema
+            # #896 S2: 스키마 저장 경계 8종 + isolated PostgreSQL probe + CRUD/H-07/C-09 부재를
+            # product-service 전체 테스트의 우연한 포함에 의존하지 않는 별도 hard gate로 고정한다.
+            timeout: 30
+            test-tasks: ':services:product-service:test --tests "com.samhanair.logis.product.quantitysync.*"'
           - name: slip-units
             # slip-service 단위 + 빠른 client mock 만 (큰 IT 제외)
             timeout: 30
@@ -136,6 +141,48 @@ jobs:
 
       - name: test (${{ matrix.group.name }})
         run: ./gradlew ${{ matrix.group.test-tasks }}
+
+      - name: "#896 S2 quantity sync schema skipped=0 hard gate"
+        if: matrix.group.name == 'product-quantity-sync-schema'
+        run: |
+          set -euo pipefail
+          # R1 대조(SONNET5) 문제 4 + R1 fix 라운드: tests>=1 하한은 8/8/1/1 -> N/M로 줄어드는
+          # 회귀도 통과시켜 실제 실측치(13/11/2/1/4, R1 fix 라운드 신규 IT 포함)보다 느슨했다.
+          # #956과 같은 방식으로 report별 정확한 최소값을 강제한다.
+          # 재수렴 라운드: ValidationTest 13->16(+3 optionIn parity), ProductDiscontinueIT 4->7
+          # (+3 update()/updateUsageAndReturn() 가드) — 신규 리포트 2건(OptionInParityIT·
+          # ProductDeletionCascadeHttpIT)도 게이트에 등재한다(미등재 시 skipped=0 만 새지 않고
+          # 검사 자체가 누락되는 표면이 생긴다 — feedback_ungated_surface_and_mock_covering_defect.md).
+          # 🚨 2026-07-28 범위 축소(PR #958 R5 이후 개발책임자 결정) — DB 강제층(6개 constraint
+          # trigger + 지원 함수 4개)을 products/product_estimate_exposure/bundle_component
+          # 3개 기존 테이블뿐 아니라 quantity_sync_rule/source/target 자신에서도 전부 제거했다
+          # (I-2 DB 우회 방어는 #896 슬3으로 이관). 그 층만 검증하던 QuantitySyncRuleDbProbeIT를
+          # 삭제해 게이트에서도 제거한다. ValidationTest는 별칭(S-3) 3건 + 비유한 숫자·NUL
+          # 문자 거부(A2-①·A2-②) 4건이 늘어 21->28(grep -c '^    @Test$' 실측).
+          declare -A min_tests=(
+            ['services/product-service/build/test-results/test/TEST-com.samhanair.logis.product.quantitysync.QuantitySyncRuleValidationTest.xml']=28
+            ['services/product-service/build/test-results/test/TEST-com.samhanair.logis.product.quantitysync.QuantitySyncRuleCrudIT.xml']=2
+            ['services/product-service/build/test-results/test/TEST-com.samhanair.logis.product.quantitysync.QuantitySyncRuleSeedAbsenceIT.xml']=1
+            ['services/product-service/build/test-results/test/TEST-com.samhanair.logis.product.quantitysync.QuantitySyncRuleProductDiscontinueIT.xml']=7
+            ['services/product-service/build/test-results/test/TEST-com.samhanair.logis.product.quantitysync.QuantitySyncRuleOptionInParityIT.xml']=3
+            ['services/product-service/build/test-results/test/TEST-com.samhanair.logis.product.quantitysync.QuantitySyncRuleProductDeletionCascadeHttpIT.xml']=1
+          )
+          for report in "${!min_tests[@]}"; do
+            if [ ! -f "$report" ]; then
+              echo "::error::#896 S2 JUnit report not found: $report"
+              exit 1
+            fi
+            min="${min_tests[$report]}"
+            tests="$(grep -o 'tests="[0-9]*"' "$report" | head -n 1 | sed 's/[^0-9]//g')"
+            skipped="$(grep -o 'skipped="[0-9]*"' "$report" | head -n 1 | sed 's/[^0-9]//g')"
+            failures="$(grep -o 'failures="[0-9]*"' "$report" | head -n 1 | sed 's/[^0-9]//g')"
+            errors="$(grep -o 'errors="[0-9]*"' "$report" | head -n 1 | sed 's/[^0-9]//g')"
+            if [ "${tests:-0}" -lt "$min" ] || [ "${skipped:-missing}" != "0" ] || [ "${failures:-missing}" != "0" ] || [ "${errors:-missing}" != "0" ]; then
+              echo "::error::#896 S2 hard gate failed: $report tests=${tests:-missing} (min=$min) skipped=${skipped:-missing} failures=${failures:-missing} errors=${errors:-missing}"
+              exit 1
+            fi
+            echo "#896 S2 hard gate: $report tests=$tests (min=$min) skipped=$skipped failures=$failures errors=$errors"
+          done
 
       - name: "#848 DocumentTemplateIT skipped=0 hard gate"
         if: matrix.group.name == 'phase9-10 (groupware+notification+dashboard)'

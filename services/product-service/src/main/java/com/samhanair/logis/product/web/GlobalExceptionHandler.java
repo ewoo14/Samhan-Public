@@ -127,6 +127,14 @@ public class GlobalExceptionHandler {
      * 위반되면 {@link DataIntegrityViolationException} 이 던져진다. PESSIMISTIC_WRITE
      * 직렬화(#2)로 1차 방어하되, 그래도 빠져나간 경합은 catch-all 500 이 아니라
      * 409 로 매핑하여 클라이언트가 재시도 가능한 충돌로 인식하게 한다.
+     *
+     * <p>🚨 2026-07-28 범위 축소 — 이 핸들러는 한때 V24 quantity_sync deferred constraint
+     * trigger 위반을 {@code QuantitySyncViolationTranslator} 로 가로채 원인을 드러냈으나,
+     * 그 트리거 자체가 제거되었다(PR #958 R5 재수렴 이후 개발책임자 결정 — DB 강제층을
+     * #896 슬3으로 이관, docs/dev-reports/2026-07-28-896-s2-quantity-sync-schema.md §10).
+     * 이제 이 핸들러는 다시 단일하고 무조건적인 범용 409 로 응답한다 — quantity_sync 규칙
+     * 검증은 전부 {@code QuantitySyncRuleValidator}(Java 계층)에서 저장 전에 400 으로
+     * 걸러지므로 이 핸들러에 도달하지 않는다.
      */
     @ExceptionHandler(DataIntegrityViolationException.class)
     public ResponseEntity<ApiResponse<Void>> handleDataIntegrityViolation(DataIntegrityViolationException ex) {

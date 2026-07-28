@@ -82,6 +82,13 @@ public class ProductService {
     private final ProductSheetSyncService productSheetSyncService;
 
     /**
+     * 품목 단종/삭제 전 수량 동기화 규칙 참조 여부 확인용(R1 결함 3). QuantitySyncRuleService
+     * → ProductService 방향의 의존이 없으므로(ProductRepository/BundleComponentRepository만
+     * 사용) 순환 없음.
+     */
+    private final QuantitySyncRuleService quantitySyncRuleService;
+
+    /**
      * 품목 목록 검색 — categoryId/status/tag/q 필터 기존 유지 + usageScope/productCategory 신규 AND 결합.
      *
      * <p>{@code /products} (GET) 엔드포인트의 서비스 구현체이다. 이 경로는 어드민/데스크톱 품목관리 화면의
@@ -507,6 +514,7 @@ public class ProductService {
      * {@code modelCode} 는 변경하지 않는다.
      */
     public ProductResponse update(UUID id, UpdateProductRequest req) {
+        quantitySyncRuleService.lockGraphMutation();
         Product product = loadOrThrow(id);
 
         if (req.name() != null) {
@@ -527,8 +535,16 @@ public class ProductService {
         if (req.description() != null) {
             product.editDescription(req.description());
         }
+        // 🚨 2026-07-28 재수렴 R6 결함 1·2 [단일 근본 원인] fix (I-1) — "usageScope가
+        // NONE으로 전이하는가"(값 열거)가 아니라 "쓰기 이후 실제로 남을 노출 상태가 활성
+        // 규칙을 깨는가"로 판정한다. 이 계열은 5회차였다(R1 단종/삭제 → R2 optionIn →
+        // R3 usageScope=NONE → R4 estimateCategories → R5 PARTNER_ORDER) — 값 하나씩
+        // 막는 가드는 UsageScope의 다음 값이 뚫는다. applyUpdateFields()가 이미
+        // product.changeUsage(...)를 도메인 객체에 반영했으므로 product.getUsageScope()가
+        // 곧 "쓰기 이후" 값이다.
         boolean usageForcedNone = applyUpdateFields(product, req);
         if (usageForcedNone || req.usageScope() != null || req.estimateCategories() != null) {
+            assertResultingStateSatisfiesQuantitySyncRules(product, product.getUsageScope(), req.estimateCategories());
             syncEstimateExposures(product, product.getUsageScope(), req.estimateCategories(), "product-update");
         }
         if (req.specs() != null) {
@@ -562,7 +578,10 @@ public class ProductService {
     }
 
     public void discontinue(UUID id) {
-        loadOrThrow(id).discontinue();
+        quantitySyncRuleService.lockGraphMutation();
+        Product product = loadOrThrow(id);
+        assertNotReferencedByEnabledQuantitySyncRule(id);
+        product.discontinue();
     }
 
     public void reactivate(UUID id) {
@@ -582,7 +601,14 @@ public class ProductService {
      * @throws BusinessException(NOT_FOUND) modelCode 에 해당하는 품목이 없을 때
      */
     public Product updateUsageAndReturn(String modelCode, UpdateProductUsageRequest req) {
+        quantitySyncRuleService.lockGraphMutation();
         Product product = loadByModelCodeOrThrow(modelCode);
+        // 🚨 2026-07-28 재수렴 R6 결함 1 [HIGH] fix (I-1) — update()와 같은 이유로 이
+        // 경로도 "NONE 전이"만 판정했다(PARTNER_ORDER 등 다른 UsageScope 값은 통과). 실제
+        // 저장될 usageScope(req.usageScope(), null이면 markUsageManual()과 동일하게
+        // NONE으로 취급)를 effectiveScope로 넘겨 결과 상태 전체를 판정한다.
+        UsageScope effectiveScope = req.usageScope() == null ? UsageScope.NONE : req.usageScope();
+        assertResultingStateSatisfiesQuantitySyncRules(product, effectiveScope, req.estimateCategories());
         product.markUsageManual(req.usageScope());
         syncEstimateExposures(product, req.usageScope(), req.estimateCategories(), "product-usage-manual");
         return product;
@@ -667,10 +693,95 @@ public class ProductService {
     }
 
     public void delete(UUID id, String callerId) {
+        quantitySyncRuleService.lockGraphMutation();
         Product product = loadOrThrow(id);
+        assertNotReferencedByEnabledQuantitySyncRule(id);
         String actor = callerId == null ? "system" : callerId;
         product.markDeleted(actor);
         softDeleteAll(exposureRepository.findByProductIdAndIsDeletedFalse(product.getId()), actor);
+    }
+
+    /**
+     * R1 결함 3 [MED] · 재수렴 결함 3 [MED] — 품목 상태 변경(단종/삭제/노출구분 NONE 전환)이
+     * 수량 동기화 규칙 참조 때문에 막힐 때, 그 원인이 "동시 편집 충돌 또는 제약 위반"으로
+     * 위장되지 않고 사용자에게 드러나도록 실제 mutation 전에 선제 확인한다. V24 DB에는
+     * 규칙 강제 trigger를 두지 않으므로 이 Java 검증이 API 쓰기 경로의 무결성 경계다.
+     *
+     * <p>재수렴 R1에서 discontinue()/delete()에만 있던 이 가드가 update()(PATCH 노출구분
+     * 변경 포함)·updateUsageAndReturn()(수동 override)에는 없어 같은 원인인데 호출 경로별로
+     * 다른 메시지가 나가는 결함이 있었다(M-5) — 메시지를 "단종/삭제"로 특정 동작에 묶지 않고
+     * 상태 변경 일반으로 표현해 어느 경로로 오든 동일한 문자열을 낸다.
+     *
+     * @param productId 상태를 변경하려는 Product 내부 FK
+     * @throws BusinessException(CONFLICT) 활성(enabled)+비삭제 규칙이 참조 중일 때
+     */
+    private void assertNotReferencedByEnabledQuantitySyncRule(UUID productId) {
+        List<String> ruleKeys = quantitySyncRuleService.findEnabledRuleKeysReferencing(productId);
+        if (!ruleKeys.isEmpty()) {
+            throw new BusinessException(ErrorCode.CONFLICT,
+                    "수량 동기화 규칙이 이 품목을 참조하고 있어 상태를 변경할 수 없습니다: "
+                            + String.join(", ", ruleKeys));
+        }
+    }
+
+    /**
+     * 🚨 2026-07-28 재수렴 R6 결함 1·2 [단일 근본 원인] fix (I-1) — update()/
+     * updateUsageAndReturn() 공용 통합 판정. "usageScope 값이 무엇인가"·"카테고리가
+     * 요청에 있는가"를 따로 열거하지 않고, 쓰기 이후 실제로 남을 (active, visible,
+     * categories) 스냅샷을 {@link #resolveResultingExposedCategories}로 계산해
+     * {@link QuantitySyncRuleService#findEnabledRuleKeysBrokenByResultingState}에
+     * 그대로 넘긴다 — syncEstimateExposures()가 실제로 만들 상태와 같은 계산이므로
+     * "판정이 통과됐는데 실제 저장은 다르게 됐다"는 드리프트가 구조적으로 없다.
+     *
+     * @param product              현재 편집 중인 Product(이미 도메인 메서드로 usageScope 반영됨)
+     * @param effectiveScope       쓰기 이후 유효 usageScope(null 이면 NONE 취급은 호출자 책임)
+     * @param requestedCategories  요청 estimateCategories(null 이면 기존 노출 유지)
+     * @throws BusinessException(CONFLICT) 활성(enabled) 규칙이 결과 상태로 깨질 때
+     */
+    private void assertResultingStateSatisfiesQuantitySyncRules(
+            Product product, UsageScope effectiveScope, List<EstimateCategory> requestedCategories) {
+        if (product.getId() == null) {
+            return;
+        }
+        boolean resultingVisible = effectiveScope != null && effectiveScope != UsageScope.NONE;
+        Set<EstimateCategory> resultingCategories =
+                resolveResultingExposedCategories(product, effectiveScope, requestedCategories);
+        List<String> ruleKeys = quantitySyncRuleService.findEnabledRuleKeysBrokenByResultingState(
+                product.getId(), product.getStatus() == ProductStatus.ACTIVE, resultingVisible, resultingCategories);
+        if (!ruleKeys.isEmpty()) {
+            throw new BusinessException(ErrorCode.CONFLICT,
+                    "수량 동기화 규칙이 이 품목을 참조하고 있어 상태를 변경할 수 없습니다: "
+                            + String.join(", ", ruleKeys));
+        }
+    }
+
+    /**
+     * {@link #syncEstimateExposures}가 실제로 만들 활성 노출 카테고리 집합을 미리
+     * 시뮬레이션한다(단일 원천 — 이 로직이 바뀌면 {@link #syncEstimateExposures}도 함께
+     * 봐야 한다는 뜻이므로 로직 자체를 공유하지 않고 같은 3-분기 규칙만 나란히 유지한다).
+     *
+     * <p>🚨 재수렴 R6 결함 2 [HIGH] fix — {@code Set.copyOf(requestedCategories)}가 배열에
+     * null 원소({@code [null]})가 있으면 NPE를 던져 규칙과 무관한 품목까지 전 품목 편집이
+     * 500이 됐다. {@link #normalizeCategories}(null 필터링 후 Set 구성)로 교체해
+     * {@code [null]}·빈 배열·중복·미지 값 어떤 배열이 와도 500 없이 의미 있는 판정으로
+     * 이어지게 한다.
+     */
+    private Set<EstimateCategory> resolveResultingExposedCategories(
+            Product product, UsageScope effectiveScope, List<EstimateCategory> requestedCategories) {
+        if (!isEstimateScope(effectiveScope == null ? UsageScope.NONE : effectiveScope)) {
+            return Set.of();
+        }
+        if (requestedCategories == null) {
+            List<ProductEstimateExposure> active =
+                    exposureRepository.findByProductIdAndIsDeletedFalse(product.getId());
+            if (active == null || active.isEmpty()) {
+                return Set.of();
+            }
+            return active.stream()
+                    .map(ProductEstimateExposure::getEstimateCategory)
+                    .collect(java.util.stream.Collectors.toSet());
+        }
+        return normalizeCategories(requestedCategories);
     }
 
     private Product loadOrThrow(UUID id) {

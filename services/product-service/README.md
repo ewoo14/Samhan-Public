@@ -36,6 +36,39 @@ SamhanLogis Product 마스터 + Category 트리 + Google Sheets 동기화 서비
 | PATCH | `/products/categories/{id}` | MASTER / MANAGER / DEVELOPER |
 | DELETE | `/products/categories/{id}` | MASTER / MANAGER / DEVELOPER (자식 존재 시 409) |
 
+## 수량 동기화 규칙 저장 경계 (#896 S2)
+
+`quantity_sync_rule`/`quantity_sync_source`/`quantity_sync_target`는 독립 Product 간
+수량 동기화 규칙을 저장하는 스키마다. 이 슬라이스는 evaluator를 호출하지 않는다.
+
+| Method | Path | 권한 |
+|---|---|---|
+| GET | `/api/v1/quantity-sync-rules` | 인증 |
+| GET | `/api/v1/quantity-sync-rules/{ruleKey}` | 인증 |
+| POST | `/api/v1/quantity-sync-rules` | MASTER / MANAGER / DEVELOPER |
+| PUT | `/api/v1/quantity-sync-rules/{ruleKey}` | MASTER / MANAGER / DEVELOPER |
+| DELETE | `/api/v1/quantity-sync-rules/{ruleKey}` | MASTER / MANAGER / DEVELOPER |
+
+저장 시 source/target은 `modelCode`와 품목명으로 해소·응답하며 내부 UUID를 API에 노출하지
+않는다. V24는 실 catalog snapshot을 확보한 뒤에만 명시 seed를 추가할 수 있도록 현재
+seed INSERT를 포함하지 않는다.
+
+`enabled=false` 규칙은 강제력이 없다(survey.md:509) — 순환·REPLACE 중복 판정에서 제외되고,
+그 규칙이 참조하는 Product의 단종/삭제/노출구분(`usageScope`) 변경도 막지 않는다.
+`POST /products/{id}/discontinue` · `DELETE /products/{id}` · `PATCH /products/{id}`
+(`usageScope`를 `NONE`으로 바꾸는 경우) · `PATCH /api/v1/products/{modelCode}/usage`(수동
+override로 `NONE` 지정)는 **활성(enabled)** 규칙이 참조 중이면 그 상태 변경만 409
+`CONFLICT`로 거부하며, 메시지에 참조 중인 ruleKey를 담아 원인을 드러낸다(예: `수량 동기화
+규칙이 이 품목을 참조하고 있어 상태를 변경할 수 없습니다: HOME_1WAY_HOSE_L`) — 네 경로
+모두 같은 원인이면 완전히 같은 메시지를 낸다. 규칙을 비활성화하거나 삭제하면 해제된다.
+
+`enabled=false` 규칙이 참조하던 Product가 (위 게이트를 우회할 수단 없이) 단종/삭제/노출
+해제되어도 규칙 API 자체는 절대 깨지지 않는다 — `GET /api/v1/quantity-sync-rules`(목록)·
+`GET /api/v1/quantity-sync-rules/{ruleKey}`(단건)는 해당 슬롯을 `productCode: null`,
+`productName: "(삭제된 품목)"`으로 표시할 뿐 다른 규칙의 조회·생성·수정을 막지 않는다.
+사용자는 목록에서 깨진 규칙을 식별해 `DELETE`(복구) 또는 `PUT`(다른 Product로 교체)으로
+직접 정리할 수 있다.
+
 ## 품목 노출 수동 토글 + usageScope 질의 (요구사항1 PR-B, PR #460)
 
 품목별 견적/주문 노출을 시트 탭 자동 분류 + **수동 토글**로 운영한다 (개발책임자 2026-06-10 결정 — 시트에 없는 품목도 수동 노출 가능).
