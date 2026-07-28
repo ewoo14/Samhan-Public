@@ -80,6 +80,31 @@ function sourceFunctionBundle(source, names) {
   return names.map((name) => extractFunctionSource(source, name)).join('\n');
 }
 
+// SOL2 수동 잠금 헬퍼는 주문 정본에만 추가됐다. 주문 실행은 이 목록도
+// sourceFunctionBundle()로 계속 필수 추출하고, 견적 실행에서만 제외한다.
+// 나머지 도메인 함수는 양쪽 정본에 반드시 있어야 하므로 여전히 누락 시 실패한다.
+const ORDER_ONLY_QUANTITY_HELPERS = new Set([
+  'lockScope_',
+  'targetScope_',
+  'registerDerivedQty',
+  'isManualQtyLocked',
+  'setManualQtyLock',
+  'setDerivedQty',
+  'seedDerivedQty',
+  'isHomeDerivedRow',
+  'isSingleDerivedRow',
+  'isSingleManualLocked',
+  'applySingleManualLock',
+  'isCommDerivedRow',
+]);
+
+function sourceFunctionBundleForApp(source, app, names) {
+  const selected = app === 'order'
+    ? names
+    : names.filter((name) => !ORDER_ONLY_QUANTITY_HELPERS.has(name));
+  return sourceFunctionBundle(source, selected);
+}
+
 function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
@@ -145,6 +170,7 @@ function commonContextScript(input) {
     const syncHomeTotals = () => {};
     const refreshSelectedBadge = () => {};
     const updateHomeRatio = () => {};
+    const homeUnitPrice = () => 0;
     const saveBranchState = () => {};
     const pushBranchPartsToCommFromBadges = () => {};
   `;
@@ -172,7 +198,14 @@ function catalogPreludeScript(source, input) {
 function runHome(source, input) {
   const quantities = input.sourceQuantities || {};
   const locks = input.manualLocks?.home || {};
-  const functions = sourceFunctionBundle(source, [
+  const functions = sourceFunctionBundleForApp(source, input.app || 'estimate', [
+    'lockScope_',
+    'targetScope_',
+    'registerDerivedQty',
+    'isManualQtyLocked',
+    'setManualQtyLock',
+    'setDerivedQty',
+    'seedDerivedQty',
     'inferOneWaySize',
     'isPanelRow',
     'isRemoteRow',
@@ -184,6 +217,9 @@ function runHome(source, input) {
     'recomputeHomeRemotes',
     'recomputeHomePanels',
     'recomputeHomeDerived',
+    'isHomeCalcTriggerModel',
+    'isHomeDerivedRow',
+    'onHomeQtyInput',
   ]);
   const script = `
     ${commonContextScript(input)}
@@ -191,12 +227,16 @@ function runHome(source, input) {
     ${catalogPreludeScript(source, input)}
     const homeQty = new Map(Object.entries(${JSON.stringify(quantities)}));
     const homeRowByModel = new Map(HOMEMULTI.map((row) => [row.model, row]));
-    const HOME_MANUAL_PANEL = new Set(${JSON.stringify(locks.panel || [])});
-    const HOME_MANUAL_HOSE = new Set(${JSON.stringify(locks.hose || [])});
-    const HOME_MANUAL_REMOTE = new Set(${JSON.stringify(locks.remote || [])});
-    const HOME_MANUAL_BRANCH = new Set(${JSON.stringify(locks.branch || [])});
-    const HOME_MANUAL_FOOT = new Set(${JSON.stringify(locks.foot || [])});
+    const HOME_MANUAL_PANEL = new Set();
+    const HOME_MANUAL_HOSE = new Set();
+    const HOME_MANUAL_REMOTE = new Set();
+    const HOME_MANUAL_BRANCH = new Set();
+    const HOME_MANUAL_FOOT = new Set();
+    const MANUAL_QTY_LOCKS = { home: new Set(), commercial: new Set(), single: new Set() };
+    const DERIVED_QTY_TARGETS = { home: new Set(), commercial: new Set(), single: new Set() };
     ${functions}
+    const __manualInputs = ${JSON.stringify(Object.values(locks).flat())};
+    __manualInputs.forEach((model) => onHomeQtyInput(model, homeQty.get(model) || 0));
     recomputeHomeDerived(false);
     globalThis.__result = { quantities: nonZeroMap(homeQty), allQuantities: mapObject(homeQty) };
   `;
@@ -219,6 +259,16 @@ function runSingle(source, input) {
     .map((name) => extractOptionalFunctionSource(source, name))
     .filter(Boolean);
   const functions = [
+    sourceFunctionBundleForApp(source, input.app || 'estimate', [
+      'lockScope_',
+      'targetScope_',
+      'registerDerivedQty',
+      'isManualQtyLocked',
+      'setDerivedQty',
+      'isSingleDerivedRow',
+      'isSingleManualLocked',
+      'applySingleManualLock',
+    ]),
     ...optionalFunctions,
     sourceFunctionBundle(source, [
       'partsForSetStrict_',
@@ -234,6 +284,8 @@ function runSingle(source, input) {
     ${domScript(input.options?.dom)}
     ${catalogPreludeScript(source, input)}
     const singleQty = new Map(Object.entries(${JSON.stringify(quantities)}));
+    const MANUAL_QTY_LOCKS = { home: new Set(), commercial: new Set(), single: new Set() };
+    const DERIVED_QTY_TARGETS = { home: new Set(), commercial: new Set(), single: new Set() };
     ${functions}
     recomputeSingleBaseFoot();
     recomputeSingleExtras();
@@ -252,7 +304,14 @@ function runCommercial(source, input) {
   const rows = clone(input.catalog?.commercial || []);
   const quantities = input.sourceQuantities || {};
   const locks = input.manualLocks?.commercial || {};
-  const functions = sourceFunctionBundle(source, [
+  const functions = sourceFunctionBundleForApp(source, input.app || 'estimate', [
+    'lockScope_',
+    'targetScope_',
+    'registerDerivedQty',
+    'isManualQtyLocked',
+    'setManualQtyLock',
+    'setDerivedQty',
+    'seedDerivedQty',
     'rawNameOf',
     'isCommIndoorRow',
     'isCommOutdoorRow',
@@ -269,6 +328,7 @@ function runCommercial(source, input) {
     'modelByNameLike',
     'countBranchForSet',
     'computeCommPanelModelForIndoor_',
+    'isCommDerivedRow',
     'recomputeCommDerived',
   ]);
   const renewFilterMap = extractConstSource(source, 'RENEW_FILTER_MAP');
@@ -283,6 +343,19 @@ function runCommercial(source, input) {
     const COMM_MANUAL_REMOTE = new Set(${JSON.stringify(locks.remote || [])});
     const COMM_MANUAL_PUMP = new Set(${JSON.stringify(locks.pump || [])});
     const COMM_MANUAL_BASE = new Set(${JSON.stringify(locks.base || [])});
+    const MANUAL_QTY_LOCKS = {
+      home: new Set(),
+      commercial: new Set([
+        ...${JSON.stringify(locks.panel || [])},
+        ...${JSON.stringify(locks.hose || [])},
+        ...${JSON.stringify(locks.remote || [])},
+        ...${JSON.stringify(locks.pump || [])},
+        ...${JSON.stringify(locks.base || [])},
+        ...${JSON.stringify(locks.branch || [])},
+      ]),
+      single: new Set(),
+    };
+    const DERIVED_QTY_TARGETS = { home: new Set(), commercial: new Set(), single: new Set() };
     const commCustomPrices = new Map();
     const commUnitPrice = () => 0;
     ${renewFilterMap}
