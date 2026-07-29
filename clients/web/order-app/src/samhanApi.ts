@@ -50,7 +50,7 @@ http.interceptors.request.use((cfg) => {
  * - `logFrontEvent(action, detail)` → `POST /api/v1/partner-orders/log` (frontend audit)
  * - `saveOrderSnapshot(payload)` → `POST /api/v1/partner-orders/drafts` (M4, 30일 expiry)
  * - `getOrderSnapshotHistory(bizNo, from, to)` → `GET /api/v1/partner-orders/drafts?from=&to=`
- * - `sendOrderFromUi(payload)` → `POST /api/v1/partner-orders/{id}/confirm` + slip-service Event (M4)
+ * - `sendOrderFromUi(items, order)` → draft 생성 후 `POST /api/v1/partner-orders/{draftId}/confirm` (M4)
  * - `saveTutorialState(state)` → `PATCH /api/v1/auth/partner-tutorial`
  *
  * 추가 (legacy index.html 외부 호출 대응 — Code.js 분석 §1):
@@ -106,6 +106,154 @@ function unwrapApiResponse(body: unknown): unknown {
   return body
 }
 
+type PageMetadata = {
+  totalElements: number
+  totalPages: number
+  page: number
+  size: number
+}
+
+type CollectionResponse = {
+  rows: unknown[]
+  page?: PageMetadata
+}
+
+function nonNegativeInteger(value: unknown): number | null {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : null
+}
+
+function decodeCollectionResponse(body: unknown): CollectionResponse {
+  const data = unwrapApiResponse(body)
+  if (Array.isArray(data)) return { rows: data }
+  if (!data || typeof data !== 'object') {
+    throw new Error('목록 응답 형식이 올바르지 않습니다')
+  }
+
+  const page = data as {
+    content?: unknown
+    totalElements?: unknown
+    totalPages?: unknown
+    number?: unknown
+    size?: unknown
+  }
+  if (!Array.isArray(page.content)) {
+    throw new Error('목록 응답 형식이 올바르지 않습니다')
+  }
+
+  const totalElements = nonNegativeInteger(page.totalElements)
+  const totalPages = nonNegativeInteger(page.totalPages)
+  const pageNumber = nonNegativeInteger(page.number)
+  const size = typeof page.size === 'number' && Number.isInteger(page.size) && page.size > 0
+    ? page.size
+    : null
+  if (totalElements == null || totalPages == null || pageNumber == null || size == null) {
+    throw new Error('목록 응답 페이지 메타데이터가 올바르지 않습니다')
+  }
+
+  return {
+    rows: page.content,
+    page: { totalElements, totalPages, page: pageNumber, size },
+  }
+}
+
+async function fetchAllPages(
+  path: string,
+  baseParams: Record<string, unknown>,
+  initialSize: number,
+): Promise<unknown[]> {
+  const firstResponse = await http.get(path, {
+    params: { ...baseParams, page: 0, size: initialSize },
+  })
+  const first = decodeCollectionResponse(firstResponse.data)
+  if (!first.page) return first.rows
+
+  const rows = [...first.rows]
+  for (let page = 1; page < first.page.totalPages; page += 1) {
+    const nextResponse = await http.get(path, {
+      params: { ...baseParams, page, size: first.page.size },
+    })
+    const next = decodeCollectionResponse(nextResponse.data)
+    if (!next.page) {
+      throw new Error('목록 응답 페이지 메타데이터가 올바르지 않습니다')
+    }
+    rows.push(...next.rows)
+  }
+
+  if (rows.length < first.page.totalElements) {
+    throw new Error('목록 응답이 일부만 반환되었습니다')
+  }
+  return rows
+}
+
+type LegacyOrderItem = {
+  section?: unknown
+  model?: unknown
+  qty?: unknown
+  remarks?: unknown
+}
+
+const CONFIRM_CATEGORY_BY_SECTION: Record<string, string> = {
+  HOME: 'homemulti',
+  COMM: 'commercialMulti',
+  SINGLE: 'singleSets',
+  OLD: 'oldProducts',
+}
+
+function confirmLines(itemsArg: unknown): Array<{
+  modelCode: string
+  categoryKey: string
+  quantity: number
+  remark: string | null
+}> {
+  if (!Array.isArray(itemsArg) || itemsArg.length === 0) {
+    throw new Error('전송할 주문 품목이 없습니다')
+  }
+
+  return itemsArg.map((rawItem, index) => {
+    const item = (rawItem || {}) as LegacyOrderItem
+    const modelCode = String(item.model ?? '').trim()
+    const section = String(item.section ?? '').trim().toUpperCase()
+    const categoryKey = CONFIRM_CATEGORY_BY_SECTION[section]
+    const quantity = Number(item.qty)
+
+    if (!modelCode) throw new Error(`주문 ${index + 1}번째 품목의 모델코드가 없습니다`)
+    if (!categoryKey) throw new Error(`주문 ${index + 1}번째 품목의 카테고리를 확인할 수 없습니다`)
+    if (!Number.isInteger(quantity) || quantity < 1) {
+      throw new Error(`주문 ${index + 1}번째 품목의 수량이 올바르지 않습니다`)
+    }
+
+    const remark = typeof item.remarks === 'string' && item.remarks.trim()
+      ? item.remarks.trim()
+      : null
+    return { modelCode, categoryKey, quantity, remark }
+  })
+}
+
+function apiErrorMessage(error: unknown): string {
+  if (error && typeof error === 'object') {
+    const code = (error as { code?: unknown }).code
+    if (code === 'ECONNABORTED' || code === 'ETIMEDOUT') {
+      return '서버 응답이 지연되어 처리 결과를 확인할 수 없습니다. 재전송해도 중복 주문으로 처리되지 않습니다.'
+    }
+    const responseData = (error as { response?: { data?: unknown } }).response?.data
+    if (responseData && typeof responseData === 'object') {
+      const message = (responseData as { message?: unknown }).message
+      if (typeof message === 'string' && message.trim()) return message
+    }
+    const message = (error as { message?: unknown }).message
+    if (typeof message === 'string' && message.trim()) return message
+  }
+  return '주문 전송에 실패했습니다'
+}
+
+function confirmHeaders(order: unknown): { headers: { 'X-Biz-Code': string } } {
+  const bizCode = order && typeof order === 'object'
+    ? String((order as { bizno?: unknown }).bizno ?? '').trim()
+    : ''
+  if (!bizCode) throw new Error('주문 사업자번호가 없습니다')
+  return { headers: { 'X-Biz-Code': bizCode } }
+}
+
 const RPC_MAP: Record<string, RpcHandler> = {
   // ─── 인증 / 등록 / 잠금 (RPC §S 카테고리) ───────────────────────────────
   checkAuthStatus: ([bizNo]) =>
@@ -159,15 +307,15 @@ const RPC_MAP: Record<string, RpcHandler> = {
 
   // ─── 주문이력 / 로그 (RPC §T 카테고리) ────────────────────────────────
   getOrderHistory: ([bizCode, , from, to]) =>
-    http
-      .get('/partner-orders/history', {
-        params: {
-          bizCode,
-          from: toIsoDateTimeParam(from, false),
-          to: toIsoDateTimeParam(to, true),
-        },
-      })
-      .then((r) => unwrapApiResponse(r.data)),
+    fetchAllPages(
+      '/partner-orders/history',
+      {
+        bizCode,
+        from: toIsoDateTimeParam(from, false),
+        to: toIsoDateTimeParam(to, true),
+      },
+      20,
+    ),
   logFrontEvent: (args) => {
     const [first, second, third] = args
     const action = args.length >= 4 ? second : first
@@ -200,22 +348,43 @@ const RPC_MAP: Record<string, RpcHandler> = {
   saveDraft: ([payload]) =>
     http.post('/partner-orders/drafts', payload).then((r) => unwrapApiResponse(r.data)),
   getOrderSnapshotHistory: (args) =>
-    http.get('/partner-orders/drafts', { params: draftHistoryParams(args) }).then((r) => unwrapApiResponse(r.data)),
+    fetchAllPages('/partner-orders/drafts', draftHistoryParams(args), 20),
   getDraftList: (args) =>
-    http.get('/partner-orders/drafts', { params: draftHistoryParams(args) }).then((r) => unwrapApiResponse(r.data)),
+    fetchAllPages('/partner-orders/drafts', draftHistoryParams(args), 20),
 
   // ─── 최종 주문 전송 (RPC §O buildSendRows + §X sendOrderFromUi) ─────
-  sendOrderFromUi: ([payload]) => {
-    const p = (payload || {}) as { id?: string }
-    const id = p.id || 'new'
-    return http
-      .post(`/partner-orders/${encodeURIComponent(id)}/confirm`, payload)
-      .then((r) => ({
-        ok: r.data?.success === true,
-        orderNo: r.data?.data?.orderNo ?? null,
-        error: r.data?.message ?? null,
-      }))
-  },
+  sendOrderFromUi: ([itemsArg, orderArg]) =>
+    Promise.resolve()
+      .then(() => {
+        const items = Array.isArray(itemsArg) ? itemsArg : []
+        const lines = confirmLines(items)
+        const order = orderArg && typeof orderArg === 'object' ? orderArg : {}
+        const headers = confirmHeaders(order)
+        return http.post('/partner-orders/drafts', {
+          label: '주문서 확정 임시저장',
+          payloadJson: JSON.stringify({ items, order }),
+        }).then((r) => ({ lines, draft: unwrapApiResponse(r.data), headers }))
+      })
+      .then(({ lines, draft, headers }) => {
+        const draftId = draft && typeof draft === 'object'
+          ? (draft as { draftId?: unknown }).draftId
+          : null
+        if (typeof draftId !== 'string' || !draftId.trim()) {
+          throw new Error('임시저장 ID를 받지 못했습니다')
+        }
+        return http
+          .post(`/partner-orders/${encodeURIComponent(draftId)}/confirm`, { lines }, headers)
+          .then((r) => ({
+            ok: r.data?.success === true,
+            orderNo: r.data?.data?.orderNo ?? null,
+            error: r.data?.message ?? null,
+          }))
+      })
+      .catch((error: unknown) => ({
+        ok: false,
+        orderNo: null,
+        error: apiErrorMessage(error),
+      })),
 
   // ─── 튜토리얼 상태 (RPC §W 카테고리) ──────────────────────────────────
   saveTutorialState: ([bizNo, mobile]) =>
@@ -231,9 +400,7 @@ const RPC_MAP: Record<string, RpcHandler> = {
   getCustomerData: ([partnerCode]) =>
     http.get(`/partners/${encodeURIComponent(String(partnerCode))}`).then((r) => unwrapApiResponse(r.data)),
   getProducts: ([category]) =>
-    http
-      .get('/products', { params: { usageScope: 'PARTNER_ORDER', category } })
-      .then((r) => unwrapApiResponse(r.data)),
+    fetchAllPages('/products', { usageScope: 'PARTNER_ORDER', category }, 50),
   // 3d backlog — partner-auth-service 의 로그인 응답이 이미 DC 정책을 nested 로 포함하므로
   // 별도 backend 호출 없이 sessionStorage 캐시를 즉시 반환한다. 캐시 부재 시 graceful null.
   // 외부 단건 endpoint `/partner-dc-configs/{partnerCode}` 는 admin list 전용 (4b backlog 와 별개).
