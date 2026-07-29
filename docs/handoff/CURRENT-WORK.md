@@ -13,6 +13,64 @@
 
 ---
 
+# 🏁 2026-07-29 회사PC 세션 마감 — 머지 1 · PR 3 진행 · 🚨Docker 무응답으로 중단 ◀◀◀ 여기부터
+
+**main = `cf723a72e`** · 열린 PR **3건**(#984 #985 #987)
+
+## 🔴 재개 전 필수 — Docker Desktop 이 죽어 있습니다
+`docker ps` 가 `exit=124`(타임아웃). 셸 명령 전반이 2분 초과. **Docker 재시작 후** 아래 검증부터.
+
+## 트랙 현황
+
+| PR | 커밋 | 남은 것 |
+|---|---|---|
+| **#984** 이카운트 병합 | `cf8e93546` | SOL 결함① fix 미검증 → `wip/984-r4-product-lineage-unverified` |
+| **#985** 단가 드리프트 | `d2b985ce3` | SOL 결함 2건 fix 미검증 → `wip/985-r4-price-base-parity-unverified` |
+| **#987** 누락 신호 | `6379f74c3` | CI 확인 · `priceParityS3` 울타리 보강 · 재수렴 |
+| #986 | 머지됨 | #977 라운드1 결론(코드 변경 0) |
+
+🚨 **WIP 브랜치 2개는 미검증입니다. feature 브랜치에 올리지 마십시오.**
+
+## 재개 지점 (Docker 복구 후 순서대로)
+
+1. **#985** — 노출 고정DC **144행 전수** + 싱글 세트 **100개 전수** sweep. 화면값==저장값, 0원 저장 0건
+2. **#984** — 연속 2회 임포트 후 병합 **726건 전수** `name`/`category_id` diff 0
+3. **#987** — `AR-EH05`·`방진가대S2중` 회귀 울타리 보강(새 테스트가 이 둘을 안 덮음)
+
+## 이 세션에서 잡힌 것 (전부 커밋/머지 직전)
+
+- **#985 원금 불일치** — 화면은 `deliveryPrice`/`releasePrice`, 확정은 `sellingPrice`. **57모델 불일치 · 13행 0원 저장 · 최대 27,777,750원**. SOL 이 잡음
+- **#984 V27 마이그레이션 PR 누락** — 로컬·CI 는 빌드 컨텍스트 덕에 통과, **배포본만 CHECK 위반 롤백**. SOL 이 `git ls-tree` 로 잡음
+- **#984 계보 판별 2연속 함정** — `product_code IS NULL`(병합이 지움) → `product_category`(사용자가 바꿈)
+- **#987 SOL 3건** — `throw` 우회 · stale 경고 · 홈멀티 무신호
+- **#977** — 신규 2건 중 ①도달 불가 ②제이시스템 전용 계약단가 ⟹ 코드 변경 0
+
+## 📌 개발책임자 결정 (이 세션)
+
+1. **모델코드 일치 = 같은 품목, 병합** (이카운트 임포트)
+2. **품목 고정DC 우선** (`fixedDc ?? globalRate`)
+3. **`AXJ-YA1509N` 45,000원 = 제이시스템 전용 계약단가** — 전체 카탈로그 변경 금지
+4. **잔류 12건 스킵하고 나머지 임포트**
+5. **8/5 서비스** — Tier1(금액·데이터 정합) 우선, Tier3(신규기능·에픽)는 이후
+
+## ✅ 리뉴얼 (개발책임자 요청)
+
+- SA 키를 **저장소 밖**으로 이동(`D:\dev\samhan-homepage-9435577e01f4.json`) — 루트에 untracked 로 있어 커밋 위험이었음
+- compose 볼륨 마운트로 주입 → `--force-recreate` 견딤 (`infrastructure/docker-compose.qa-override.yml`, gitignored)
+- 시트 sync: `updated 2,203 · specsLinked 9,238`
+- 이카운트 품목 임포트 완주: **products 3,049 활성 · alias 2,811 · 스킵 12그룹 응답 노출**
+- 🔴 **거래처 재임포트 미실시** (7,030 — 집PC 는 7,260)
+
+## 🚩 함정 (이 세션 실측)
+
+1. 🚨 **`git diff --name-only` 는 신규 파일을 빠뜨린다** — V27·fixture 누락. `git status --porcelain` 을 쓸 것 → [[feedback_pm_copy_untracked_files]]
+2. 🚨 **워크트리를 백그라운드로 여러 개 만들면 체크아웃이 불완전할 수 있다** — `t4-978gas` 에 커밋 파일 **6,738개 누락**. `index.lock` 0바이트 잔존이 신호
+3. 🚨 **`| tail` 뒤 `$?`** — PM 이 이 세션에서 또 걸렸다
+4. `약정DC` 는 이 저장소 용어가 아니다 — **고정DC / 전역DC / 기본 할인율** → [[feedback_dc_terminology]]
+5. 표본 검증 금지 — `AM360AXVHHR1SY` 는 두 경로 원금이 우연히 같아 통과했다
+
+---
+
 # 🏁 2026-07-29 집PC 최종 마감 — **머지 9건 · 이슈 7 CLOSED** ◀◀◀ 회사PC 는 여기부터
 
 > 🚩 시작 절차: `git pull` → `.\scripts\sync-claude-memory.ps1` → 이 문단.
