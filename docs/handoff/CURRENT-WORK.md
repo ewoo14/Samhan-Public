@@ -13,7 +13,92 @@
 
 ---
 
-# 🏁 2026-07-29 회사PC 세션 마감 — 머지 1 · PR 3 진행 · 🚨Docker 무응답으로 중단 ◀◀◀ 여기부터
+# 🏁 2026-07-29 회사PC 저녁 마감 — **열린 PR 8건 · 머지 0** ◀◀◀ 집PC 는 여기부터
+
+**main = `7292f43c5`** · 열린 PR **8건** · 머지 **0건**
+
+> 🚩 시작 절차: `git pull` → `.\scripts\sync-claude-memory.ps1` → 이 문단.
+
+## 이 세션이 한 일 — 트랙 8개를 병렬로 세웠고, 아직 하나도 못 닫았다
+
+머지 0 이 이 세션의 결과다. 정직하게 적는다. 트랙을 늘린 만큼 각 트랙의 게이트(①재현 가능 결함 0 ②CI green ③라이브QA)를 채우지 못했다.
+
+| PR | 브랜치 | 상태 | 남은 것 |
+|---|---|---|---|
+| **#984** 이카운트 병합 | `fix/ecount-import-model-code-merge` | CI 38 pass · R4 커밋 `5e363075e` | 🔴 **재검증 필수** — 증거가 현재 재현 불가(아래 참조) |
+| **#985** 단가 드리프트 | `fix/order-confirm-fixed-dc-precedence` | CI 38 pass · R4 커밋 `9c776fa3c` | 라이브QA(**#992 에 막힘**) · SOL 재수렴 |
+| **#987** 누락 신호 | `fix/978-silent-catalog-miss-signal` | CI 43 pass · `fe6b102f9` | SOL 재수렴 · 라이브QA |
+| **#988** GAS 금액 대조 | `chore/977-money-gas-recompare` | 조사 완료 | 문서 마무리. **코드 변경 0 조건** |
+| **#989** QA 경로 판정표 | `chore/978-a1-qa-guard-path-matrix` | 🔴 **CI RED** | Linux skip 가드 1건 누락 fix |
+| **#990** 이미지 표면 | `chore/978-c1-image-surface-recheck` | 🔴 결함 2계열 보고됨 | PM 도달성 판정 → fix |
+| **#991** 일마감 표시단가 | `fix/monthend-detail-price-variant` | 기획만 | #984 #985 뒤 **직렬** 착수 |
+| **#992** 🔴 **P0 온보딩** | `fix/partner-register-content-type` | 기획 + WIP 격리 | 부분 산출물 재개(아래) |
+
+## 🚨 재개 시 가장 먼저 — 3가지
+
+### ① #992 가 P0 다. 신규 거래처가 주문서를 못 쓴다
+주문서에서 사업자번호 조회 → **"미승인 사업자번호"** → `승인요청 보내기` → **HTTP 500**. 우회 경로가 화면에 없다.
+
+```text
+HttpMediaTypeNotSupportedException:
+  Content-Type 'application/x-www-form-urlencoded;charset=UTF-8' is not supported
+```
+
+원인: `index.html:8276` 이 `requestAuthApproval(AUTH_BIZ, isMobileNow())` 로 **인자 2개**를 넘기는데 `samhanApi.ts:110` 핸들러가 `args[0]`(문자열)을 통째로 body 로 쓴다. axios 가 문자열 body 에 form-urlencoded 를 붙인다. **같은 엔드포인트에 JSON 을 보내면 201 정상** — 서버는 멀쩡하고 클라이언트가 잘못 보낸다.
+
+부분 산출물이 **`wip/992-partner-register-partial-2026-07-29`** (`aea2dd3de`) 에 격리돼 있다. RED-first 까지는 됐고 **라이브QA 0장 · RPC 맵 전수 대조 미작성 · Linux 확인 미실시**. 🚫 feature 브랜치에 올리지 말 것.
+
+### ② #984 는 "당시엔 옳았다" 로 머지하면 안 된다
+R4 전수 대조(726건 · name diff 0 · category_id diff 0)는 **15:15~15:16 에 수집됐고 그때는 옳았다.** 그러나 15:23:46 에 #985 트랙이 같은 Docker 스택의 `product-service` 이미지를 자기 소스로 재빌드해 덮었다. 현재 실행 jar 에 R4 심볼이 없고 PM 의 3회차 임포트는 **422** 였다.
+
+게이트 ①은 **재현 가능성**을 요구한다. 직렬화 후 같은 전수 대조를 다시 돌릴 것.
+
+### ③ #989 CI RED — 내가 낸 것이다
+새 테스트 2개 중 **한쪽에만 Linux skip 가드**를 붙였다. `not ok 16 — 타 워크트리 -ProjectRoot` 가 `ubuntu-latest` 에서 AssertionError. 로컬(Windows) 은 GREEN 이었다.
+
+## 📌 개발책임자 결정 (이 세션)
+
+1. **일마감 조회 대상 = 카테고리별 기존 설정** `price_change_schedule.default_pre_change`. 신규 스키마·화면 없음
+2. **일마감 상세 표시단가 = 별도 트랙 즉시 착수** (#991) · #984 #985 뒤 직렬
+3. **#992 P0 = 전용 트랙 즉시 착수**
+4. **트랙 시작 시 반드시 PR 생성** — 이 지시로 #988~#992 를 조기 개설했다
+5. 🆕 **모델 임시 변경은 PM 자율** — LUNA 용량초과면 **terra**. 🚫**클로드로 대체 금지**(세션 토큰 병목)
+
+## 🚩 이 세션 실측 함정 (메모리 반영 완료)
+
+1. **백엔드 트랙은 병렬 불가** — 워크트리는 격리돼도 **Docker 이미지 태그·DB 는 전역**. 나중 빌드가 조용히 이긴다. 에러도 안 난다 → [[feedback_parallel_backend_tracks_share_docker_stack]]
+2. **새 워크트리에 gitignore 된 입력이 없다** — 이카운트 raw 가 없어 검증자가 "원본 부재" 로 미판정. 증상이 기능 결함처럼 보인다 → [[feedback_worktree_missing_gitignored_inputs]]
+3. **`git worktree add` 는 셸 cwd 를 탄다** — `clients/web/order-app` 안에 13,480 파일이 체크아웃됐다. `add` 는 성공하고 gitignore 라 `git status` 에도 안 보인다 → [[feedback_git_worktree_cwd_use_dash_c]]
+4. **새 테스트마다 "Linux 에서 참인가"** — 파일 단위로 가드 존재만 보면 놓친다 → [[feedback_new_test_needs_linux_skip_guard]]
+5. **모델 용량 초과가 4회** — 그중 1회는 내 codex 가 0개 돌던 중. 그리고 **"실패" 로 보고된 작업이 실제로는 상당 부분 진행한 뒤 죽었다**(17:37 파일 기록 존재) → [[feedback_model_substitution_delegated_to_pm]]
+
+## 🔧 재개에 필요한 실행 지식
+
+```bash
+# order-app 실 기동 (PM 확인 완료)
+cd D:/dev/Samhan-Public/clients/web/order-app
+VITE_APP_VERSION="2026/07/29-1" VITE_API_BASE_URL="http://localhost:8080/api/v1" npx vite --port 5184 --strictPort
+#  ⚠️ VITE_API_BASE_URL 에 /api/v1 까지. 빼면 /partner-orders/bootstrap 이 404
+#  ⚠️ 워크트리엔 node_modules 없음 → 메인 트리에서 띄울 것
+```
+
+- 거래처 인증 게이트: `partner_auth` 활성 행은 `8428102605`(NEED_PW_INPUT) 1건뿐. `1068689215` 는 PM 이 대조로 `PENDING` 까지 올려둠(승인 아님)
+- 기준가 0원 품목 4종 = `FH-LFHIF` · `발통세트` · `운임` · `절삭` (전부 `usage_scope=BOTH`). **직접 주문 시 confirm 500 fail-closed** 확인됨. **파생 경로 거동은 미판정**
+- Docker 는 이 세션 시작 시 이미 복구돼 있었음 (전 서비스 up)
+
+## 재개 순서 (권장)
+
+1. **#992** P0 — wip 브랜치에서 재개, 라이브QA 까지
+2. **#989** Linux skip 가드 (10분짜리)
+3. **#984** Docker 선점 → 전수 재검증
+4. **#985** #992 풀리면 라이브QA (`발통세트` 파생 A/B 판정)
+5. **#990** PM 도달성 판정 → fix
+6. **#987** SOL 재수렴
+7. **#988** 문서 마무리 · **#991** 은 #984 #985 종료 후
+
+---
+
+# 🏁 2026-07-29 회사PC 세션 마감 — 머지 1 · PR 3 진행 · 🚨Docker 무응답으로 중단
 
 **main = `cf723a72e`** · 열린 PR **3건**(#984 #985 #987)
 
