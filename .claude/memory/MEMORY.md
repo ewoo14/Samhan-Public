@@ -31,6 +31,8 @@
 - [🚨 리뷰 fix=현재 PR 내 처리 · 🚨새 이슈는 사전 허락 필수](feedback_fix_in_current_pr_no_split.md) — 별도 PR/후속 이슈 분리 금지. **2026-07-23: "내 허락 없이는 새로운 이슈로 등록 금지"** — PM 자율 등록 조항 폐기 …
 - [🚨🚨 새 이슈 등록 금지(사전 허락) · 백로그 순감](feedback_backlog_burndown_issue_bar.md) — 등록 전 자문 3개(한 파일 몇 줄? 같은 표면 PR 열려있나? 머지게이트를 간헐 차단하나?) 하나라도 예면 흡수 …
 
+- [🚨 모델 임시 변경 = **PM 자율 위임** · LUNA 용량초과 → **terra** (2026-07-29 개발책임자)](feedback_model_substitution_delegated_to_pm.md) — 캐논 "모델 대체 금지" 완화. `Selected model is at capacity` = 상류 슬롯 부재(우리 토큰·브리핑 문제 아님. 같은 브리핑 재전송하면 성공). 한 세션 **4회** 발생, 그중 1회는 **내 codex 가 0개 돌던 상태** ⟹ 병렬도 축소로 못 없앰. **1회는 재시도, 2연속이면 폴백**. 🚫**클로드로 대체 금지**(세션 토큰이 병목 — Codex 별개 풀이 위임 전제). 대체 시 **PR 에 사용 모델 기록**
+
 # 커밋/PR/문서 규약
 - [한국어 의무 — 커밋/PR/Issue/보고](feedback_korean_commits.md) — git commit·PR·Issue+대면 보고/대화/설명 한국어(prefix·trailer만 예외)
 - [🚨 QA 스샷=SendUserFile+PR SHA-pinned 인라인 둘 다 매 라운드](feedback_pr_screenshot_sha_pinned_urls.md) — SendUserFile(사용자)≠PR 인라인·**반복 누락 지적**(2026-07-05) …
@@ -50,6 +52,8 @@
 
 # 개발환경/빌드 함정
 - [🚨🚨 백엔드 트랙은 **직렬화** — 병렬 트랙이 서로의 Docker 이미지를 덮는다 (2026-07-29 #984↔#985 실측)](feedback_parallel_backend_tracks_share_docker_stack.md) — 양쪽 브리핑에 `product-service` 재빌드를 지시했는데 **이미지 태그·Docker 데몬·DB 는 전역**이라 나중 빌드가 조용히 이긴다. #984 검증 8분 뒤 #985 가 덮어 PM 재현이 **422**. 에러도 안 난다 — 다른 코드가 돌 뿐. DB 도 오염(임포트가 `products` 2,655행 갱신 ↔ 동시에 #985 가 부트스트랩↔확정 대조). 🔑결과를 받으면 **`docker inspect -f '{{.Created}}'` + 실행 jar 의 새 심볼**을 확인 · **"당시엔 옳았다"는 게이트 통과 아님**(게이트 ①=재현 가능) · 실행 중 codex 는 **강제 종료 금지**(산출물 0). 병렬은 프론트/문서/스크립트만
+- [🚨 `git worktree add` 는 **셸 cwd 를 탄다** — 경로 인자 git 은 `-C` 로 고정 (2026-07-29 cwd 착오 3회째)](feedback_git_worktree_cwd_use_dash_c.md) — cwd 가 `clients/web/order-app` 인 채 상대경로로 add 해 **소스 디렉토리 안에 13,480 파일 체크아웃**. `add` 는 **성공**해서 신호가 없고 `.claude/worktrees` 는 gitignore 라 `git status` 에도 안 보인다. 🔑**add 직후 `git -C "$W" rev-parse --show-toplevel` 이 `$W` 와 같은지 검증**. 정리는 `worktree remove --force` + **잔재 디렉토리 삭제** + `worktree prune`
+- [🚨 새 테스트마다 **"이 단정이 Linux 에서 참인가"** — CI 는 ubuntu-latest (2026-07-29 #989)](feedback_new_test_needs_linux_skip_guard.md) — Windows 표기 판정표 2개 중 **한쪽에만 skip 가드**를 붙여 로컬 GREEN·CI RED. PM 은 러너 OS 를 의심하고 첫 테스트 가드까지 확인한 뒤 *"CI RED 안 난다"* 고 PR 에 썼다 — **두 번째를 안 봤다**. 🔑가드 존재를 **파일 단위로 확인하면 안 된다. 새 단정 하나하나**에 물어야 한다
 - [🚨 새 워크트리에는 **gitignore 된 입력 데이터가 없다** (2026-07-29 #984)](feedback_worktree_missing_gitignored_inputs.md) — 검증자가 *"실 이카운트 CSV 원본 부재로 미판정"* 보고. `git worktree add` 는 추적 파일만 체크아웃해 `docs/migration/ecount-data/raw/**`·`.env`·`node_modules` 가 빠진다. 증상이 **기능 결함처럼 보인다**(422 → 구현 의심). 🔑워크트리 만들면 **브리핑 전에** 필요한 입력을 복사 · 복사 시 추적 파일(`.gitkeep`) 덮어썼는지 확인 · **"원본 부재" 미판정 보고는 정직한 것**이지 실패가 아니다(지어내 GREEN 만드는 것보다 낫다)
 - [🚨 지우기 전에 `git ls-files` 로 커밋 여부 확인 (2026-07-28 #957)](feedback_check_tracked_before_delete.md) — `rm -rf docs/qa/local-load-soak-test` 로 **커밋 파일 33개 삭제**(`git checkout --` 복구·PM 직접 확증). 원인=하위에 `timeseries/_local` 이 있어 **상위 전체를 throwaway 로 오인**. 반대다 — `docs/qa/<슬러그>/` 는 커밋 증거이고 `_local` **한 칸만** throwaway. 저장소 안 삭제는 `git ls-files <경로>` 선행. 임시물은 `os.tmpdir()`/스크래치패드에만. 🔑**QA 오염 가드는 `QA_SHOTS_DIR` 경유 쓰기만 막지 직접 삭제는 못 막는다**
 - [🚨 docker exec 는 stdin 미전달 — heredoc SQL 이 조용히 무동작](feedback_docker_exec_stdin_silent_noop.md) — heredoc 이 무시되고 psql 이 **무출력 exit 0**. "실행된 것처럼 보였으나 0행 삭제"(2026-07-27 실측). DB 작업은 **`docker cp` + `psql -f`**(`MSYS_NO_PATHCONV=1`). `-c "SQL"` 은 정상. 정리 후 **행 수를 다시 셀 것**
