@@ -122,6 +122,7 @@
 - [정찰 grep false-negative](feedback_recon_grep_false_negative.md) — grep 0매치≠기능부재, 실 파일/라우트로 검증
 
 # Codex
+- [🚨🚨 Codex 계정 **사용 한도 초과 — 2026-08-05 14:52 리셋**](project_codex_usage_limit_2026_08_05.md) — sol·luna **둘 다** 같은 에러(계정 레벨, capacity 와 다름·모델 바꿔도 동일). 캐논 3단계 결손 → 남는 경로=OPUS 기획·OPUS 적대리뷰·**SONNET5 fix**·PM 라이브QA. 결손 스테이지는 PR 에 명시. 충전=개발책임자 결제
 - [🚨 codex 병렬 디스패치 가능 + 콘텐츠필터 오탐](feedback_codex_parallel_and_content_filter.md) — 2 codex 동시 backgrounded 실측(순차 오해 정정). 단 "권한/세션/인증" 브리핑을 사이버보안 위험으로 오탐→중립표현 재구성
 - [Codex MCP 서버 사용](feedback_codex_plugin_setup.md) — mcp__codex__codex, sandbox danger-full-access(모든 호출 명시), 5 agents 병렬
 - [Codex 디스패치=Claude commit 대행+approval never](feedback_codex_sandbox_git.md) — Codex git 금지(파일만), approval-policy never, **model 스테이지별 명시(기획검수/적대리뷰=`gpt-5.6-sol` …
