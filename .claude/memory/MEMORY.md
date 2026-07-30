@@ -29,6 +29,7 @@
 - [🆕 **작성자는 대상자에 자동 포함 — "자동 권한"** (2026-07-30 #895)](feedback_author_is_auto_participant.md) — *"작성자는 당연히 일정에 포함이 되어야지… 자동 권한인거니까"*. 🔑접근을 허용하려면 **집합에 넣어야** 하고 조건절 `OR ownerId` 로 비껴가면 안 된다 — 응답의 대상자 목록과 실제 권한이 어긋나 "대상자 기준" 으로 도는 알림·필터·통계가 작성자를 빠뜨린다. SOL(안 보여야 함)·PM(보이지만 목록엔 없음) **둘 다 부분적으로 틀렸다**. 수정·삭제 권한은 별개 축 · 알림은 자기 것 제외(PM 판단)
 - [무결성도메인 정책 선확인](feedback_integrity_domain_policy_preconfirm.md) — 회계원장·감사·권한 편집가부 정책은 착수 전 개발책임자 확인 (2026-07-02)
 - [개발책임자 결정은 PR에 누적 기록](feedback_post_devlead_decisions_to_pr.md) — 결정·지시·정정을 그때그때 "📌 개발책임자 결정 기록" 코멘트로. 채팅에만 두지말것
+- [🚨🚨 **리뷰 1:1 게시 엄수 — 커밋과 게시를 같은 도구 블록에서** (2026-07-30 개발책임자 2회 지적)](feedback_review_post_one_to_one_enforcement.md) — 라운드 완료 → **커밋 → 즉시 게시**를 한 묶음으로. 커밋만 하고 게시를 미루면 쌓인다(실측: 한 세션에 **8건** 누락 후 지적, 정정 뒤 다시 **1건** 누락). 🔑감사법=**브랜치 오늘 커밋 목록 vs PR 코멘트 시각**을 나란히 뽑아 대조(`git log origin/<b> --since` + `gh api .../comments`). 🚫"나중에 한꺼번에" 금지 — 게시는 라운드의 일부다
 - [PM-Codex 진행 검증·10분 보고](feedback_pm_codex_progress_verification.md) — Codex 디스패치마다 산출물 즉시검증+주기 상태보고, 침묵금지
 - [🚨🚨 **이슈 등록 = PM 자율 위임 (2026-07-30 · 07-23 금지를 대체)**](feedback_issue_registration_delegated_to_pm.md) — *"이슈등록은 PM에게 권한을 위임."* 자문 3개는 **그대로 살아 있음**(한 파일 몇 줄? 같은 표면 PR 열려있나? 머지게이트를 간헐 차단하나? → 하나라도 예면 **흡수**). 🚫유일 악용 경로 = **적대검증 결함을 후속 이슈로 미루기** — 리뷰 fix 는 여전히 현재 PR 안
 - [🚨 리뷰 fix=현재 PR 내 처리](feedback_fix_in_current_pr_no_split.md) — 별도 PR/후속 이슈 분리 금지. ⚠️이 파일의 "새 이슈 사전 허락" 조항은 **2026-07-30 위임으로 대체**됨 → [[feedback_issue_registration_delegated_to_pm]]
