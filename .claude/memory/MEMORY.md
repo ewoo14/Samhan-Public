@@ -64,7 +64,7 @@
 - [Korean Path JDK Trap](feedback_korean_path_jdk.md) — 한글경로 gradle test 실패→assemble
 - [gradlew 실행권한](feedback_gradlew_exec_bit.md) — `git update-index --chmod=+x gradlew`
 - [PowerShell UTF-8 트랩](feedback_powershell_utf8_writes.md)
-- [PR 게시 인코딩 — 파이프 mojibake](feedback_gh_comment_utf8_pipe_mojibake.md) — 게시/PATCH=UTF-8 파일 경유만·직후 자가 검사 의무 (2026-07-04 #724 …
+- [PR 게시 인코딩 — 파이프 mojibake · 🚨🚨**`<<EOF` 인용 없는 heredoc = 백틱 실행**](feedback_gh_comment_utf8_pipe_mojibake.md) — 🔑**재발 트리거 = "SHA/변수를 본문에 넣으려고 인용을 푸는 것"**(2026-07-30 재발). 변수 확장이 필요하면 **Write 도구로 완성본**을 쓸 것. 게시 직후 **코드블록·코드스팬 생존 확인**(한글 mojibake 검사로는 안 잡힘 — 한글은 멀쩡하고 코드스팬만 사라진다) — 게시/PATCH=UTF-8 파일 경유만·직후 자가 검사 의무 (2026-07-04 #724 …
 - [Bash 커밋=−F 파일](feedback_bash_commit_message_file.md) — @'...'@ here-string 금지, Write→git commit -F
 - [desktop 타입검증=npm run typecheck](feedback_desktop_typecheck_command.md)
 - [order-app CI=tsc typecheck·vitest≠tsc](feedback_order_app_typecheck_not_vitest.md) — vitest만 로컬 실행 시 타입에러 미포착·CI red, 로컬 npm run typecheck 의무 (2026-07-11 #778)
