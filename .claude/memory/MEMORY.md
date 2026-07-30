@@ -26,6 +26,7 @@
 - [PR OPEN(≠DRAFT)](feedback_pr_open_not_draft.md) — 조기PR 포함 draft 금지, --draft 쓰지말것 (2026-07-02)
 - [PM 자율 머지 위임 · 🚨🚨**문서 전용은 PR 을 열지 않는다**(2026-07-29)](feedback_pm_auto_merge_authority.md) — 게이트(0수렴·CI green·mock gate·라이브QA) 충족 시 PM 자율 머지. main 직접 docs/memory push는 별개 가드 …
 - [PM 권한코드 전권 자율](feedback_pm_permission_autonomy.md) — 권한 코드는 PM 머지까지 자율. 워크플로우 엄격+자가지적. 신규 업무규칙/정책만 개발책임자 확인
+- [🆕 **작성자는 대상자에 자동 포함 — "자동 권한"** (2026-07-30 #895)](feedback_author_is_auto_participant.md) — *"작성자는 당연히 일정에 포함이 되어야지… 자동 권한인거니까"*. 🔑접근을 허용하려면 **집합에 넣어야** 하고 조건절 `OR ownerId` 로 비껴가면 안 된다 — 응답의 대상자 목록과 실제 권한이 어긋나 "대상자 기준" 으로 도는 알림·필터·통계가 작성자를 빠뜨린다. SOL(안 보여야 함)·PM(보이지만 목록엔 없음) **둘 다 부분적으로 틀렸다**. 수정·삭제 권한은 별개 축 · 알림은 자기 것 제외(PM 판단)
 - [무결성도메인 정책 선확인](feedback_integrity_domain_policy_preconfirm.md) — 회계원장·감사·권한 편집가부 정책은 착수 전 개발책임자 확인 (2026-07-02)
 - [개발책임자 결정은 PR에 누적 기록](feedback_post_devlead_decisions_to_pr.md) — 결정·지시·정정을 그때그때 "📌 개발책임자 결정 기록" 코멘트로. 채팅에만 두지말것
 - [PM-Codex 진행 검증·10분 보고](feedback_pm_codex_progress_verification.md) — Codex 디스패치마다 산출물 즉시검증+주기 상태보고, 침묵금지
