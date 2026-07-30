@@ -29,8 +29,9 @@
 - [무결성도메인 정책 선확인](feedback_integrity_domain_policy_preconfirm.md) — 회계원장·감사·권한 편집가부 정책은 착수 전 개발책임자 확인 (2026-07-02)
 - [개발책임자 결정은 PR에 누적 기록](feedback_post_devlead_decisions_to_pr.md) — 결정·지시·정정을 그때그때 "📌 개발책임자 결정 기록" 코멘트로. 채팅에만 두지말것
 - [PM-Codex 진행 검증·10분 보고](feedback_pm_codex_progress_verification.md) — Codex 디스패치마다 산출물 즉시검증+주기 상태보고, 침묵금지
-- [🚨 리뷰 fix=현재 PR 내 처리 · 🚨새 이슈는 사전 허락 필수](feedback_fix_in_current_pr_no_split.md) — 별도 PR/후속 이슈 분리 금지. **2026-07-23: "내 허락 없이는 새로운 이슈로 등록 금지"** — PM 자율 등록 조항 폐기 …
-- [🚨🚨 새 이슈 등록 금지(사전 허락) · 백로그 순감](feedback_backlog_burndown_issue_bar.md) — 등록 전 자문 3개(한 파일 몇 줄? 같은 표면 PR 열려있나? 머지게이트를 간헐 차단하나?) 하나라도 예면 흡수 …
+- [🚨🚨 **이슈 등록 = PM 자율 위임 (2026-07-30 · 07-23 금지를 대체)**](feedback_issue_registration_delegated_to_pm.md) — *"이슈등록은 PM에게 권한을 위임."* 자문 3개는 **그대로 살아 있음**(한 파일 몇 줄? 같은 표면 PR 열려있나? 머지게이트를 간헐 차단하나? → 하나라도 예면 **흡수**). 🚫유일 악용 경로 = **적대검증 결함을 후속 이슈로 미루기** — 리뷰 fix 는 여전히 현재 PR 안
+- [🚨 리뷰 fix=현재 PR 내 처리](feedback_fix_in_current_pr_no_split.md) — 별도 PR/후속 이슈 분리 금지. ⚠️이 파일의 "새 이슈 사전 허락" 조항은 **2026-07-30 위임으로 대체**됨 → [[feedback_issue_registration_delegated_to_pm]]
+- [백로그 순감 · 등록 전 자문 3개](feedback_backlog_burndown_issue_bar.md) — 자문 3개 기준은 유지. 등록 금지 조항만 폐기(2026-07-30) …
 
 - [🚨 모델 임시 변경 = **PM 자율 위임** · LUNA 용량초과 → **terra** (2026-07-29 개발책임자)](feedback_model_substitution_delegated_to_pm.md) — 캐논 "모델 대체 금지" 완화. `Selected model is at capacity` = 상류 슬롯 부재(우리 토큰·브리핑 문제 아님. 같은 브리핑 재전송하면 성공). 한 세션 **4회** 발생, 그중 1회는 **내 codex 가 0개 돌던 상태** ⟹ 병렬도 축소로 못 없앰. **1회는 재시도, 2연속이면 폴백**. 🚫**클로드로 대체 금지**(세션 토큰이 병목 — Codex 별개 풀이 위임 전제). 대체 시 **PR 에 사용 모델 기록**
 
@@ -172,6 +173,7 @@
 - [회계 G/H 도메인 결정](project_accounting_gh_decisions.md) — 받을어음+수금계획, H=BankTransaction CSV MVP→KFTC
 - [회계 보고서 표시 규약](feedback_accounting_report_display_conventions.md) — 음수 '-X'빨강, 0='—', 코드 prefix 금지
 - [회계 원장 수정금지·입금보고서 에픽](project_accounting_ledger_edit_policy.md) — Journal 수정금지(역분개), CashReceipt 입금보고서 편집대상, #697 폐기 (2026-07-02)
+- [🆕 **입금보고서=결재문서 아님 · 거래처별 원장 표시 사양** (2026-07-30 개발책임자)](project_partner_ledger_and_cash_receipt.md) — 입금보고서 = *"하나의 입금내역을 거래처별 원장·회계반영을 위한 **그룹화**"*. **거래처 재지정·금액 분할**이 수정 사유(= 편집 대상인 이유). 용어 🚨**`돈들어온` → `입금`**. 거래처별 원장에 실리는 것 2종 = **출고 판매전표**(전표번호 + 내부 품목 내역 전부) + **입금보고서**(수금내역). 🔴이카운트와 **일부러 다르게**: 품목 금액 = 수량 × **부가세 포함** 단가(이카운트는 별도) · 주소 = **배송주소 데이터**(이카운트는 첫번째 적요)
 - [arologis-desktop 백오피스 ✅](project_arologis_desktop_backoffice.md) — 인사/간이회계/권한, #433
 - [모바일 에픽② 슬1 Foundation ✅](../../docs/handoff/CURRENT-WORK.md) — #596 Dual-mode 인증
 - [플랫폼 분기=빌드타임 플래그](feedback_platform_branch_build_time_flag.md) — VITE_PLATFORM, mock gate 검증
