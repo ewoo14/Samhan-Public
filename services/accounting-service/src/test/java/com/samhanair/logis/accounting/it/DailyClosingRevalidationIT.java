@@ -24,6 +24,7 @@ import com.samhanair.logis.accounting.client.PartnerSummary;
 import com.samhanair.logis.accounting.client.ProductAliasClient;
 import com.samhanair.logis.accounting.client.ProductClient;
 import com.samhanair.logis.accounting.client.ProductLabelMatch;
+import com.samhanair.logis.accounting.client.ProductSummary;
 import com.samhanair.logis.accounting.client.SlipQueryClient;
 import com.samhanair.logis.accounting.client.SlipServiceClient;
 import com.samhanair.logis.accounting.client.codef.EasyCodefClient;
@@ -35,8 +36,6 @@ import com.samhanair.logis.accounting.domain.SalesAccountingSlipLine;
 import com.samhanair.logis.accounting.domain.SalesSlipStatus;
 import com.samhanair.logis.accounting.domain.SalesTaxType;
 import com.samhanair.logis.accounting.domain.TaxInvoice;
-import com.samhanair.logis.accounting.domain.TaxInvoiceLine;
-import com.samhanair.logis.accounting.domain.TaxInvoiceType;
 import com.samhanair.logis.accounting.repository.PurchaseAccountingSlipRepository;
 import com.samhanair.logis.accounting.repository.SalesAccountingSlipRepository;
 import com.samhanair.logis.accounting.repository.TaxInvoiceRepository;
@@ -107,6 +106,17 @@ class DailyClosingRevalidationIT extends AbstractPostgresIT {
                         PARTNER_ID, "P-RV", "재검증거래처", "111-22-33333", "서울")));
         lenient().when(productClient.resolveByLabelBulk(anyList()))
                 .thenReturn(Map.of());
+        lenient().when(productClient.lookup(anyList())).thenAnswer(invocation -> {
+            java.util.List<UUID> ids = invocation.getArgument(0);
+            return ids.stream().map(id -> new ProductSummary(
+                    id, "테스트품목", "TEST-MODEL", null, null, "ACTIVE",
+                    AM_PRODUCT_ID.equals(id) ? "commercialMulti" : "homemulti")).toList();
+        });
+        lenient().when(productClient.priceChangeDefaultVariants()).thenReturn(Map.of(
+                "homemulti", false,
+                "singleSets", false,
+                "commercialMulti", false,
+                "oldProducts", false));
         lenient().when(productClient.applicablePrices(anyList(), any(LocalDate.class)))
                 .thenReturn(Map.of(
                         AM_PRODUCT_ID, new ApplicablePrice(new BigDecimal("100000"), new BigDecimal("70000"), DATE),
@@ -209,17 +219,20 @@ class DailyClosingRevalidationIT extends AbstractPostgresIT {
     }
 
     private void seedIssuedTaxInvoice() {
-        TaxInvoice invoice = TaxInvoice.create(
-                PARTNER_ID, "P-RV", "111-22-33333", "재검증거래처", "서울",
-                DATE, "S2c HTTP IT", TaxInvoiceType.SALES);
-        invoice.addLine(TaxInvoiceLine.createWithAmounts(
-                invoice, 1, "AM160NXVHHH1 [AM상업멀티]", null, null,
-                BigDecimal.ONE, new BigDecimal("50000"), new BigDecimal("50000"),
-                new BigDecimal("5000"), "AM zone marker"));
-        invoice.addLine(TaxInvoiceLine.createWithAmounts(
-                invoice, 2, "미등록서비스품목", null, null,
+        SalesAccountingSlip sourceSlip = SalesAccountingSlip.createDraft(
+                "SAS-HTTP-RV-SOURCE", DATE, PARTNER_ID, "P-RV", "재검증거래처",
+                SalesTaxType.TAXABLE, "S2c HTTP IT");
+        SalesAccountingSlipLine knownSource = SalesAccountingSlipLine.create(
+                sourceSlip, 1, "MIG4", "AM160NXVHHH1 [AM상업멀티]", "AM160NXVHHH1",
+                "commercialMulti", BigDecimal.ONE, new BigDecimal("50000"),
+                new BigDecimal("50000"), new BigDecimal("5000"), new BigDecimal("55000"));
+        SalesAccountingSlipLine unknownSource = SalesAccountingSlipLine.create(
+                sourceSlip, 2, "SERVICE", "미등록서비스품목", null, null,
                 BigDecimal.ONE, new BigDecimal("10000"), new BigDecimal("10000"),
-                new BigDecimal("1000"), "NOT_FOUND"));
+                new BigDecimal("1000"), new BigDecimal("11000"));
+        TaxInvoice invoice = TaxInvoice.createDraftFromSalesSlips(
+                "TI-HTTP-RV-001", DATE, PARTNER_ID, "P-RV", "재검증거래처", "111-22-33333",
+                java.util.List.of(knownSource, unknownSource), "it");
         invoice.issue("2026/07/13-QA1", "it");
         taxInvoiceRepository.saveAndFlush(invoice);
     }
@@ -229,7 +242,7 @@ class DailyClosingRevalidationIT extends AbstractPostgresIT {
                 "SAS-HTTP-RV-001", DATE, PARTNER_ID, "P-RV", "재검증거래처",
                 SalesTaxType.TAXABLE, "S2c HTTP IT");
         SalesAccountingSlipLine line = SalesAccountingSlipLine.create(
-                slip, 1, "MIG4", "AJ040RXH4BC1 [AJ홈멀티]", BigDecimal.ONE,
+                slip, 1, "MIG4", "AJ040RXH4BC1 [AJ홈멀티]", "AJ040RXH4BC1", "homemulti", BigDecimal.ONE,
                 new BigDecimal("50000"), new BigDecimal("50000"), new BigDecimal("5000"),
                 new BigDecimal("55000"));
         slip.getLines().add(line);
