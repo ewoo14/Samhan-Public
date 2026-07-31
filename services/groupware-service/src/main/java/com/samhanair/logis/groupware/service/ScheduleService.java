@@ -62,7 +62,15 @@ public class ScheduleService {
                         "일정을 찾을 수 없습니다: " + scheduleId));
     }
 
-    /** 소유자 또는 참여자 + 기간 조회. */
+    /** 호출자가 활성 대상자인 일정만 단건 조회한다. 권한 없음도 일정 미존재와 동일하게 처리한다. */
+    @Transactional(readOnly = true)
+    public Schedule findVisibleById(UUID scheduleId, UUID actorUserId) {
+        return repository.findVisibleById(scheduleId, actorUserId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
+                        "일정을 찾을 수 없습니다"));
+    }
+
+    /** 활성 대상자 + 기간 조회. */
     @Transactional(readOnly = true)
     public List<Schedule> findInRange(UUID ownerId, LocalDateTime from, LocalDateTime to) {
         if (from == null || to == null || !to.isAfter(from)) {
@@ -125,6 +133,8 @@ public class ScheduleService {
             throw new BusinessException(ErrorCode.FORBIDDEN, "일정 등록자 본인만 삭제할 수 있습니다");
         }
         schedule.markDeleted(actorUserId.toString());
+        schedule.getParticipants().forEach(participant ->
+                participant.markDeleted(actorUserId.toString()));
     }
 
 }
