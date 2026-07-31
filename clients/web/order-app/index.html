@@ -5542,6 +5542,21 @@ function recomputeHomeBranches(){
 let HOME_CATALOG_MISSING_MODELS = new Map();
 let SINGLE_CATALOG_MISSING_MODELS = new Map();
 
+function loadSingleS03QuantitySync_(){
+  const bridge = window.__SAMHAN_QUANTITY_SYNC__;
+  if(!bridge || typeof bridge.getQuantitySyncRules !== 'function'){
+    console.info('[quantity-sync shadow] 설정 조회 경로를 사용할 수 없습니다. legacy S-03 계산을 유지합니다.');
+    return Promise.resolve();
+  }
+  return bridge.getQuantitySyncRules(SINGLE_SETS).then(state=>{
+    if(state?.status === 'ready'){
+      console.info('[quantity-sync shadow] S-03 설정을 읽었습니다. 사용자 계산은 legacy 수식을 유지합니다.');
+    } else {
+      console.info('[quantity-sync shadow] S-03 설정 관측 불가:', state?.errorMessage || '알 수 없는 오류');
+    }
+  });
+}
+
 function noteHomeCatalogMissing_(model, reason){
   const key = String(model || '').trim();
   if(!key) return;
@@ -8530,6 +8545,10 @@ function completeLogin(bizNo, config, res) {
   /* 거래처명할당 */
   window.CURRENT_CUSTNAME = (res && res.config && res.config.partnerName) || '';
 
+  // 로그인으로 JWT가 준비된 뒤에만 칩 설정을 조회한다. 조회 결과는 shadow 관측만
+  // 하고 사용자에게 보이는 수량·금액·전송 payload는 기존 S-03 식으로 유지한다.
+  const quantitySyncLoad = loadSingleS03QuantitySync_();
+
   try {
     if (typeof renderHome === 'function') renderHome();
     if (typeof syncHomeTotals === 'function') syncHomeTotals();
@@ -8546,6 +8565,10 @@ function completeLogin(bizNo, config, res) {
     if (typeof updateCommRatio === 'function') updateCommRatio();
     if (typeof fitAllTables === 'function') fitAllTables();
   } catch (e) {}
+
+  void quantitySyncLoad.catch(error=>{
+    console.info('[quantity-sync shadow] 설정 조회 실패. legacy S-03 계산을 유지합니다.', error);
+  });
 
   const bizGate = document.getElementById('pageBizGate');
   if (bizGate) {
