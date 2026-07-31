@@ -45,6 +45,7 @@
 - [PR 제목 [FEAT]/[FIX] 대괄호+대문자](feedback_pr_title_caps_bracket.md)
 - [권한 표기 풀네임](feedback_role_naming_full.md) — MASTER/MANAGER 풀네임, 약어 금지
 - [전표 용어 — 슬립 금지](feedback_jeonpyo_not_slip.md) — 한글 "전표"(슬립 금지), 영문 slipId는 별개
+- [🚨 **"완전계승" 정의 — 기능·표현 데이터는 복사, 디자인은 자유** (2026-07-31 개발책임자 확정)](feedback_gas_full_inheritance_definition.md) — 같아야 할 것=**기능·표현 데이터(항목·값·집계 결과)** / 달라도 되는 것=**레이아웃·색·컴포넌트**. *"화면이 다르게 생겼다"*는 미계승 근거가 **아니고**, *"항목이 빠졌다·값이 다르다"*는 미계승. `design-system` 사용 권장, 레거시 HTML 이식 금지. ⚠️예외=**인쇄 양식은 legacy 100% 매칭 유지**. 🔑저장소·수단이 바뀐 helper(Notion 저장·base64 압축)는 **계승 대상 아님** — 미대응 개수로 세지 말고 **담긴 업무 규칙**으로 가를 것
 - [🚨 할인 용어 — "약정DC" 는 없는 말 (2026-07-29 개발책임자 지적)](feedback_dc_terminology.md) — **고정DC**(`products.fixed_discount_rate`, 품목별) / **전역DC**(`dc_configs`, 거래처별 홈·상업율+옵션 정액 6종+반올림) / **기본 할인율**(`partners`). 약정=`agreeTerm`(전표 자유 입력)이라 할인과 무관. 📌우선순위=**고정DC 우선**(`fixedDc ?? globalRate`). ⚠️`dc-config-service` 엔 고정DC 개념이 **아예 없음**(grep 0) → 표시값≠확정값. 🔑**이슈 제목·기획 문서의 말을 그대로 쓰지 말 것** — 이 오염의 출처가 그것
 - [코멘트 용어 — 협업 코멘트 금지](feedback_comment_not_collab_comment.md) — 라벨 "코멘트", 영문 CollabComment 유지
 - [UUID 사용자 비공개 · 🚨07-22 엔티티별 노출 코드 지정](feedback_uuid_no_user_visibility.md) — 화면 UUID 금지(DB PK 전용). **엔티티마다 사용자 노출 코드를 정한다**: 담당자코드(`employees.ecount_code` 활성 unique …
