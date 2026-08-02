@@ -127,6 +127,62 @@ class ProductServiceTest {
     }
 
     @Test
+    void summary_exposes_modelName_as_productCode_even_when_modelCode_and_legacy_code_exist() {
+        ReflectionTestUtils.setField(product, "productCode", "010004");
+        ReflectionTestUtils.setField(product, "modelCode", "MODEL-004");
+
+        ProductSummaryResponse withModelCode = ProductSummaryResponse.from(product);
+
+        assertThat(withModelCode.productCode()).isEqualTo("SHA-W15K");
+    }
+
+    @Test
+    void lookup_by_product_code_resolves_legacy_alias_without_changing_product_uuid() {
+        when(productRepository.findByProductCodeAndIsDeletedFalse("010004")).thenReturn(Optional.empty());
+        when(productAliasRepository.findByAliasCodeAndIsDeletedFalse("010004"))
+                .thenReturn(Optional.of(ProductAlias.create("010004", product, "S2_LEGACY_PRODUCT_CODE")));
+
+        ProductSummaryResponse result = service.lookupSummaryByProductCode("010004");
+
+        assertThat(result.id()).isEqualTo(productId);
+        verify(productAliasRepository).findByAliasCodeAndIsDeletedFalse("010004");
+    }
+
+    @Test
+    void lookup_by_product_code_resolves_exposed_model_name() {
+        when(productRepository.findByProductCodeAndIsDeletedFalse("SHA-W15K")).thenReturn(Optional.empty());
+        when(productAliasRepository.findByAliasCodeAndIsDeletedFalse("SHA-W15K"))
+                .thenReturn(Optional.empty());
+        when(productRepository.findByModelNameAndIsDeletedFalse("SHA-W15K"))
+                .thenReturn(Optional.of(product));
+
+        ProductSummaryResponse result = service.lookupSummaryByProductCode(" SHA-W15K ");
+
+        assertThat(result.id()).isEqualTo(productId);
+        assertThat(result.productCode()).isEqualTo("SHA-W15K");
+    }
+
+    @Test
+    void lookup_by_product_code_rejects_ambiguous_code_across_products() {
+        Product otherProduct = Product.create("다른 제품", "010004", category,
+                BigDecimal.ONE, BigDecimal.ONE, "KRW", null, null);
+        UUID otherProductId = UUID.randomUUID();
+        ReflectionTestUtils.setField(otherProduct, "id", otherProductId);
+        ReflectionTestUtils.setField(product, "productCode", "010004");
+
+        when(productRepository.findByProductCodeAndIsDeletedFalse("010004")).thenReturn(Optional.of(product));
+        when(productAliasRepository.findByAliasCodeAndIsDeletedFalse("010004"))
+                .thenReturn(Optional.empty());
+        when(productRepository.findByModelNameAndIsDeletedFalse("010004"))
+                .thenReturn(Optional.of(otherProduct));
+
+        assertThatThrownBy(() -> service.lookupSummaryByProductCode("010004"))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode())
+                        .isEqualTo(ErrorCode.CONFLICT));
+    }
+
+    @Test
     void create_persistsDynamicSpecsInRequestOrder() {
         when(productRepository.existsByModelNameAndIsDeletedFalse("SHA-W20K")).thenReturn(false);
         when(categoryRepository.findById(categoryId)).thenReturn(Optional.of(category));

@@ -8,6 +8,7 @@ import com.samhanair.logis.product.domain.EstimateCategory;
 import com.samhanair.logis.product.domain.Category;
 import com.samhanair.logis.product.domain.Classification;
 import com.samhanair.logis.product.domain.Product;
+import com.samhanair.logis.product.domain.ProductAlias;
 import com.samhanair.logis.product.domain.ProductCategory;
 import com.samhanair.logis.product.domain.ProductEstimateExposure;
 import com.samhanair.logis.product.domain.ProductGoodsType;
@@ -206,22 +207,38 @@ public class ProductService {
     }
 
     /**
-     * 품목코드(product_code) 정확 매칭 단건 조회 후 ProductSummaryResponse 로 변환.
+     * 품목 식별자(product_code/alias_code/model_name) 정확 매칭 단건 조회 후 ProductSummaryResponse 로 변환.
      * S3 인스턴스 출고 예약에서 productCode 기반 serialManaged 확인에 사용한다.
      *
      * @param productCode 정확 매칭할 품목코드
      * @return ProductSummaryResponse
      * @throws BusinessException(INVALID_INPUT) productCode null/blank
      * @throws BusinessException(NOT_FOUND) 매칭 제품 없음
+     * @throws BusinessException(CONFLICT) 서로 다른 활성 제품이 같은 식별자에 매칭됨
      */
     @Transactional(readOnly = true)
     public ProductSummaryResponse lookupSummaryByProductCode(String productCode) {
         if (productCode == null || productCode.isBlank()) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "품목코드가 비어있습니다");
         }
-        Product product = productRepository.findByProductCodeAndIsDeletedFalse(productCode.trim())
-                .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
-                        "품목코드에 해당하는 제품이 없습니다"));
+        String normalizedCode = productCode.trim();
+        List<Product> candidates = new ArrayList<>();
+        productRepository.findByProductCodeAndIsDeletedFalse(normalizedCode).ifPresent(candidates::add);
+        productAliasRepository.findByAliasCodeAndIsDeletedFalse(normalizedCode)
+                .map(ProductAlias::getMainProduct)
+                .ifPresent(candidates::add);
+        productRepository.findByModelNameAndIsDeletedFalse(normalizedCode).ifPresent(candidates::add);
+
+        Set<UUID> productIds = candidates.stream()
+                .map(Product::getId)
+                .collect(java.util.stream.Collectors.toSet());
+        if (candidates.isEmpty()) {
+            throw new BusinessException(ErrorCode.NOT_FOUND, "품목 식별자에 해당하는 제품이 없습니다");
+        }
+        if (productIds.size() > 1) {
+            throw new BusinessException(ErrorCode.CONFLICT, "품목 식별자가 서로 다른 제품에 매칭됩니다: " + normalizedCode);
+        }
+        Product product = candidates.get(0);
         return ProductSummaryResponse.from(product);
     }
 

@@ -120,7 +120,7 @@ public record ProductSummaryResponse(
                 p.getId(),
                 p.getName(),
                 p.getModelName(),
-                p.getProductCode(),
+                exposedProductCode(p),
                 p.getCategory().getId(),
                 p.getSellingPrice(),
                 p.getStatus(),
@@ -138,6 +138,17 @@ public record ProductSummaryResponse(
                 p.getReleasePrice(),
                 p.getDeliveryPrice(),
                 p.getHasVariableDiscount());
+    }
+
+    /**
+     * 사용자 노출 품목코드. 사용자 계약상 노출값은 Product의 모델명이다.
+     * 순번코드 alias 조회는 {@link com.samhanair.logis.product.service.ProductService}가 담당한다.
+     *
+     * @param p 품목
+     * @return 모델명
+     */
+    private static String exposedProductCode(Product p) {
+        return p.getModelName();
     }
 
     private static String categoryKey(ProductCategory productCategory) {
