@@ -435,7 +435,53 @@ public class ProductService {
         if (normalized.isEmpty()) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "조회할 modelCode가 비어있습니다");
         }
-        return productRepository.findByModelCodeInAndIsDeletedFalse(normalized).stream()
+        List<Product> codeMatches = productRepository.findByModelCodeInAndIsDeletedFalse(normalized);
+        Set<String> matchedCodes = codeMatches.stream()
+                .map(Product::getModelCode)
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .collect(java.util.stream.Collectors.toSet());
+        List<String> unresolved = normalized.stream()
+                .filter(code -> !matchedCodes.contains(code))
+                .toList();
+        List<Product> nameMatches = unresolved.isEmpty()
+                ? List.of()
+                : productRepository.findByModelNameInAndIsDeletedFalse(unresolved);
+
+        List<Product> matches = new ArrayList<>(codeMatches);
+        matches.addAll(nameMatches);
+        return matches.stream()
+                .map(ProductSummaryResponse::from)
+                .toList();
+    }
+
+    /**
+     * 모델명 기준 벌크 조회 — 이카운트 계보처럼 modelCode가 없는 제품도 전건 해소한다.
+     * 기존 모델코드 조회 계약은 다른 호출자가 사용하므로 이 메서드와 분리한다.
+     *
+     * @param modelNames 조회할 모델명 목록
+     * @return 활성 제품 요약 목록
+     */
+    @Transactional(readOnly = true)
+    public List<ProductSummaryResponse> lookupByModelNames(List<String> modelNames) {
+        if (modelNames == null || modelNames.isEmpty()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "조회할 modelName이 비어있습니다");
+        }
+        if (modelNames.size() > LOOKUP_MAX) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT,
+                    "한 번에 조회할 수 있는 최대 제품 수는 " + LOOKUP_MAX + "건입니다");
+        }
+        List<String> normalized = modelNames.stream()
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(s -> !s.isBlank())
+                .collect(java.util.stream.Collectors.collectingAndThen(
+                        java.util.stream.Collectors.toCollection(LinkedHashSet::new),
+                        ArrayList::new));
+        if (normalized.isEmpty()) {
+            throw new BusinessException(ErrorCode.INVALID_INPUT, "조회할 modelName이 비어있습니다");
+        }
+        return productRepository.findByModelNameInAndIsDeletedFalse(normalized).stream()
                 .map(ProductSummaryResponse::from)
                 .toList();
     }
