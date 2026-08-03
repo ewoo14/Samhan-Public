@@ -48,6 +48,7 @@
 
 # 커밋/PR/문서 규약
 - [한국어 의무 — 커밋/PR/Issue/보고](feedback_korean_commits.md) — git commit·PR·Issue+대면 보고/대화/설명 한국어(prefix·trailer만 예외)
+- [🚨🚨 **내가 커밋한 QA 하네스가 CI 를 깬다** (2026-08-03 한 세션 2트랙)](feedback_qa_harness_commit_breaks_ci.md) — #1059 spec 이 `docs/qa` 경로 하드코딩 → **H-2 가드 위반으로 CI 3잡 red** · #1057 `.mjs` 9개가 **워크트리 절대경로** 하드코딩(사전 차단). 🔑하네스는 codex 부산물이라 PM 이 안 보고 `git add` 하고, **그 워크트리에서는 잘 돈다**. 구현자는 *"무관한 기존 실패"* 로 보고 — **직전 커밋에서 PM 이 넣은 것**이었다(`git log` 로 확인할 것). 🔑**증거는 보고서와 캡처이지 드라이버가 아니다** — 빼도 된다. 남기면 `resolveQaShotsDir` 경유+상대경로. 접미사=라이브 `-real-qa`/mock 없음, **mock 캡처를 `-real-qa` 문서 경로에 두지 말 것**. 🆕**경로·계약을 제거하는 fix 는 그것을 단언하는 문서·계약 테스트를 함께 세라**(A안이 `/dispatch-batch/send` 를 없앴는데 스펙이 옛 계약 단언)
 - [🚨 QA 스샷=SendUserFile+PR SHA-pinned 인라인 둘 다 매 라운드](feedback_pr_screenshot_sha_pinned_urls.md) — SendUserFile(사용자)≠PR 인라인·**반복 누락 지적**(2026-07-05) …
 - [스크린샷 항상 사용자 인라인 첨부](feedback_qa_screenshots_inline_to_user.md) — QA 캡처는 SendUserFile(display=render)로 채팅에도 매번. PR SHA-pinned 게시와 병행 (2026-07-04)
 - [PR 제목 [FEAT]/[FIX] 대괄호+대문자](feedback_pr_title_caps_bracket.md)
