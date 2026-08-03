@@ -123,6 +123,21 @@ api-gateway           main    08:02:47Z
 
 DB 백업 — `slip_db`·`accounting_db`·`product_db`·`partner_db`·`auth_db`·`notification_db` 를 `pg_dump -Fc` 로 확보(스크래치패드 `dbdump/`). **세션 종료 시 소실되므로 다음 세션은 다시 뜰 것.**
 
+### 6-1. 🚩 QA 가 남긴 throwaway 전표 6건 (공유 `slip_db`)
+
+```text
+2026/08/03-1                  QA-1039-배차 scheduler throwaway    DRAFT
+2026/08/03-QA-1013-MAP-01     … QA-1013-MAP-01                    DRAFT
+2026/08/03-QA-1013-MAP-02     … QA-1013-MAP-02                    DRAFT
+2026/08/03-QA-1013-PHONE-01   … QA-1013-PHONE-01                  DRAFT
+2026/08/03-QA-1013-PHONE-02   … QA-1013-PHONE-02                  DRAFT
+2026/08/03-QA-1013-ROW-01     … QA-1013-ROW-01                    DRAFT
+```
+
+전부 `DRAFT` 이고 표식이 붙어 있다. 기존 실 데이터는 건드리지 않았다.
+
+🚨 **다음 세션이 집계·카운트를 셀 때 이 6건을 빼고 세라.** 오늘 `QA-GATE-A/B`(6/24 생성 잔재) 때문에 *"원장에 2,400,000원이 왜 뜨나"* 를 한 바퀴 조사했다. → [[feedback_seed_and_qa_residue_pollute_aggregates]]
+
 ### 7. 적용된 마이그레이션 (공유 DB)
 
 ```text
