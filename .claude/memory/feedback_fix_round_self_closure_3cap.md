@@ -58,6 +58,18 @@ R28 이 `ledger-data` 를 grep 했으면 계약 스펙 1줄과 mock 핸들러 �
 
 ⚠️ **PM 이 "지정 파일만" 으로 좁힌 것이 R29 를 만들었다.** 토큰·시간을 아끼려 테스트 범위를 좁히면 그 절약분이 다음 라운드 하나로 되돌아온다. **좁혀야 할 것은 전체 스위트이지 영향 범위가 아니다.**
 
+#### 🚨 3-1. 생성자·빈 배선을 바꿨으면 **IT 를 최소 1개** (2026-08-04 실증)
+
+`#1061` R33 이 `영향 Java 9개 테스트 클래스 BUILD SUCCESSFUL` 로 보고했는데 **CI 에서 accounting 10잡이 죽었다.**
+
+```text
+Caused by: BeanCreationException → BeanInstantiationException → NoSuchMethodException
+```
+
+생성자 시그니처를 바꿨는데 옛 시그니처로 인스턴스화하는 곳이 남아 **Spring 컨텍스트가 통째로 안 떴다.** 무관한 IT 까지 전부 죽었다(wildcard 검색·audit log·dynamic permission·계정명세서…).
+
+🔑 **그 9개는 유닛 테스트였고 컨텍스트를 로드하지 않는다.** 유닛 GREEN 은 배선을 아무것도 보장하지 않는다. **생성자·`@Bean`·의존 주입을 건드린 라운드는 컨텍스트를 로드하는 IT 를 최소 1개 돌릴 것.**
+
 ---
 
 ## PM 브리핑 정확성 3종
