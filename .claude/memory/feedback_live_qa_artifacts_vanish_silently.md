@@ -84,3 +84,16 @@ R82 를 커밋하려고 `git status --porcelain` 을 눈으로 대조하다 발�
 
 ## 관련
 [[feedback_live_qa_every_round_screenshots]] · [[feedback_qa_harness_commit_breaks_ci]] · [[feedback_qa_environment_verification_first]] · [[feedback_pr_screenshot_sha_pinned_urls]] · [[feedback_defective_round_poisons_db_for_next_round]] · PR #1063 · PR #1077
+
+## ⑤ 반대 방향 — 남기면 안 되는 것이 증거에 섞여 들어간다 (2026-08-06 `#874`)
+
+앞의 넷은 "증거가 사라지는" 경로인데, 이건 반대다. 라이브QA 가 **로그인 응답 원문**을 증거로 남기면서 JWT 가 다섯 파일에 들어갔다.
+
+```
+docs/qa/<슬러그>/login-response.txt
+{"success":true,...,"data":{"token":"eyJhbGciOiJIUzI1NiJ9....","userId":"a0000000-...-0003",...}
+```
+
+- 저장소 자체 가드 `Credential Plaintext Guard (SP-08-8)` 는 **pass** 했다. 잡은 것은 **GitGuardian** 뿐이다.
+- **GitGuardian 은 최종 트리가 아니라 커밋 이력을 스캔한다** — 지운 뒤에도 계속 red 다. 이 저장소는 squash 머지라 main 에는 최종 트리만 들어가므로 토큰이 main 이력에는 안 남는다. 그 판단 근거를 PR 에 남기고 진행한다.
+- 라이브QA 브리핑에 **"로그인·인증 응답의 토큰은 반드시 마스킹"** 을 항상 넣는다. 응답의 나머지(성공 여부·userId·role·displayName)는 증거로 유지한다.
