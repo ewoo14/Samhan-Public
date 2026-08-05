@@ -25,6 +25,7 @@ import com.samhanair.logis.slip.web.dto.PartnerLedgerSalesResponse;
 import com.samhanair.logis.slip.web.dto.SlipLineSnapshot;
 import com.samhanair.logis.slip.web.dto.SlipSummary;
 import com.samhanair.logis.slip.web.dto.SlipPartnerBackfillResponse;
+import com.samhanair.logis.common.ledger.PartnerLedgerContract;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import jakarta.validation.Valid;
@@ -32,8 +33,8 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -72,11 +73,10 @@ import org.springframework.web.multipart.MultipartFile;
 @RequiredArgsConstructor
 public class SlipInternalController {
 
-    /** 거래처별 원장에 표시할 판매전표 상태 — 거래 사실 문서 기준. */
+    /** 거래처별 원장 상태 정본 — accounting-service PartnerLedgerReadModel 계약과 동일하다. */
     private static final List<SlipStatus> PARTNER_LEDGER_SALES_STATUSES = List.of(
-            SlipStatus.CONFIRMED,
-            SlipStatus.DELIVERED,
-            SlipStatus.COMPLETED);
+            PartnerLedgerContract.CANONICAL_SALE_STATUSES.stream()
+                    .map(SlipStatus::valueOf).toArray(SlipStatus[]::new));
 
     private final SlipSignatureService signatureService;
     private final SlipAttachmentService attachmentService;
@@ -401,7 +401,8 @@ public class SlipInternalController {
     public ApiResponse<List<PartnerLedgerSalesResponse>> findPartnerLedgerSales(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
-            @RequestParam(required = false) String partnerCode) {
+            @RequestParam(required = false) String partnerCode,
+            @RequestParam(required = false) UUID partnerId) {
         if (from == null || to == null) {
             throw new BusinessException(ErrorCode.INVALID_INPUT, "from/to 날짜는 필수입니다");
         }
@@ -414,7 +415,7 @@ public class SlipInternalController {
                 ? null
                 : partnerCode.trim();
         List<PartnerLedgerSalesResponse> rows = slipRepository.findPartnerLedgerSales(
-                        from, to, normalizedPartnerCode, PARTNER_LEDGER_SALES_STATUSES)
+                        from, to, normalizedPartnerCode, partnerId, PARTNER_LEDGER_SALES_STATUSES)
                 .stream()
                 .map(PartnerLedgerSalesResponse::from)
                 .toList();
