@@ -78,13 +78,6 @@ R82 를 커밋하려고 `git status --porcelain` 을 눈으로 대조하다 발�
 - 커밋 전 `git status --porcelain` 에 **`M` 로 표시된 QA 파일이 있으면 그것부터 본다.** 새 라운드는 `??` 만 만들어야 정상이다.
 - 이미 덮었으면 커밋 전이므로 `git checkout -- <dir>` 로 온전 복구된다 → [[feedback_briefing_title_only_truncates_existing_report]]
 
-## 🔑 네 경로의 공통점
-
-전부 **`git add` 가 성공하고 에러가 없다.** 증거가 사라졌다는 사실은 나중에 그 증거를 인용하려 할 때에야 드러난다. 그래서 **"담겼나" 를 세는 것이 라운드의 일부**여야 한다.
-
-## 관련
-[[feedback_live_qa_every_round_screenshots]] · [[feedback_qa_harness_commit_breaks_ci]] · [[feedback_qa_environment_verification_first]] · [[feedback_pr_screenshot_sha_pinned_urls]] · [[feedback_defective_round_poisons_db_for_next_round]] · PR #1063 · PR #1077
-
 ## ⑤ 반대 방향 — 남기면 안 되는 것이 증거에 섞여 들어간다 (2026-08-06 `#874`)
 
 앞의 넷은 "증거가 사라지는" 경로인데, 이건 반대다. 라이브QA 가 **로그인 응답 원문**을 증거로 남기면서 JWT 가 다섯 파일에 들어갔다.
@@ -97,3 +90,10 @@ docs/qa/<슬러그>/login-response.txt
 - 저장소 자체 가드 `Credential Plaintext Guard (SP-08-8)` 는 **pass** 했다. 잡은 것은 **GitGuardian** 뿐이다.
 - **GitGuardian 은 최종 트리가 아니라 커밋 이력을 스캔한다** — 지운 뒤에도 계속 red 다. 이 저장소는 squash 머지라 main 에는 최종 트리만 들어가므로 토큰이 main 이력에는 안 남는다. 그 판단 근거를 PR 에 남기고 진행한다.
 - 라이브QA 브리핑에 **"로그인·인증 응답의 토큰은 반드시 마스킹"** 을 항상 넣는다. 응답의 나머지(성공 여부·userId·role·displayName)는 증거로 유지한다.
+
+## 🔑 네 경로의 공통점 (①~④)
+
+전부 **`git add` 가 성공하고 에러가 없다.** 증거가 사라졌다는 사실은 나중에 그 증거를 인용하려 할 때에야 드러난다. 그래서 **"담겼나" 를 세는 것이 라운드의 일부**여야 한다. ⑤는 반대로 **"담기면 안 되는 것이 담겼나"** 를 세는 일이다.
+
+## 관련
+[[feedback_live_qa_every_round_screenshots]] · [[feedback_qa_harness_commit_breaks_ci]] · [[feedback_qa_environment_verification_first]] · [[feedback_pr_screenshot_sha_pinned_urls]] · [[feedback_defective_round_poisons_db_for_next_round]] · PR #1063 · PR #1077 · PR #1057
