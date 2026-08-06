@@ -83,6 +83,8 @@
 - [GitGuardian PM 자동 처리](feedback_gitguardian_false_positive.md) — PM 자동 판정 후 머지
 - [Monitor 자동 사용](feedback_monitor_no_permission.md) — CI watch 허락없이 즉시
 
+- [🚨 CI 실패 스텝이 `Set up job` 이면 GitHub 장애다 — 코드 원인 아님 (2026-08-07 새벽)](feedback_ci_setup_job_failure_is_github_outage.md) — 액션 다운로드 단계에서 죽어 **우리 코드가 실행조차 안 된다**. 판별=`gh api .../actions/jobs/<id> --jq '.steps[]|select(.conclusion=="failure")|.name'`. 실패가 모바일·노션가드·회계·Detox 처럼 **서로 무관한 영역에 흩뿌려지면** 코드 회귀가 아니다(실측: docs 전용 커밋인데 7잡 red, 직전 SHA 는 43/43 green). 🚫이 상태의 red 로 fix 라운드 열지 말 것 · 자동 재실행 루프를 백그라운드로 돌리면 사람 손 없이 회복
+
 # 개발환경/빌드 함정
 - [🚨🚨 **마이그레이션 번호는 셋을 다 세라** — 하루 한 트랙에서 세 방식으로 다 틀렸다 (2026-08-05 #1057)](feedback_migration_number_three_counts.md) — ①slip `V62`=**비어 있던 낮은 슬롯**(DB 는 105 라 적용 안 되고 **부팅 차단**) ②notification `V109`=**PM 이 slip 기준을 그대로 지시**(그 서비스 최고는 V7 → 앞으로의 V8·V9 영구 차단) ③accounting `V96`=**열린 PR #1061 과 충돌**(둘 다 머지되면 서비스 전체 기동 불가). 🔑**CI 는 셋 다 통과한다** — 빈 DB 에 순서대로 적용하므로. 세 번 다 PM 이 `git status` 에서 `migration` 을 눈으로 찾아 잡았다. 착수 전 **그 서비스 최고 · 그 DB 적용 최고 · 열린 PR 예약분** 셋을 세어 브리핑에 숫자로 줄 것. **다른 서비스에 마이그레이션이 생겼다면 범위 이탈 신호**
 - [🚨 낡은 배포본은 "없는 기능"처럼 보인다 — 라이브QA 전 **배포본 나이**를 재라 (2026-07-31 #996)](feedback_stale_deployment_looks_like_defect.md) — 게이트웨이 경유 `404` 를 BLOCK 으로 냈는데 **라우트는 이미 main 에 있었고** 배포본이 **9일 낡은** 것이었다(`docker inspect -f {{.Created}}` = 07-22). 재배포하니 **404→401**. 🔑라이브QA 가 *"없다·404·500"* 을 보고하면 제품 결함으로 세기 전에 ①**배포본 생성 시각** ②`git show origin/main:<path>` 로 소스 존재를 먼저 확인 · DB 는 `flyway_schema_history` 최고 버전도 대조 · `api-gateway` 는 전 트랙 공유라 **재배포 시각을 PR 에 기록**
