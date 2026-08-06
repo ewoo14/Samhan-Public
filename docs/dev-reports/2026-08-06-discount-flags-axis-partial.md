@@ -709,3 +709,288 @@ SINGLE_SET 탭에서 분류가 HOME_MULTI 소속인 12건은 전부 부자재입
 - 견적서 실화면(estimate-app)이 정액 할인을 어느 경로로 최종 계산하는지 — `index.ejs:3262/3375/4393` 3개 호출부 내용 미독해
 - `DiscountRevalidator.optionDiscountFor` 의 `AR…S`/`AF…S` 제외 조건이 레거시 어느 규칙에서 왔는지 (레거시 GAS 에는 `isAcc` 이름 기반 우회만 있음)
 - 상업멀티(416건)·홈멀티(119건)에도 유사한 카테고리 축이 필요한지 — 조사 범위 밖
+
+---
+
+## 회수 4
+
+조사 완료. 아래가 실측 결과입니다.
+
+---
+
+# 정액 6종 소비 경로 전수 조사 (2026-08-06)
+
+## 0. 먼저 — PM 전제 정정 3건
+
+### ① "#1077 R8" → 실제는 **#1069 R8** 이고 **main 에 없다**
+```
+git merge-base --is-ancestor baed4ab3a HEAD  →  NO
+git branch -a --contains baed4ab3a           →  feat/1069-bundle-expansion-in-form
+커밋 제목                                     →  "[FIX] #1069 R8 — 싱글중대형 세트의 카테고리별 정액 할인이 …"
+워크트리                                      →  D:/dev/Samhan-Public/.claude/worktrees/w1077
+```
+디렉토리 이름만 `w1077`. 아래 조사는 **main(현 HEAD `7680d0bf8`) / 브랜치(`baed4ab3a`)** 를 구분해 적었습니다.
+
+### ② 🚨 **slip-service 는 dc-config 를 아예 호출하지 않는다** — 그 커밋의 백엔드 fix 는 죽은 코드
+`D:/dev/Samhan-Public/services/slip-service/src/main/java/com/samhanair/logis/slip/service/SlipService.java:274-280`
+```java
+// 단가는 화면이 DC/최근단가/사용자 협의가를 반영해 확정한 값을 정본으로 사용한다.
+// 서버에서 다시 dc-config-service를 호출하면 화면의 할인 완료 단가를 정가로 오인해
+// 전역DC를 재적용하므로(예: 970,200 -> 494,802) 계산하지 않는다.
+SlipDiscountCalculator.Calculation discountCalculation = new SlipDiscountCalculator.Calculation(
+        req.lines().stream().map(CreateSlipRequest.SlipLineRequest::unitPrice).toList(),
+        req.discountInfo());
+```
+- `DiscountPriceClient.calculatePrices/calculateDetailed` 의 **프로덕션 참조 0건** (grep 결과 참조처는 `SlipDiscountCalculator` 와 테스트뿐, `SlipDiscountCalculator.calculate*` 를 부르는 프로덕션 코드도 0건).
+- 이 제거는 **오늘 main 에 들어왔습니다**: `d82fb265c 2026-08-06 [FEAT] #874 … (#1057)`.
+- 런타임 실측 확증 — `price_calculation_logs` 에 slip-service 호출 **0건**:
+```sql
+SELECT caller_service, count(*), min(created_at)::date, max(created_at)::date
+FROM price_calculation_logs GROUP BY 1 ORDER BY 2 DESC;
+ partner-order-service             | 569 | 2026-07-29 | 2026-07-29
+ recon-fe-rule                     |   3 | 2026-07-29 | 2026-07-29
+ partner-order-service-r2-evidence |   1 | ...
+ partner-order-service-r3-evidence |   1 | ...
+```
+⟹ `baed4ab3a` 가 `DiscountPriceClient.toRequestLine()` 에 넣은 여섯 플래그는 **실행되지 않습니다**. 그 커밋의 실효는 프런트 `clients/desktop/src/renderer/utils/slipDiscount.ts` 쪽뿐입니다.
+
+부수 결함(브랜치): `LegacyModelFlags.from(line.modelCode())` 인데 `SlipDiscountCalculator.java:49-51` 의 `modelCode()` 는 **`lineId` 를 그대로 반환**합니다. 추가된 테스트는 lineId 자리에 `"AC123456P"` 를 넣어 통과합니다(경로가 죽어 있어 금액 영향은 없음).
+
+### ③ `products.discount_flags` 를 채우는 규칙이 레거시 규칙이 아니다
+`Product.java:145-150` Javadoc 은 *"getModelFlags 7 prefix 정규식"* 이라 적혀 있으나, 실제 writer 는
+`services/product-service/src/main/java/com/samhanair/logis/product/service/VariableDiscountDetector.java:41-46, 111-123` — **모델코드 문자열 부분일치**입니다.
+```java
+P_360   = ^(?i).*360.*        P_STAND = ^(?i).*(stand|스탠드).*
+P_4WAY  = ^(?i).*4way.*       P_DELUXE= ^(?i).*(deluxe|디럭스).*
+```
+실 카탈로그(products 활성 3,061건)에서 두 규칙을 대조한 결과:
+
+| | 360 | 4way | 스탠드 |
+|---|---|---|---|
+| 부분일치(현 writer) | **8** | **0** | **1** |
+| 레거시 위치 규칙 | **27** | **67** | **90** |
+
+그리고 `'100000'` 8건은 **전부 `AM360…` 상업멀티**인데, 상업멀티는 `PriceCalculationService.sumOptionDc` 가 정액을 0 으로 만듭니다.
+⟹ **`products.discount_flags` 는 오늘 어떤 금액에도 영향이 없습니다 — 켜져 있는 8건조차 억제되는 자리에 있습니다.** PM 이 실측한 `000000` 3,053 / `100000` 8 은 정확합니다(`is_deleted=true` 2건 별도).
+
+---
+
+## 1. PriceCalculationService — 받는 방식과 합산
+
+`services/dc-config-service/src/main/java/com/samhanair/logis/dcconfig/service/PriceCalculationService.java`
+
+```java
+:64   BigDecimal afterRate  = listPrice.multiply(ONE.subtract(appliedRate));
+:65   BigDecimal optionDc   = sumOptionDc(config, line);
+:66   BigDecimal afterOption= afterRate.subtract(optionDc).max(ZERO);   // 율 적용 후 정액 차감
+:67   BigDecimal finalPrice = roundToUnit(afterOption, config);
+
+:122  private BigDecimal sumOptionDc(DcConfig config, PriceCalculationRequest.Line line) {
+:123      if (config == null) return ZERO;
+:126      if ("HOMEMULTI".equals(line.category()) || "COMMERCIAL_MULTI".equals(line.category()))
+:127          return ZERO;                        // ← 멀티는 정액 전면 억제
+:130      if (line.is360())       sum = sum.add(nz(config.getDiscount360Amount()));
+:131      if (line.is4Way())      sum = sum.add(nz(config.getDiscount4WayAmount()));
+:132      if (line.is1Way())      sum = sum.add(nz(config.getDiscount1WayAmount()));
+:133      if (line.isStand())     sum = sum.add(nz(config.getDiscountStandAmount()));
+:134      if (line.isDeluxe())    sum = sum.add(nz(config.getDiscountDeluxeAmount()));
+:135      if (line.isFirstGrade())sum = sum.add(nz(config.getDiscountFirstGradeAmount()));
+```
+- **합산 방식 = 참인 플래그 전부 더한다**(배타 아님). 뒤에 나오는 accounting 쪽과 다릅니다(§3).
+- **정액이 살아나는 카테고리는 `OTHER` 하나뿐.** `HOMEMULTI`/`COMMERCIAL_MULTI` 는 0.
+
+**DTO — 여섯 boolean 은 필수가 아니라 기본값 `false`**
+`dto/PriceCalculationRequest.java:33-38`
+```java
+@Schema(description = "옵션 - 360 판넬")  boolean is360,
+… boolean is4Way, is1Way, isStand, isDeluxe, isFirstGrade
+```
+`@NotNull` 없음 · 컨트롤러는 `@Valid`(`InternalDcConfigController.java:137-139`) 지만 primitive `boolean` 이라 **JSON 에서 빠지면 400 이 아니라 조용히 false**. `:44-64` 의 호환 생성자 2개도 여섯을 false 로 채웁니다.
+⚠️ JSON 에 명시적 `null` 을 넣었을 때의 동작은 **미판정**(요청을 실제로 쏘지 않았습니다).
+
+---
+
+## 2. 누가 요청을 보내는가 — 백엔드 호출자는 **2개, 살아 있는 건 1개**
+
+`rg --no-ignore -n "price-calculations" services clients shared tools` 전수 결과:
+
+| 호출자 | 파일 | 여섯 플래그 전송 | 실제 호출 |
+|---|---|---|---|
+| **partner-order-service** (주문 확정) | `client/DcConfigClient.java:155` + `service/PartnerOrderConfirmService.java:201-208` | ✅ 6개 모두 | **569회 (실측)** |
+| slip-service (판매/출고전표) | `service/DiscountPriceClient.java:60` | main ❌ 0개 / 브랜치 ✅ 6개 | **0회** — §0-② |
+
+- **estimate-service 는 존재하지 않습니다.** `PriceCalculationRequest.java:15` 와 `InternalDcConfigController.java:32` Javadoc 의 *"estimate-service / partner-order-service"* 는 **문서가 실물보다 앞서간 것**입니다(`services/` 17개 중 estimate-service 없음).
+- 구매전표 경로: 호출자 없음.
+
+**정액이 실제로 붙은 실측치** (`price_calculation_logs.response_payload`):
+```sql
+SELECT count(*) , sum((r->>'appliedFixedAmount')::numeric)
+FROM price_calculation_logs, jsonb_array_elements(response_payload->'lines') r
+WHERE (r->>'appliedFixedAmount')::numeric > 0;
+ 138 | 8020000.00
+```
+요청 라인 카테고리별 분포:
+```
+ category         | lines | any_flag_true
+ COMMERCIAL_MULTI |  281  |  17     ← sumOptionDc 가 0 으로 억제
+ OTHER            |  270  | 138     ← 정액이 실제로 붙는 유일한 구간
+ HOMEMULTI        |   22  |   0
+```
+
+**플래그를 만드는 곳**(main): `PartnerOrderConfirmService.java:364-412 resolveDiscountFlags` — `product.discountFlags()` 가 `"000000"` 이거나 null 이면 **모델코드에서 재판정**합니다(즉 3,053건 전부 이 경로). `:374` 에 `model.contains("360") → "100000"` 이라는 AM360 호환 분기가 따로 있어, 위 17건(`AM360AXVHHR1SY` 등)이 여기서 나왔습니다.
+이 함수는 `LegacyModelFlags` 로 **리팩터링되지 않은 네 번째 사본**입니다(브랜치에서도 미변경).
+
+이중 적용 없음 확인: `resolveListPrice`(`:415-432`)가 화면의 할인 후 단가가 아니라 카탈로그 `releasePrice/deliveryPrice` 를 다시 읽습니다.
+
+---
+
+## 3. accounting-service DiscountRevalidator — **적용이 아니라 검증**, 그리고 합산이 아니라 **택일**
+
+`services/accounting-service/src/main/java/com/samhanair/logis/accounting/service/DiscountRevalidator.java:380-412`
+```java
+BigDecimal discountForSet(String modelToken) { … optionDiscountFor(modelToken) … }
+private BigDecimal optionDiscountFor(String code) {
+    if (AR…S || AF…S) return null;
+    if (AC && len>=9) { …6P→360 / 4PD→4way / 1PD→1way / [8]='F'→firstGrade }
+    if (AP)           { AP230|AP290|[8]='P'|[8]='D'&&[10]='C' → stand
+                        [8]='D'&&[10]='H' → deluxe / [8]='F' → firstGrade }
+    return null;   // ← 첫 매치 하나만 반환
+}
+```
+- 소비처는 `MonthEndCloseService`(`:461-518, 681`) 뿐 — **월/일 마감 재검증**. 가격을 매기는 경로가 아닙니다.
+- 🚨 **dc-config 는 참인 플래그를 전부 더하고(§1), 여기는 하나만 고릅니다.** 한 모델이 두 플래그를 동시에 만족하면 두 엔진의 기대값이 갈립니다. (레거시 `getModelFlags` 자체가 배타가 아니므로 어느 쪽이 업무상 맞는지는 **미판정 — 개발책임자 확인 필요**.)
+
+**브랜치 `baed4ab3a` 의 공용화 — 실 데이터에서는 등가**
+`shared/common/src/main/java/com/samhanair/logis/common/discount/LegacyModelFlags.java` 로 −29줄 치환했고, 코드상 두 군데가 달라집니다:
+1. 구 코드는 `AP230/AP290` 에 `length>=9` 가드가 없었는데 신규는 AP 블록 전체에 `length>=9`.
+2. 구 코드는 `AP` + `[8]='P'` 면 무조건 stand, 신규는 `[10]='C'` 인 경우 `[8]='D'` 여야 stand.
+
+실 카탈로그(AP 품목 117건)로 재보니 **양쪽 모두 해당 행이 0건**:
+```sql
+ap_total=117 | ap_len_lt9=0 | ap230_290=18 | ap230_290_lt9=0 | ap_c_and_p=0 | ap_c_and_d=11
+```
+⟹ 현 데이터 기준 **동작 변화 없음**. (`slip_lines` 461행에 AP 모델 0건이라 전표 축은 표본 없음.)
+
+---
+
+## 4. `dc_configs` 정액 6컬럼 분포 (dc_config_db, `is_deleted=false`)
+
+```
+ total_active | has_any_fixed | c360 | c4way | c1way | cstand | cdeluxe | cgrade1
+          259 |            50 |   44 |    49 |    45 |     49 |      17 |      10
+```
+조합 상위 (26조합 전체 중):
+```
+  a360   | a4way  | a1way  | astand | adeluxe| agrade1| 거래처
+ 50000   | 50000  | 50000  | 50000  |        |        |   8
+ 30000   | 30000  | 30000  | 30000  |        |        |   7
+ 20000   | 20000  | 20000  | 20000  |        |        |   5
+ 40000   | 40000  | 40000  | 40000  | 20000  |        |   3
+ 70000   | 70000  | 50000  | 70000  | 30000  | 30000  |   2
+ …
+         |        |        | 30000  |        |        |   1   ← 스탠드만
+```
+- **209/259 는 정액 미보유** ⟹ 이 거래처들은 어떤 fix 를 해도 금액 불변.
+- 디럭스(17)·1등급(10)은 희소. 360/4way/1way/스탠드는 대개 **한 세트로 같이** 설정됩니다.
+- 컬럼은 `numeric(12,2)`, `CHECK ≥ 0`, NULL 허용(= 미설정).
+
+---
+
+## 5. 🚨 정액이 **적용되는 화면** — 전수
+
+| 화면 | 코드 위치 | 정액 적용 | 근거 |
+|---|---|---|---|
+| **거래처 주문서 (order-app, 웹)** | `clients/web/order-app/index.html:1715 adjustSingleSetBasePrice`, `:2779 singleUnitPrice` | ✅ **브라우저에서** | `:1735-1740`, `:2814-2819` 에서 6종 차감. 설정은 로그인 응답으로 수신 — `partner-auth-service/client/DcConfigClient.java:93-97` → `order-app:1521-1526 normalizePartnerConfig` |
+| 거래처 주문 **확정(서버)** | `PartnerOrderConfirmService.java:201-209` | ✅ **서버에서 재계산** | 실측 138라인 / 8,020,000원 |
+| **종합견적서 (estimate-app, 웹)** | `clients/web/estimate-app/views/index.ejs:3262, :3375, :4393` | ✅ 브라우저에서 (`ss_disc_*` 입력값 기준) | `:7808-7809` 에 스탠드/디럭스 할인 입력 UI 존재 |
+| **판매/출고전표 (desktop SlipFormPage)** | `SlipFormPage.tsx:785` → `utils/slipDiscount.ts` | ❌ **main 미적용** / ✅ 브랜치 적용 | main `slipDiscount.ts` 는 `homeMultiDc`/`commercialMultiDc` **율 2개만** 씀. `api/sales.ts:1114-1140 PartnerDcConfig` 는 이미 `threeSixty/fourWay/oneWay/stand/deluxe/firstGrade` 를 **갖고 있는데 안 쓰고 있었다** |
+| 전표 서버 저장 | `SlipService.java:277` | ❌ (서버는 DC 계산 안 함) | §0-② |
+| **견적 (desktop EstimateFormPage)** | `EstimateFormPage.tsx:1144-1150` | ❌ **DC 자체가 전무** | `partnerReprice.run(id, candidates)` — 3번째 인자 `discountConfig` **미전달**, 후보에 `discountInput` **미설정**. `rg "fixedDiscountRate|hasVariableDiscount|DcConfig"` 결과 **0건** |
+| **전표 상세/수정 (desktop SlipDetailPage)** | `SlipDetailPage.tsx:2761` | ❌ | 위와 동일 — `discountConfig` 미전달 |
+| 구매전표 | — | ❌ | 호출자 없음 |
+
+**요약: 오늘 정액이 실제로 붙는 곳은 「거래처 주문서(웹)」와 「종합견적서(웹)」 두 레거시 화면뿐이고, 데스크톱 앱(판매전표·견적·전표수정)에서는 전부 0원입니다.** 브랜치 `baed4ab3a` 는 그중 **판매전표 하나만** 프런트에서 메웠습니다(견적·전표상세는 미변경).
+
+---
+
+## 6. 셋째 가능성 — **분류 축은 이미 있고, 견적품목 메뉴에 편집 UI 까지 있다**
+
+개발책임자께서 말씀하신 *"품목별로 분류가 들어가 있으니"* 는 `product_estimate_exposure.estimate_category` 가 아니라 **`products.cat_l_id / cat_m_id / cat_s_id` → `classification` 테이블**로 보입니다.
+
+```sql
+-- product_db
+SELECT count(*), count(cat_l_id), count(cat_m_id), count(cat_s_id) FROM products WHERE is_deleted=false;
+ 3061 | 1119 | 888 | 118
+-- SINGLE_SET 만: 276건 중 cat_l 276/276(100%), cat_m 244/276(88%)
+```
+
+**SINGLE_SET 276건을 cat_L × 레거시 모델코드 규칙으로 교차:**
+```
+      cat_l      |  n  | 360 | 4way | 1way |스탠드|디럭스|1등급| 무플래그
+ 가정용 에어컨   | 134 |   0 |    0 |    0 |    0 |    0 |   0 |  134   ← 전부 AF prefix
+ 4way 냉난방     |  31 |   0 |   21 |    0 |    0 |    0 |  10 |    0
+ 냉난방 스탠드   |  27 |   0 |    0 |    0 |   20 |    3 |   4 |    0
+ 냉전 벽걸이     |  16 |   0 |    0 |    0 |    0 |    0 |   0 |   16
+ 냉난방 벽걸이   |  14 |   0 |    0 |    0 |    0 |    0 |   0 |   14
+ 비스포크 스탠드 |  12 |   0 |    0 |    0 |   12 |    0 |   0 |    0
+ 360             |  10 |  10 |    0 |    0 |    0 |    0 |   0 |    0
+ 1way 냉방전용   |   6 |   0 |    0 |    6 |    0 |    0 |   0 |    0
+ 4way 냉방전용   |   6 |   0 |    6 |    0 |    0 |    0 |   0 |    0
+ 1way 냉난방     |   5 |   0 |    0 |    5 |    0 |    0 |   0 |    0
+ 냉전 스탠드     |   3 |   0 |    0 |    0 |    3 |    0 |   0 |    0
+ 실링/덕트/부자재/실외기받침 | 12 | 전부 0 |
+```
+- 서로 다른 정액 카테고리가 **한 버킷에 섞인 경우는 없습니다**. 섞인 건 1등급(F)·디럭스가 4way/스탠드 버킷 **안에** 들어간 것뿐입니다.
+- **cat_M 이 1등급을 정확히 분리**합니다:
+```
+ 4way 냉난방  | 1등급          | 10 | 4way 0  1등급 10   ← 완전분리
+ 냉난방 스탠드| 1등급          |  4 | 스탠드 0  1등급 4  ← 완전분리
+ 4way 냉난방  | 프리미엄/디럭스| 11 | 4way 11
+ 4way 냉난방  | 프레스티지     | 10 | 4way 10
+ 냉난방 스탠드| 프레스티지     |  9 | 스탠드 9
+ 냉난방 스탠드| 프리미엄/디럭스| 14 | 스탠드 11 · 디럭스 3   ← 유일한 미분리
+```
+- 🚨 **유일한 공백 = 디럭스.** `프리미엄/디럭스` 14건이 스탠드 11 + 디럭스 3 을 섞고 있습니다. 실물:
+```
+ AP072BAPDBH2S  냉난방 디럭스 스탠드     ← D..H = 디럭스
+ AP130BAPDBH2S  냉난방 디럭스 스탠드
+ AP145BAPDHH2S  냉난방 디럭스 스탠드
+ AP052BAPPBH2S  냉난방 프리미엄 스탠드   ← ..P.. = 스탠드
+ …
+ AP230DAPDHH1S  냉난방 프리미엄 스탠드   ← 모델은 D..H(디럭스형)인데 이름은 프리미엄
+ AP290DAPDHH1S  냉난방 프리미엄 스탠드   ←  ⟹ 레거시 AP230/AP290 예외의 실제 근거
+```
+분류 축으로 옮기면 **레거시의 AP230/AP290 하드코딩 예외가 자연 소멸**합니다(그 두 건은 `프리미엄/디럭스` 안에서 스탠드로 지정하면 끝).
+
+**편집 UI 는 이미 존재합니다:**
+- 화면: `clients/desktop/src/renderer/routes/EstimateItemsCatalogPage.tsx` — *"견적품목 관리 페이지(`/products/estimate-items`)"*, `:431` `title={`분류 설정 — ${row.modelCode}`}`, `:461/475/489` 에서 L→M→S 종속 셀렉트.
+- API: `PATCH /api/v1/products/{modelCode}/classification` (`api/productCatalogApi.ts:591`), 마스터는 `GET/POST/PATCH/DELETE /api/v1/classifications` (`:546-582`, BE `ClassificationController.java:40`).
+- 분류 마스터 현황: `SINGLE_SET` L 16 · M 19 · S 0.
+
+⟹ **모델코드 파싱을 분류 기준으로 바꾸는 데 필요한 신규 스키마·신규 화면은 없습니다.** 필요한 것은 (a) 정액 6종 ↔ 분류 노드 매핑을 어디에 둘지(=`classification` 행에 정액 종류를 붙일지, `SINGLE_SET` L 목록을 6종으로 재편할지) 결정, (b) 디럭스 분리, (c) 소비처를 그 매핑으로 전환.
+
+---
+
+## 7. 같은 판별 로직 사본 수 — 현재 **7벌**
+
+| # | 위치 | 규칙 | 상태 |
+|---|---|---|---|
+| 1 | `tools/legacy-gas/종합견적서/index.html:2200-2226` | 위치 | 권위(레거시) |
+| 2 | `clients/web/order-app/index.html:1473-1499` | 위치 | 운영 중 |
+| 3 | `clients/web/estimate-app/views/index.ejs:2334-2360` | 위치 | 운영 중 |
+| 4 | `PartnerOrderConfirmService.java:364-412` | 위치 + AM360 예외 | 운영 중 · **공용화 누락** |
+| 5 | `DiscountRevalidator.java:385-412` | 위치(택일) | 운영 중 → 브랜치에서 #7 로 치환 |
+| 6 | `VariableDiscountDetector.java:111-123` | **부분일치(틀림)** | `discount_flags` writer |
+| 7 | `shared/common/…/LegacyModelFlags.java` | 위치 | 브랜치 신규 |
+| 8 | `clients/desktop/…/slipDiscount.ts:getModelFlags` | 위치 | 브랜치 신규 (TS 별도 사본) |
+
+브랜치는 −29줄을 줄였지만 **+2벌(#7, #8)** 을 만들어 순증했고, 가장 활발히 도는 #4 는 손대지 않았습니다.
+
+---
+
+## 미판정 (지어내지 않음)
+- 두 엔진의 **합산 vs 택일** 중 어느 쪽이 업무 정본인지 — 레거시 `getModelFlags` 는 배타가 아니고, 두 플래그 동시 참인 실제 모델을 아직 세지 않았습니다.
+- 요청 JSON 에 `"is360": null` 을 명시했을 때의 Jackson 동작(요청 미발사).
+- `estimate-app` 이 `ss_disc_*` 입력을 dc-config 에서 자동 채우는지(`:2561-2598` 에 `dc.oneWayDiscount` 참조는 있으나 실제 fetch 경로 미추적).
+- `product_estimate_exposure` 의 `LEGACY 40`·`OTHER 0` 이 정액과 어떤 관계인지.
+- `products.estimate_category` 는 **활성 3,061건 전부 NULL** — 왜 비어 있는지는 미조사(단, 어떤 소비처도 이 컬럼을 읽지 않습니다).
