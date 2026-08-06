@@ -61,7 +61,7 @@
 
 - [🚨 **종료코드 함정 둘 — 파이프 뒤 `$?` 는 tail 것 · 이 환경 `npm run` 은 성공해도 127**](feedback_exit_code_measurement_traps.md) — 2026-08-06 PM 자가 적발: 한 세션에 **네 번** `typecheck exit 0` 을 커밋·PR 에 적었는데 그 값을 재 적이 없다(`| tail` 뒤 `$?` = tail 종료코드). ▶근거 순서 = ①**CI**(권위) ②**로그 내용**(`error TS` 여부 · 네 단계가 모두 출력됐는지) ③종료코드는 파이프 없이 또는 `${PIPESTATUS[0]}`. 🔑 은 강한 단정이라 재지 않은 값을 적으면 **증거 무결성 위반** — SOL 이 gradle `UP-TO-DATE` 로 같은 계열을 이미 잡았다
 
-- [🚨 **내 QA 프로세스가 사용자 게임 화면을 꺼뜨린다** (2026-08-07 개발책임자 항의)](feedback_qa_processes_disrupt_user_gaming.md) — 라이브QA 잔재 **chrome 31 · headless-shell 19 · Electron 4(새벽3:05분) · node_repl 78 · Gradle 데몬 = 약 14GB** 가 살아 있었다. 창 탈취(전체화면 alt-tab 아웃) + 자원 고갈 **둘 다**라 하나만 고치면 안 된다. 상시=①**Playwright headless 기본**(headless 캡처도 실 앱·실 서버라 가짜데이터 위반 아님) ②Electron QA 는 게임 시간대 회피 ③**라운드 끝 회수**(끝나도 안 죽는다 — 4시간 생존 실측) ④내 프로세스 BelowNormal ⑤묵은 Gradle 데몬 정리. 🚫죽이기 전 커맨드라인으로 내 것 확정(사용자 브라우저는 Whale 이었다)
+- [🚨 **QA 라운드 프로세스가 안 죽고 쌓인다** (2026-08-07 실측)](feedback_qa_processes_leak_and_starve_machine.md) — 라운드 종료 후에도 **chrome 31 · headless-shell 19 · Electron 4(새벽3:05분) · node_repl 78 · Gradle 데몬 = 약 14GB** 생존. 피해가 **창 탈취 + 자원 고갈 두 갈래**라 하나만 고치면 안 된다. 상시=①**Playwright headless 기본**(headless 캡처도 실 앱·실 서버라 가짜데이터 위반 아님) ②Electron QA 는 창이 뜨니 PC 사용 중이면 먼저 확인 ③**라운드 끝 회수**(끝나도 안 죽는다 — 4시간 생존) ④내 프로세스 BelowNormal ⑤묵은 Gradle 데몬 정리. 🚫죽이기 전 커맨드라인으로 내 것 확정
 
 # 커밋/PR/문서 규약
 - [한국어 의무 — 커밋/PR/Issue/보고](feedback_korean_commits.md) — git commit·PR·Issue+대면 보고/대화/설명 한국어(prefix·trailer만 예외)
