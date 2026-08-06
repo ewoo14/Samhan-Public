@@ -61,6 +61,8 @@
 
 - [🚨 **종료코드 함정 둘 — 파이프 뒤 `$?` 는 tail 것 · 이 환경 `npm run` 은 성공해도 127**](feedback_exit_code_measurement_traps.md) — 2026-08-06 PM 자가 적발: 한 세션에 **네 번** `typecheck exit 0` 을 커밋·PR 에 적었는데 그 값을 재 적이 없다(`| tail` 뒤 `$?` = tail 종료코드). ▶근거 순서 = ①**CI**(권위) ②**로그 내용**(`error TS` 여부 · 네 단계가 모두 출력됐는지) ③종료코드는 파이프 없이 또는 `${PIPESTATUS[0]}`. 🔑 은 강한 단정이라 재지 않은 값을 적으면 **증거 무결성 위반** — SOL 이 gradle `UP-TO-DATE` 로 같은 계열을 이미 잡았다
 
+- [🚨 **내 QA 프로세스가 사용자 게임 화면을 꺼뜨린다** (2026-08-07 개발책임자 항의)](feedback_qa_processes_disrupt_user_gaming.md) — 라이브QA 잔재 **chrome 31 · headless-shell 19 · Electron 4(새벽3:05분) · node_repl 78 · Gradle 데몬 = 약 14GB** 가 살아 있었다. 창 탈취(전체화면 alt-tab 아웃) + 자원 고갈 **둘 다**라 하나만 고치면 안 된다. 상시=①**Playwright headless 기본**(headless 캡처도 실 앱·실 서버라 가짜데이터 위반 아님) ②Electron QA 는 게임 시간대 회피 ③**라운드 끝 회수**(끝나도 안 죽는다 — 4시간 생존 실측) ④내 프로세스 BelowNormal ⑤묵은 Gradle 데몬 정리. 🚫죽이기 전 커맨드라인으로 내 것 확정(사용자 브라우저는 Whale 이었다)
+
 # 커밋/PR/문서 규약
 - [한국어 의무 — 커밋/PR/Issue/보고](feedback_korean_commits.md) — git commit·PR·Issue+대면 보고/대화/설명 한국어(prefix·trailer만 예외)
 - [🚨🚨 **내가 커밋한 QA 하네스가 CI 를 깬다** (2026-08-03 한 세션 2트랙)](feedback_qa_harness_commit_breaks_ci.md) — #1059 spec 이 `docs/qa` 경로 하드코딩 → **H-2 가드 위반으로 CI 3잡 red** · #1057 `.mjs` 9개가 **워크트리 절대경로** 하드코딩(사전 차단). 🔑하네스는 codex 부산물이라 PM 이 안 보고 `git add` 하고, **그 워크트리에서는 잘 돈다**. 구현자는 *"무관한 기존 실패"* 로 보고 — **직전 커밋에서 PM 이 넣은 것**이었다(`git log` 로 확인할 것). 🔑**증거는 보고서와 캡처이지 드라이버가 아니다** — 빼도 된다. 남기면 `resolveQaShotsDir` 경유+상대경로. 접미사=라이브 `-real-qa`/mock 없음, **mock 캡처를 `-real-qa` 문서 경로에 두지 말 것**. 🆕**경로·계약을 제거하는 fix 는 그것을 단언하는 문서·계약 테스트를 함께 세라**(A안이 `/dispatch-batch/send` 를 없앴는데 스펙이 옛 계약 단언)
