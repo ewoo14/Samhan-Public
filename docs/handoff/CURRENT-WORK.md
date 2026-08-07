@@ -2277,6 +2277,15 @@ S30 라이브QA 에서 모델명을 지우고 blur 한 뒤 **저장 버튼을 �
 
 그리고 **설계 승인 요청은 승인하지 않는다.** 이 세션에서 구현자가 두 번 요청했고, 승인 대신 **조건과 되물을 질문**을 돌려줬더니 더 나은 답이 나왔다(`#1078` 은 화면 우회 대신 **계약 자체**를 고쳤다).
 
+## 2026-08-06 Codex S31 Update — #1075 병합·개번·B 규명
+
+- `origin/main`을 `--no-commit`으로 병합했다. 텍스트 충돌은 없었고, incoming diff에는 `clients/`·`services/` 코드가 없었다.
+- `V113__add_estimate_specification_source.sql`을 `V116__add_estimate_specification_source.sql`로 이동했다. 코드·설정·테스트의 V113 참조는 0건이며 과거 handoff/QA/memory/dev-report 기록은 보존했다.
+- B는 (b) 실제 결함으로 규명했다. 견적 유일 품목 해제 후 `buildBody()`의 `valid.length === 0` 가드가 `null`을 반환해 `updateMutation.mutate()`와 PUT을 막는다. 백엔드의 빈 `lines` 전체 삭제 계약과 모순된다.
+- `EstimateFormPage.coedit.test.tsx`에 S31 RED를 추가했고 46 pass / 1 fail로 재현했다. 실패 원문: `expected "spy" to be called 1 times, but got 0 times`.
+- `npm run typecheck` exit 0, `:slip-service:test --tests "*Estimate*"` exit 0. B 수정, Docker 재배포, commit, push는 하지 않았다.
+- 상세 보고서: `docs/dev-reports/2026-08-06-1075-s31-merge-renumber-b-diagnosis.md`
+
 ## 6. 🚨 이 세션의 가장 비싼 교훈
 
 `#1078` 은 **S13~S25 스물다섯 라운드**를 돌며 provenance 경계·정규화 예외·버전 이력 diff 를 정교하게 다듬었다. 게이트 ①(결함 0)과 ②(CI 49/49)를 다 통과했다. 그리고 **첫 라이브QA 가 본 기능의 핵심 경로가 죽어 있는 것**을 잡았다 — 품목을 고르고 blur 하면 자동 규격이 사라지고 저장 payload 에서 누락됐다.

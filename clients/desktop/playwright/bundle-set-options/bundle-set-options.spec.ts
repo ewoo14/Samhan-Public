@@ -179,12 +179,13 @@ test.describe('R17 세트(BUNDLE) 자동 전개', () => {
   // ──────────────────────────────────────────────────────────
   test('시나리오 5: 견적서 작성 — BUNDLE 모델 onBlur lookup → 구성행 전개', async ({ page }) => {
     await installAuthMock(page)
-    await page.goto(`${BASE_URL}/#/sales/estimates/new?mockRole=MANAGER`, {
+    await page.goto(`${BASE_URL}/#/sales/estimates/new?mockRole=MASTER`, {
       waitUntil: 'domcontentloaded',
     })
-    const modelInput = page.getByTestId('estimate-form-line-0-model')
+    const modelInput = page.getByRole('combobox', { name: '라인 1 모델명' })
     await expect(modelInput).toBeVisible({ timeout: 15_000 })
 
+    await modelInput.click()
     await modelInput.fill('SET-HM2WAY')
     await modelInput.blur()
 
