@@ -1,97 +1,115 @@
 ﻿# 현재 작업 핸드오프 노트
 
-## 2026-08-07 집PC 야간 세션 (**진행 중**) — 머지 0건 · **GitHub Actions major_outage 로 전면 차단** · 결정 5건 대기
+## 2026-08-07 집PC 세션 — **머지 2건 완료** · 세션 재시작 지점
 
-> **아침에 이 절만 읽으면 된다.** 아래 절들은 이력이다.
+> **재시작 시 이 절만 읽으면 된다.** 아래 절들은 이력이다.
 
 ### 0. 한 줄 결론
 
-**두 PR 이 게이트 ①③ 를 채우고 CI 만 기다린다.** 나머지는 전부 결정 대기다.
-GitHub 이 저장소 전체로 죽어 우리 쪽에 할 수 있는 것이 없다.
+**GitHub Actions 장애가 복구돼 밤새 막혔던 것이 풀렸고, 머지 2건을 끝냈다.**
+남은 5 PR 은 **전부 CI green(BE 샤드 12/12)** 이고 병목은 이제 **라이브QA** 다.
 
 ```text
-GitHub Actions   major_outage (githubstatus.com API 확인) · self-hosted 러너 0개
-                 대기 34 · 실행중 0 · 장애 후 실제 완료 1건뿐
+✅ #1088  머지 257c8f9f7 · 이슈 #1013 close
+✅ #1077  머지 424bf88ef · 이슈 #1069 close   ← 11라운드 금액 결함
 
-#1088  ①✅ ③✅  ②🔴   복구 즉시 머지 → 이슈 #1013 close
-#1077  ①✅ ③✅  ②🔴   복구 시 #1088 다음 (slip 체인의 머리)
-#1078·#1066·#1097·#1082   #1077 머지 전엔 **배포조차 불가**
-#1083                      같은 이유로 라이브QA 불가 (브랜치 V112 < slip_db V115)
+#1066  ①✅SOL R10 결함0  ②42/42(R10 커밋분 재실행 필요)  ③미실시
+#1097  ①✅  ②42/42  ③만 남음
+#1083  ①✅  ②43/43  ③만 남음 — slip-service 재빌드 필요
+#1082  ①✅  ②38/38  ③만 남음 — #1097 머지 후 (V16→V17)
+#1078  ①✅  ②49/49(병합 전 SHA)  main 병합 충돌 미해소
+열린 이슈 33
 ```
 
-### 1. 🔴 개발책임자 결정 5건 (전부 해당 이슈에 게시 완료)
+### 1. 🚨 재시작 후 첫 할 일 — `#1078` 병합 충돌
 
-| 곳 | 물음 | PM 권장 |
-|---|---|---|
-| `#1097` | 혼합 문서(정본+테스트 라인 4건) 처리 A/B/C · QA797 정리 여부 | **A** 혼합은 손대지 않는다 |
-| `#1092` | ①담당의 정의 ②복구=soft-delete 복원인가 웹 불러오기인가 ③이력 포함 ④2,017건 소급 분류 | — |
-| `#1090` | 정액 분류축 3갈래 (두 축 겹침 **0** 실측) | **1안** 레거시 정본 |
-| `#1083` | D1 자동롤백 vs 수동복원 · D2 3문 | — |
-| `#1096` | 잔재 이슈 3축 통합 승인 (`#1084`·`#1087` → `#1051` 흡수) | 승인 요청 |
-
-### 2. 머지 체인 (flyway `out-of-order=false` 로 강제)
+병합은 **abort 해 뒀다**(세션 중단으로 미완). 판단표는 `f5e1932db` 에 커밋돼 있으니
+**재분석하지 말고 재사용**한다.
 
 ```text
-#1088 (마이그레이션 무관 · 먼저)
-  → #1077(V114·V115) → #1078(V116) → #1097(V117·V16) → #1082(V17)
-#1066·#1083 은 마이그레이션 무관이나 slip_db 가 V115 라 #1077 머지 전엔 배포 불가
+워크트리   .claude/worktrees/t1075  (브랜치 feat/1075-estimate-product-candidate-modal)
+재개       git merge --no-commit --no-ff origin/main
+보고서     docs/dev-reports/2026-08-07-1075-main-merge-conflict-resolution.md
 ```
 
-### 3. `#1077` — 열한 라운드 끝에 근본 원인을 잡았다
+충돌 6파일은 전부 **"양쪽 병렬 보존"** 으로 결론났고 판단이 갈린 곳은 없다.
+
+🚨 **지정 충돌 밖의 의미 충돌이 진짜 막힌 지점이다.**
+main 이 `routes/components/BundleOptionRow.tsx` 를 삭제했는데 `EstimateFormPage.tsx` 가
+계속 import·렌더해서 Vite 해석이 실패한다.
+
+**PM 실측 판정: 복원하지 않는다.** main 이 `EstimateFormPage` 사용부까지 −27/+1 로 이미
+걷어냈다 — import · `updateSetOption` · 모바일카드/데스크톱 렌더 2곳.
+
+⚠️ 그중 이 한 줄은 단순 삭제가 아니라 **`#1077` 의 결함 수정**이라 반드시 살려야 한다:
+
+```diff
+-  setOptions: emptyBundleSetOptions(),
++  setOptions: line.setOptions ?? emptyBundleSetOptions(),
+```
+
+편집 모드에서 저장된 옵션을 빈 값으로 덮지 않게 한 것이다. 사라지면 금액이 틀어진다.
+
+### 2. 라이브QA 순서 — 데이터를 바꾸는 것을 뒤로
 
 ```text
-원인   ProductInternalController.expand 가 options==null 일 때
-       ExpandOptions.defaults() 를 써 클라이언트의 setUnitOverride 를 버렸다.
-       ProductClient 는 options 를 null 아닐 때만 body 에 넣으므로
-       세트 옵션 없는 평범한 BUNDLE 전환에서 항상 발화했다.
-
-확정   PM 이 배포본에 직접 두 번 호출 — 같은 override 1590000 인데
-         options 있음 → 1,590,000 · options 없음 → 1,660,000
-
-검증   R36 라이브QA S-A~S-F 전부 PASS (재오픈 1,590,000 · 734,950 회귀 소멸)
-       SOL R34 재수렴 도달 결함 0 · 기존 문서 자동 금액 변경 0건
+#1083(무해) → #1078 → #1097(V117 이 시더문서 대량 soft-delete) → #1082
 ```
 
-🔑 **R22~R36 중 실제 fix 는 R25·R30·R34 셋뿐**이고 나머지는 PM 브리핑 오류를 정정한 라운드였다.
+🔑 `#1097` 을 먼저 돌리면 이후 트랙 QA 가 표본을 잃어 **"결함 0" 이 아니라 "판정 불가"** 가 된다.
+🔑 `#1083` 은 slip-service main 소스 19개(창고 매핑 클라이언트·검증 서비스)가 바뀌었는데
+   배포본은 `#1077` QA 용이다 — **재빌드 후 QA**. 빌드는 BelowNormal 로.
 
-### 4. 🚨 PM 전제 오류 9건 — 전부 검증자가 걸러 냄
+### 3. 🚨 게이트 ② 를 셀 때 — 두 PR 에서 같은 구멍이 났다
+
+`workflow_dispatch` 는 **지정한 워크플로우 하나만** 돈다.
+**PR close→reopen 이 전체 재발화 수단**이다(`arologis-ci.yml` 은 `workflow_dispatch` 가 없다).
 
 ```text
-① #1088 QA 계정      아로로지스에 없는 dev_manager 지시   → 실제 admin/admin1234
-② #1077 배포본       slip-service 로 판정 → 값은 product-service (이틀 낡음)
-③ #1077 발화축       DB discount_flags → FE 는 레거시 getModelFlags 모델코드 파싱
-④ #1077 기준가       selling_price → 실제는 delivery_price
-⑤ #1097 409 기전     타임스탬프 오차 추정 → 실제는 완전성 분모 정의
-⑥ #1077 실행수단     _electron.launch 지시 → out/ 번들이 R21 이전
-⑦⑧ #1077 가설 2개   parentModelCode 빈문자열·productCategory≠SINGLE_SET → 둘 다 기각
-⑨ #1077 가설        indoor/outdoor 조기 return → 기각
-   그 밖: 라이브QA 브리핑에 실행 수단 누락 2회(R26·R35) · 계정 누락 1회(R31)
+#1077  ci.yml 만 23잡 green → QA E2E·mock gate·Detox 없음 → qa-e2e 발주 30잡
+       → 그래도 arologis 빌드 없음(shared/common·design-system 을 건드렸는데)
+       → close/reopen → 78잡. 아로로지스 7잡 전부 success 로 확인
+#1097  GitGuardian 1개뿐(BE샤드 0/12) → close/reopen → 42잡
 ```
 
-🔑 **정적 추론이 3회 연속 빗나가면 계측으로 전환한다.**
-🔑 **배포본 나이는 백엔드 전용이 아니다** — 클라이언트 번들도. 시각이 아니라 **내용(식별자 grep)** 으로.
-🔑 브리핑 필수 2문장이 이 세션에서 여러 번 값을 했다 —
-   *"제 전제가 틀리면 고치지 말고 중단·보고"* · *"제가 제시한 갈래 밖에 셋째 가능성이 있으면 그것을 내십시오"*.
+🔑 판별 = **직전 머지 PR 의 잡 목록과 `comm -23` 대조** · **BE 샤드 12/12 를 셀 것**
+🔑 변경 경로는 `gh pr diff --name-only` 가 **0을 낼 수 있다** — `git merge-base` + `git diff` 로 재라
 
-### 5. 라이브QA 실행 환경 (다음 세션이 바로 쓸 것)
+### 4. 개발책임자 결정 (기록 완료)
 
 ```text
-renderer   http://localhost:5199        ← 반드시 localhost
-           http://127.0.0.1:5199 은 쿠키 scope 로 인증 실패
-계정       dev_manager / dev_p05_pass!  (끝의 ! 필수)
-수단       Playwright chromium.launch() — 인앱 브라우저 탐지는 빈 목록을 준다
-아로로지스  admin / admin1234 (AROLOGIS_MASTER) · Electron 으로 띄울 것
+#1066 D3   후속 전이는 결재선 개인·정적 권한자 **둘 다 가능**
+#1066      CONFIRMED 를 허용 상태에 추가 (확정 후에도 조회 가능)
+#1097      혼합 문서 전체 삭제 · QA797 은 삭제상태 + 복원차단
+#1090      레거시 모델코드 파싱이 정본
 ```
 
-### 6. 다음 한 수
+### 5. 결정 대기
 
 ```text
-1. 러너 회복 → #1088 머지 → 이슈 #1013 close → #1077 머지
-2. #1077 머지 후 #1078·#1066·#1097·#1083 리베이스 → 배포 → 각 라이브QA
-3. 개발책임자 결정 5건 도착 시 해당 트랙 재개
+#1092  4문 (담당 정의 · '복구' 의미 · 이력 포함 여부 · 기존 2,017건 소급 분류)
+#1083  D2① 최초기동 alias 준비 위치 · D2② 입력형식
 ```
 
----
+### 6. 환경
+
+```text
+Docker      18컨테이너 healthy · compose 는 slip-port-override 포함 3개 파일
+slip 직접    :18086 (influxd 가 8086 선점)
+계정        dev_manager/dev_p05_pass! · kimgicheol·kimeunji/samhan!2026 · 아로로지스 admin/admin1234
+QA 수단      clients/desktop **안에서** node <script>.mjs · chromium.launch({headless:true})
+typecheck   첫 단계는 design-system/dist 신선도 가드 — 타입 오류가 아니다
+배포본       QA 전에 **값을 내는 서비스**를 지목하고 fix 식별자를 grep (0건이면 중단·보고)
+프로세스     라운드 종료 후 회수 필수 — 워크트리를 지워도 402분 생존한 사례 있음
+            죽이기 전 **실행파일 경로**로 판별 (커맨드라인 매칭은 자기 셸까지 죽인다)
+```
+
+### 7. QA 가 바꾼 공유 데이터
+
+```text
+2026/08/07-3   INSPECTING → COMPLETED (kimgicheol 검수, 정상 경로)
+```
+
 
 ## 2026-08-06 회사PC 세션 (**종료** · 집PC 인계) — 머지 0건 · 라운드 27건 · 개발책임자 결정 11건
 
