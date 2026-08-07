@@ -1,5 +1,5 @@
 import { useState, type CSSProperties } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Badge, Button, Card, Spinner } from '@samhan/design-system'
 import {
@@ -16,6 +16,7 @@ import {
   formatCashReceiptAmount,
   formatCashReceiptDate,
 } from './CashReceiptListPage.model'
+import { getReturnTo } from '../utils/returnContract'
 
 const PAGE_CODE = 'accounting.cash-receipts'
 
@@ -46,6 +47,12 @@ export function CashReceiptDetailPage() {
   const params = useParams<{ id: string }>()
   const receiptId = params['id']!
   const navigate = useNavigate()
+  const location = useLocation()
+  const returnTo = getReturnTo(location.state, { pathname: '/accounting/admin/cash-receipts', search: '' })
+  const returnEntryKey = location.state && typeof location.state === 'object'
+    ? (location.state as { returnEntryKey?: unknown }).returnEntryKey
+    : undefined
+  const hasReturnEntry = typeof returnEntryKey === 'string' && returnEntryKey.length > 0
   const queryClient = useQueryClient()
   const { canAccess } = usePermissions()
   const [topError, setTopError] = useState('')
@@ -76,9 +83,12 @@ export function CashReceiptDetailPage() {
 
   const deleteMutation = useMutation({
     mutationFn: () => deleteCashReceipt(receiptId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['accounting', 'cash-receipts'] })
-      navigate('/accounting/admin/cash-receipts', { replace: true })
+    onSuccess: async () => {
+      // 삭제 후에도 원래 목록 entry를 되감되, 삭제 결과를 반영한 목록을 먼저 준비한다.
+      // 그래야 복귀 시 필터/페이지/scroll은 유지하면서 삭제 전 목록을 잠깐 보여주지 않는다.
+      await queryClient.refetchQueries({ queryKey: ['accounting', 'cash-receipts'], type: 'all' })
+      if (hasReturnEntry) navigate(-1)
+      else navigate(returnTo, { replace: true })
     },
     onError: (err: Error) => setTopError(`삭제 실패: ${err.message}`),
   })
@@ -141,11 +151,26 @@ export function CashReceiptDetailPage() {
             </div>
           </div>
           <div className="detail-action-bar">
-            <Button type="button" variant="ghost" onClick={() => navigate('/accounting/admin/cash-receipts')}>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => hasReturnEntry
+                ? navigate(-1)
+                : navigate(returnTo, { replace: true })}
+            >
               목록
             </Button>
             {canEdit ? (
-              <Button type="button" variant="ghost" onClick={() => navigate(`/accounting/admin/cash-receipts/${receiptId}/edit`)}>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => navigate(`/accounting/admin/cash-receipts/${receiptId}/edit`, {
+                  state: {
+                    returnTo,
+                    ...(hasReturnEntry ? { returnEntryKey } : {}),
+                  },
+                })}
+              >
                 편집
               </Button>
             ) : editBlockedReason && canUpdate ? (
