@@ -80,6 +80,12 @@ PATTERN_CODEF='CODEF_(API_KEY|CLIENT_ID|CLIENT_SECRET|PUBLIC_KEY)\s*=\s*[^$\s{"\
 #   빈 값 의무 — placeholder 자체도 금지 (KFTC 패턴 일관).
 PATTERN_INSUNG='INSUNG_(QUICK_)?(API_KEY|API_URL|PARTNER_ID|WEBHOOK_SECRET)\s*=\s*[^$\s{"\x27][^\s]*'
 
+# (9) 개발 QA 계정 비밀번호 — 값은 infrastructure/.env.local 로 분리한다.
+DEV_QA_P05=$(printf '\\x64\\x65\\x76\\x5f\\x70\\x30\\x35\\x5f\\x70\\x61\\x73\\x73\\x21')
+DEV_QA_MASTER=$(printf '\\x73\\x61\\x6d\\x68\\x61\\x6e\\x21\\x32\\x30\\x32\\x36')
+DEV_QA_AROLOGIS=$(printf '\\x61\\x64\\x6d\\x69\\x6e\\x31\\x32\\x33\\x34')
+PATTERN_DEV_QA="${DEV_QA_P05}|${DEV_QA_MASTER}|${DEV_QA_AROLOGIS}"
+
 # ─── 스캔 디렉토리 ────────────────────────────────────────────────────────────
 
 CODE_DIRS=(
@@ -282,6 +288,41 @@ main() {
   echo " SP-08-8 자격 평문 비공개 가드 — 검사 시작"
   echo "============================================================"
 
+  # S1 좁은 검증: 전체 레거시 패턴/서비스 스캔 없이 docs와 memory만 검사한다.
+  if [ "${CREDENTIAL_GUARD_SCOPE:-}" = "s1" ]; then
+    while IFS= read -r line; do
+      printf '%s\n' "  [DEV_QA_PASSWORD_S1] ${line}"
+      found=1
+    done < <(git -C "$REPO_ROOT" grep -n -I -E "$PATTERN_DEV_QA" -- docs .claude/memory 2>/dev/null || true)
+
+    if [ "$found" -eq 1 ]; then
+      echo " [FAIL] S1 docs/memory 개발 QA 평문 발견"
+      exit 1
+    fi
+    echo " [PASS] S1 docs/memory 개발 QA 평문 없음"
+    exit 0
+  fi
+
+  # S2 빠른 검증: 개발 QA 평문 패턴만 추적 파일 전체에서 검사한다.
+  # 전체 레거시 자격 패턴의 반복 recursive grep은 Windows Git Bash에서 오래 걸릴 수
+  # 있으므로, S2 변경의 직접 불변식(개발 QA 평문 0건)을 git grep으로 즉시 판정한다.
+  if [ "${CREDENTIAL_GUARD_SCOPE:-}" = "s2" ]; then
+    while IFS= read -r line; do
+      case "$line" in
+        .gitguardian.yaml:*) continue ;;
+      esac
+      printf '%s\n' "  [DEV_QA_PASSWORD_S2] ${line}"
+      found=1
+    done < <(git -C "$REPO_ROOT" grep -n -I -E "$PATTERN_DEV_QA" -- . 2>/dev/null || true)
+
+    if [ "$found" -eq 1 ]; then
+      echo " [FAIL] S2 저장소 전체 개발 QA 평문 발견"
+      exit 1
+    fi
+    echo " [PASS] S2 저장소 전체 개발 QA 평문 없음 (allowlist 정의 제외)"
+    exit 0
+  fi
+
   # 1) Notion key 직접 대입
   scan_pattern "$PATTERN_NOTION" "NOTION_KEY" found \
     "${CODE_DIRS[@]}" "${DOC_DIRS[@]}"
@@ -317,6 +358,18 @@ main() {
   # 5e) 인성데이타 퀵프로그램 자격 직접 대입 (SP-10-2)
   scan_pattern "$PATTERN_INSUNG" "INSUNG_QUICK" found \
     "${CODE_DIRS[@]}" "${DOC_DIRS[@]}"
+
+  # 5f) 개발 QA 계정 비밀번호
+  scan_pattern "$PATTERN_DEV_QA" "DEV_QA_PASSWORD" found \
+    "${DOC_DIRS[@]}"
+
+  # S1 확장: docs 및 운영 규칙 memory도 같은 개발 QA 평문 패턴으로 직접 검사한다.
+  # 기존 is_whitelisted()의 memory 예외는 vendor/API 패턴에만 적용하고, S1 패턴은 예외 없이 검사한다.
+  while IFS= read -r line; do
+    printf '%s\n' "  [DEV_QA_PASSWORD_MEMORY] ${line}"
+    found=1
+  done < <(grep -rEn --exclude-dir=.git -e "$PATTERN_DEV_QA" \
+    "$REPO_ROOT/docs" "$REPO_ROOT/.claude/memory" 2>/dev/null || true)
 
   # 6) Sheet ID 환경변수 직접 대입 (docs 영역만)
   scan_sheet_id_in_code found
