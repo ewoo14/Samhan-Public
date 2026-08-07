@@ -35,6 +35,37 @@ psql -c "SELECT swc, slip_type, status, COUNT(*) ... GROUP BY 1,2,3 ORDER BY 4 D
 집계가 필요하면 **집계를 SQL 에 시켜라.** `GROUP BY` 를 잘라서 더하지 마라.
 → [[feedback_exit_code_measurement_traps]] 과 같은 가족(재지 않은 값을 근거로 제시)의 새 변종.
 
+### ①-b 같은 날 세 번째 — **페이지네이션된 첫 페이지를 전체로 셌다**
+
+`#1083` 게이트 ② 를 판정하며 *"exact SHA 에서 13잡이 안 돌았다"* 고 PR 에 적었는데 **틀렸다.**
+
+```bash
+gh api repos/.../commits/<sha>/check-runs --jq '.check_runs|length'
+#  → 30    ← "30개가 돌았다" 가 아니라 "첫 페이지가 30개" 다 (기본 per_page=30)
+
+# 올바른 측정
+gh api "repos/.../commits/<sha>/check-runs?per_page=100" --jq '.total_count'
+#  → 43    ← 전부 돌았고 전부 success 였다
+```
+
+`gh pr checks` 는 43 인데 위가 30 이라 13개가 누락된 것으로 읽었다.
+**머지 게이트를 잘못 닫을 뻔했다** — 실제로는 진작 충족돼 있었다.
+
+🔑 잡이 정말 그 SHA 에서 돌았는지는 **run 단위로** 확인하는 것이 확실하다.
+```bash
+gh api repos/.../actions/runs/<runId> --jq '"\(.name) event=\(.event) head_sha=\(.head_sha) \(.conclusion)"'
+```
+
+### 세 번의 공통점 — **"도구가 보여준 것" 과 "실제 값" 의 혼동**
+
+```text
+1  컨테이너 생성시각을 이미지 생성시각이라 라벨       → 검증자가 적발
+2  head -20 으로 잘린 GROUP BY 를 눈으로 합산        → 검증자가 적발
+3  페이지네이션된 첫 30개를 전체로 셈                 → 자가 적발
+```
+셋 다 **값 자체는 도구가 정확히 준 것**이고, 그것이 무엇을 세고 있는지를 PM 이 틀렸다.
+🔑 수치를 커밋·PR 에 쓰기 전에 **"이 숫자는 무엇의 개수인가"** 를 한 번 소리내어 말할 것.
+
 ### ② STOP 기준 설계 — PM 오류가 검증자를 멈춘다
 
 *"제 전제가 틀리면 중단·보고"* 는 좋은 규칙이고 실제로 여러 번 작동했다
