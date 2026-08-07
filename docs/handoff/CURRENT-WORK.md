@@ -40,9 +40,8 @@
    어려우면 PR 코멘트/보고서에 **기록만**
    → .claude/memory/feedback_issue_registration_delegated_to_pm.md
 
-🎮 사용자가 게임 중 — 모든 QA 는 headless · 라운드 끝에 프로세스 회수
+QA 프로세스 위생 — 모든 QA 는 headless · 라운드 끝에 프로세스 회수
    node_repl 이 codex 툴콜마다 쌓인다(10분에 1개꼴). 주기적으로 걷는다
-   내 프로세스는 BelowNormal
 ```
 
 ### 3. 🚨 오늘 배운 것 — 다음 세션이 반복하면 안 되는 것
