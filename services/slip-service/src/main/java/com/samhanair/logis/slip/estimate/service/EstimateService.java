@@ -10,6 +10,7 @@ import com.samhanair.logis.slip.estimate.domain.Estimate;
 import com.samhanair.logis.slip.estimate.domain.EstimateLine;
 import com.samhanair.logis.slip.estimate.domain.EstimateStatus;
 import com.samhanair.logis.slip.estimate.repository.EstimateRepository;
+import com.samhanair.logis.slip.estimate.repository.EstimateLineRepository;
 import com.samhanair.logis.slip.estimate.revision.domain.EstimateRevisionType;
 import com.samhanair.logis.slip.estimate.revision.service.EstimateRevisionService;
 import com.samhanair.logis.slip.estimate.web.dto.BundleSetOptions;
@@ -27,6 +28,8 @@ import com.samhanair.logis.slip.service.AuthoritativeAmountValidator;
 import com.samhanair.logis.slip.service.LineIdContractGate;
 import com.samhanair.logis.shared.realtime.collection.CollectionRealtimePublisher;
 import jakarta.persistence.OptimisticLockException;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
@@ -67,6 +70,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class EstimateService {
 
     private final EstimateRepository estimateRepository;
+    private final EstimateLineRepository estimateLineRepository;
     private final EstimateNumberService estimateNumberService;
     private final ProductClient productClient;
     private final EstimateToSlipConverter slipConverter;
@@ -74,6 +78,9 @@ public class EstimateService {
     private final CollectionRealtimePublisher collectionRealtimePublisher;
     /** #809 — 거래처+품목 최근 VAT 포함 입력단가 기억. 실패해도 견적 저장은 계속된다. */
     private final PartnerProductPriceMemoryService priceMemoryService;
+
+    @PersistenceContext
+    private EntityManager entityManager;
 
     /**
      * 견적 라인 추가 — BUNDLE(세트) 품목이면 product-service expand 로 구성품 라인 N개로 전개(옵션 A,
@@ -411,8 +418,33 @@ public class EstimateService {
                             + estimate.getEstimateNo());
         }
         try {
+            List<EstimateLine> allLines = estimateLineRepository
+                    .findAllIncludingDeletedByEstimateId(estimate.getId());
+            String deletedBy = estimate.getDeletedBy();
+            if (isNonCanonicalQaResidue(estimate, allLines)) {
+                throw new BusinessException(ErrorCode.CONFLICT,
+                        "비정본 QA 잔재 견적은 일반 복원할 수 없습니다: " + estimate.getEstimateNo());
+            }
+            long deletedLineCount = allLines.stream()
+                    .filter(line -> Boolean.TRUE.equals(line.getIsDeleted()))
+                    .count();
+            long restorableLines = allLines.stream()
+                    .filter(line -> Boolean.TRUE.equals(line.getIsDeleted()))
+                    .filter(line -> deletedBy != null && deletedBy.equals(line.getDeletedBy()))
+                    .count();
+            if (deletedLineCount != restorableLines) {
+                throw new BusinessException(ErrorCode.CONFLICT,
+                        "견적의 삭제 라인 그래프를 정확히 복원할 수 없습니다: " + estimate.getEstimateNo());
+            }
             estimate.markRestoredWithNameCleared();
+            allLines.stream()
+                    .filter(line -> Boolean.TRUE.equals(line.getIsDeleted()))
+                    .forEach(EstimateLine::markRestored);
             Estimate restored = estimateRepository.saveAndFlush(estimate);
+            estimateLineRepository.saveAll(allLines);
+            entityManager.refresh(restored);
+            restored.recalculateTotals();
+            estimateRepository.saveAndFlush(restored);
             publishListChanged("RESTORED");
             return EstimateDetailResponse.from(restored);
         } catch (DataIntegrityViolationException ex) {
@@ -423,6 +455,34 @@ public class EstimateService {
     }
 
     /** 단건 조회. */
+    /**
+     * 순수 QA797 잔재와 비정본 cleanup 산물을 일반 복원 경로에서 격리한다.
+     * QA797 라인과 정본 라인이 함께 정리된 혼합 문서는 전체 그래프를 일괄 복원한다.
+     * 행은 감사 판정을 위해 soft-delete 상태로 보존하며, 정본 문서에는 적용하지 않는다.
+     */
+    private boolean isNonCanonicalQaResidue(Estimate estimate, List<EstimateLine> lines) {
+        boolean hasQa797Line = lines.stream()
+                .anyMatch(line -> startsWithQa797(line.getModelName())
+                        || startsWithQa797(line.getProductName()));
+        boolean hasCanonicalLine = lines.stream()
+                .anyMatch(line -> !startsWithQa797(line.getModelName())
+                        && !startsWithQa797(line.getProductName()));
+        boolean mixedQaAndCanonical = hasQa797Line && hasCanonicalLine;
+
+        // 순수 QA797 문서는 라인의 현재 삭제 여부와 무관하게 감사 잔재로 격리한다.
+        // 단, 개발책임자 결정으로 문서 전체를 정리한 혼합 문서는 QA 라인과 정본 라인이
+        // 함께 존재하므로 정상적인 일괄 복원을 허용한다.
+        if (hasQa797Line && !mixedQaAndCanonical) {
+            return true;
+        }
+        return "issue-1096-test-seed-cleanup".equals(estimate.getDeletedBy())
+                && !mixedQaAndCanonical;
+    }
+
+    private boolean startsWithQa797(String value) {
+        return value != null && value.trim().toUpperCase().startsWith("QA797-");
+    }
+
     @Transactional(readOnly = true)
     public EstimateDetailResponse getOne(UUID id) {
         return EstimateDetailResponse.from(loadOrThrow(id));
@@ -457,10 +517,35 @@ public class EstimateService {
      */
     @Transactional(readOnly = true)
     public Page<EstimateResponse> list(EstimateStatus status, UUID partnerId,
-                                       LocalDate startDate, LocalDate endDate, Pageable pageable) {
+                                       LocalDate startDate, LocalDate endDate, boolean includeDeleted,
+                                       Pageable pageable) {
         return estimateRepository.searchIncludingDeleted(
-                        status == null ? null : status.name(), partnerId, startDate, endDate, pageable)
-                .map(EstimateResponse::from);
+                        status == null ? null : status.name(), partnerId, startDate, endDate, includeDeleted, pageable)
+                .map(estimate -> EstimateResponse.from(estimate, isRestoreAvailable(estimate)));
+    }
+
+    /**
+     * 삭제행의 복원 버튼 노출 여부를 현재 삭제 배치의 전체 라인 그래프로 판정한다.
+     * 순수 QA/cleanup 산물은 API 호출 자체도 차단되므로 목록에서 복원 버튼을 숨긴다.
+     */
+    private boolean isRestoreAvailable(Estimate estimate) {
+        if (!Boolean.TRUE.equals(estimate.getIsDeleted())) {
+            return false;
+        }
+        List<EstimateLine> allLines = estimateLineRepository
+                .findAllIncludingDeletedByEstimateId(estimate.getId());
+        if (isNonCanonicalQaResidue(estimate, allLines)) {
+            return false;
+        }
+        long deletedLineCount = allLines.stream()
+                .filter(line -> Boolean.TRUE.equals(line.getIsDeleted()))
+                .count();
+        long restorableLines = allLines.stream()
+                .filter(line -> Boolean.TRUE.equals(line.getIsDeleted()))
+                .filter(line -> estimate.getDeletedBy() != null
+                        && estimate.getDeletedBy().equals(line.getDeletedBy()))
+                .count();
+        return deletedLineCount == restorableLines;
     }
 
     /**

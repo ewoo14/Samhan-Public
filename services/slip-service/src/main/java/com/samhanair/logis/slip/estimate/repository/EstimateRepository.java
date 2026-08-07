@@ -22,6 +22,10 @@ public interface EstimateRepository extends JpaRepository<Estimate, UUID> {
     /** 견적번호 단건 조회. soft-delete 제외. */
     Optional<Estimate> findByEstimateNo(String estimateNo);
 
+    /** 시더 재기동 시 S2 정리로 삭제된 결정적 견적을 다시 만들지 않도록 삭제행도 조회한다. */
+    @Query(value = "SELECT * FROM estimates WHERE estimate_no = :estimateNo LIMIT 1", nativeQuery = true)
+    Optional<Estimate> findByEstimateNoIncludingDeleted(@Param("estimateNo") String estimateNo);
+
     /**
      * soft-deleted row 를 포함해 id 로 조회한다.
      *
@@ -58,7 +62,8 @@ public interface EstimateRepository extends JpaRepository<Estimate, UUID> {
     @Query(value = """
             SELECT *
               FROM estimates e
-             WHERE (CAST(:status AS varchar) IS NULL OR e.status = CAST(:status AS varchar))
+             WHERE (:includeDeleted = TRUE OR e.is_deleted = FALSE)
+               AND (CAST(:status AS varchar) IS NULL OR e.status = CAST(:status AS varchar))
                AND (CAST(:partnerId AS uuid) IS NULL OR e.partner_id = CAST(:partnerId AS uuid))
                AND (CAST(:startDate AS date) IS NULL OR e.estimate_date >= CAST(:startDate AS date))
                AND (CAST(:endDate AS date) IS NULL OR e.estimate_date <= CAST(:endDate AS date))
@@ -67,7 +72,8 @@ public interface EstimateRepository extends JpaRepository<Estimate, UUID> {
             countQuery = """
             SELECT COUNT(*)
               FROM estimates e
-             WHERE (CAST(:status AS varchar) IS NULL OR e.status = CAST(:status AS varchar))
+             WHERE (:includeDeleted = TRUE OR e.is_deleted = FALSE)
+               AND (CAST(:status AS varchar) IS NULL OR e.status = CAST(:status AS varchar))
                AND (CAST(:partnerId AS uuid) IS NULL OR e.partner_id = CAST(:partnerId AS uuid))
                AND (CAST(:startDate AS date) IS NULL OR e.estimate_date >= CAST(:startDate AS date))
                AND (CAST(:endDate AS date) IS NULL OR e.estimate_date <= CAST(:endDate AS date))
@@ -77,6 +83,7 @@ public interface EstimateRepository extends JpaRepository<Estimate, UUID> {
                                           @Param("partnerId") UUID partnerId,
                                           @Param("startDate") LocalDate startDate,
                                           @Param("endDate") LocalDate endDate,
+                                          @Param("includeDeleted") boolean includeDeleted,
                                           Pageable pageable);
 
     /** 상태별 페이지. */

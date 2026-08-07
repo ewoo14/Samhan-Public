@@ -119,6 +119,7 @@ export interface EstimateSummary {
   isDeleted: boolean
   deletedAt: string | null
   deletedByName: string | null
+  restoreAvailable?: boolean
 }
 
 /** 견적서 단건 상세 — BE {@code EstimateDetailResponse}. */
@@ -212,6 +213,8 @@ export interface ListEstimatesOptions {
   partnerId?: string
   startDate?: string
   endDate?: string
+  /** 삭제 문서 감사/복원 표면에서만 명시적으로 활성화한다. */
+  includeDeleted?: boolean
   page?: number
   size?: number
 }
@@ -232,6 +235,7 @@ export async function listEstimates(
   if (options.partnerId) params['partnerId'] = options.partnerId
   if (options.startDate) params['startDate'] = options.startDate
   if (options.endDate) params['endDate'] = options.endDate
+  if (options.includeDeleted) params['includeDeleted'] = 'true'
   const res = await apiClient.get<ApiEnvelope<PageResponse<EstimateSummary>>>(
     '/slips/estimates',
     { params },

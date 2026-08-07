@@ -94,6 +94,8 @@ export function SalesPartnerOrderListPage() {
   const [statusFilter, setStatusFilter] = useState<PartnerOrderStatus | ''>('DRAFT')
   const [slipPublishStatusFilter, setSlipPublishStatusFilter] = useState<'' | 'FAILED' | 'PENDING_RETRY'>('')
   const [searchKeyword, setSearchKeyword] = useState('')
+  const [includeDeleted, setIncludeDeleted] = useState(false)
+  const [page, setPage] = useState(0)
 
   /** Phase 2.6b D2: 병합 전환 모달 open/close. */
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false)
@@ -153,13 +155,16 @@ export function SalesPartnerOrderListPage() {
     return () => setPageTitle({ title: '' })
   }, [setPageTitle])
 
+  useEffect(() => {
+    setPage(0)
+  }, [dateFrom, dateTo, partnerId, statusFilter, slipPublishStatusFilter, searchKeyword, includeDeleted])
+
   useCollectionRealtime(PartnerOrderBoardRealtimeClient, 'board', [['partner-orders']])
 
   const failedCountQuery = useQuery({
     queryKey: ['partner-orders', 'slip-publish-failed-count'],
     queryFn: () => listPartnerOrders(0, 1, {
       slipPublishStatus: 'FAILED',
-      includeDeleted: true,
     }),
     staleTime: 30_000,
     retry: 1,
@@ -168,18 +173,16 @@ export function SalesPartnerOrderListPage() {
   const query = useQuery({
     queryKey: [
       'partner-orders', dateFrom, dateTo, partnerId, statusFilter,
-      slipPublishStatusFilter, searchKeyword, 0,
+      slipPublishStatusFilter, searchKeyword, includeDeleted, page,
     ],
-    queryFn: () => listPartnerOrders(0, 50, {
+    queryFn: () => listPartnerOrders(page, 50, {
       dateFrom: dateFrom || undefined,
       dateTo: dateTo || undefined,
       partnerId: partnerId.trim() || undefined,
       status: statusFilter || undefined,
       slipPublishStatus: slipPublishStatusFilter || undefined,
       searchKeyword: searchKeyword.trim() || undefined,
-      // 내부 관리자 목록 전용 opt-in — E2 취소선/복원 표시용 삭제행 포함(#757 R2 HIGH:
-      // BE 기본값은 활성만이며 파트너 호출은 값과 무관하게 활성 행만 반환).
-      includeDeleted: true,
+      ...(includeDeleted ? { includeDeleted: true } : {}),
     }),
     retry: 1,
   })
@@ -461,6 +464,15 @@ export function SalesPartnerOrderListPage() {
               data-testid="partner-order-list-date-from"
               inputSize="sm"
             />
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', fontSize: 13 }}>
+              <input
+                type="checkbox"
+                checked={includeDeleted}
+                onChange={(e) => setIncludeDeleted(e.target.checked)}
+                data-testid="partner-order-list-include-deleted"
+              />
+              삭제 문서 포함
+            </label>
             <Input
               type="date"
               value={dateTo}
@@ -581,7 +593,8 @@ export function SalesPartnerOrderListPage() {
             <p>거래처가 주문서를 발송하면 본 목록에 표시됩니다.</p>
           </div>
         ) : (
-          <DataTable
+          <>
+            <DataTable
             columns={columns}
             rows={query.data?.content ?? []}
             rowKey={partnerOrderRowKey}
@@ -593,7 +606,33 @@ export function SalesPartnerOrderListPage() {
             onRowClick={handleRowClick}
             rowClickable={(o) => o.isDeleted !== true && !!o.orderNumber}
             emptyMessage="등록된 주문이 없습니다"
-          />
+            />
+            {query.data && query.data.totalPages > 1 ? (
+            <div data-testid="partner-order-list-pagination" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 12, marginTop: 16 }}>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                data-testid="partner-order-list-previous-page"
+                disabled={page === 0 || query.isFetching}
+                onClick={() => setPage((current) => Math.max(0, current - 1))}
+              >
+                이전
+              </Button>
+              <span data-testid="partner-order-list-page-indicator">{page + 1} / {query.data.totalPages}</span>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                data-testid="partner-order-list-next-page"
+                disabled={page + 1 >= query.data.totalPages || query.isFetching}
+                onClick={() => setPage((current) => Math.min(query.data!.totalPages - 1, current + 1))}
+              >
+                다음
+              </Button>
+            </div>
+            ) : null}
+          </>
         )}
       </div>
 

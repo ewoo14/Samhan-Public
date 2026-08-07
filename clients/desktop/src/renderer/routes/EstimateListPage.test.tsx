@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import React from 'react'
 import { MemoryRouter } from 'react-router-dom'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { EstimateListPage } from './EstimateListPage'
 import {
   listEstimates,
@@ -45,6 +45,8 @@ const listEstimatesMock = vi.mocked(listEstimates)
 const restoreEstimateMock = vi.mocked(restoreEstimate)
 const useCollectionRealtimeMock = vi.mocked(useCollectionRealtime)
 
+afterEach(cleanup)
+
 function estimateRow(overrides: Partial<EstimateSummary> = {}): EstimateSummary {
   return {
     id: 'estimate-1',
@@ -68,6 +70,7 @@ function estimateRow(overrides: Partial<EstimateSummary> = {}): EstimateSummary 
     isDeleted: false,
     deletedAt: null,
     deletedByName: null,
+    restoreAvailable: true,
     ...overrides,
   }
 }
@@ -119,6 +122,41 @@ describe('EstimateListPage E2 list realtime and restore', () => {
       'list',
       [['estimates', 'list']],
     )
+  })
+
+  it('기본 목록은 삭제행을 제외하고 토글을 켰을 때만 삭제행을 조회한다', async () => {
+    listEstimatesMock.mockResolvedValue(pageOf([estimateRow()]))
+    renderPage()
+
+    await screen.findByTestId('estimate-list-include-deleted')
+    expect(listEstimatesMock).toHaveBeenLastCalledWith(expect.not.objectContaining({ includeDeleted: true }))
+
+    fireEvent.click(screen.getByTestId('estimate-list-include-deleted'))
+    await waitFor(() => expect(listEstimatesMock).toHaveBeenLastCalledWith(expect.objectContaining({ includeDeleted: true })))
+  })
+
+  it('삭제 포함 목록은 다음 페이지로 이동하고 토글을 끄면 첫 활성 페이지로 돌아온다', async () => {
+    listEstimatesMock.mockImplementation(async (options) => ({
+      ...pageOf([estimateRow({ id: options.includeDeleted ? `deleted-${options.page}` : `active-${options.page}` })]),
+      totalElements: options.includeDeleted ? 101 : 1,
+      totalPages: options.includeDeleted ? 3 : 1,
+      number: options.page ?? 0,
+      size: options.size ?? 50,
+      first: (options.page ?? 0) === 0,
+      last: (options.page ?? 0) === (options.includeDeleted ? 2 : 0),
+    }))
+
+    renderPage()
+    const toggle = await screen.findByTestId('estimate-list-include-deleted')
+    fireEvent.click(toggle)
+    fireEvent.click((await screen.findAllByTestId('estimate-list-next-page')).at(-1)!)
+
+    await waitFor(() => expect(listEstimatesMock).toHaveBeenLastCalledWith(expect.objectContaining({ page: 1, includeDeleted: true })))
+    fireEvent.click((await screen.findAllByTestId('estimate-list-next-page')).at(-1)!)
+    await waitFor(() => expect(listEstimatesMock).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2, includeDeleted: true })))
+    fireEvent.click(toggle)
+    await waitFor(() => expect(listEstimatesMock).toHaveBeenLastCalledWith(expect.objectContaining({ page: 0 })))
+    expect(listEstimatesMock).toHaveBeenLastCalledWith(expect.not.objectContaining({ includeDeleted: true }))
   })
 
   it('삭제행은 모든 데이터 열에 취소선 처리하고 삭제 배지는 견적번호 취소선 span 바깥 형제로 렌더하며 행 클릭을 막는다', async () => {
@@ -190,5 +228,20 @@ describe('EstimateListPage E2 list realtime and restore', () => {
     const alert = await screen.findByTestId('estimate-list-restore-error')
     expect(alert.textContent).toContain('이미 사용 중인 견적번호')
     expect(alert.getAttribute('style') ?? '').toContain('var(--color-danger-700, #991B1B)')
+  })
+
+  it('복원 불가 삭제행은 복원 버튼을 노출하지 않는다', async () => {
+    listEstimatesMock.mockResolvedValue(pageOf([
+      estimateRow({
+        id: 'qa-residue',
+        isDeleted: true,
+        restoreAvailable: false,
+      }),
+    ]))
+
+    renderPage()
+
+    const row = await screen.findByTestId('estimate-list-row-qa-residue')
+    expect(within(row).queryByTestId('estimate-list-row-qa-residue-restore')).toBeNull()
   })
 })

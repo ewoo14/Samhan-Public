@@ -17,7 +17,7 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.context.annotation.Profile;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
@@ -49,7 +49,7 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Component
 @Profile("dev")
-@ConditionalOnProperty(value = "app.partner-order.seed-test-data", havingValue = "true")
+@ConditionalOnExpression("'${app.partner-order.seed-test-data:false}' == 'true' or '${app.partner-order.full-seed-test-data:false}' == 'true'")
 @Order(20) // user(seed) → partner → product → slip → partner-order
 public class PartnerOrderSeeder implements CommandLineRunner {
 
@@ -145,7 +145,7 @@ public class PartnerOrderSeeder implements CommandLineRunner {
 
         for (int seq = 1; seq <= 30; seq++) {
             String orderNo = SLIP_DATE_PREFIX + "-" + seq;
-            Optional<PartnerOrder> existing = partnerOrderRepository.findByOrderNo(orderNo);
+            Optional<PartnerOrder> existing = partnerOrderRepository.findByOrderNoIncludingDeleted(orderNo);
             if (existing.isPresent()) {
                 skipped++;
                 continue;
