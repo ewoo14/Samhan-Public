@@ -30,6 +30,7 @@ import {
   type ProductFormItemKind,
   type ProductCategory,
   type ProductCategoryNode,
+  type ProductDetailResponse,
   type ProductGoodsType,
   type SpecKeyTemplateResponse,
   type SpecKeyValueType,
@@ -189,6 +190,12 @@ export function ProductFormPage() {
     },
   })
 
+  const bundleComponentCount = editSeedQuery.data?.catalog?.componentCount ?? 0
+  const bundleComponentSetToken = editSeedQuery.data?.catalog?.componentSetToken
+  const requiresBundleChildrenConfirmation = mode === 'edit'
+    && editSeedQuery.data?.summary.productType === 'BUNDLE'
+    && (values.itemKind !== 'SET' || values.productCategory === 'MATERIAL')
+
   // #831-hydrate — editSeed 하이드레이션을 useEffect 대신 렌더 중 파생으로 처리한다(같은 계열,
   // CashReceiptFormPage #831-hydrate 수단 1과 동일). useEffect 로 하면 "isLoading→false 렌더"
   // (values 는 아직 initialProductFormValues())와 "values 가 채워지는 렌더"(effect 실행 후)
@@ -279,8 +286,8 @@ export function ProductFormPage() {
     void queryClient.invalidateQueries({ queryKey: ['bundle-components'] })
   }
 
-  const saveMutation = useMutation({
-    mutationFn: async () => {
+  const saveMutation = useMutation<ProductDetailResponse, unknown, boolean>({
+    mutationFn: async (confirmBundleChildrenDeletion = false) => {
       const nextErrors = validateProductForm(values, mode)
       setErrors(nextErrors)
       if (Object.keys(nextErrors).length > 0) {
@@ -291,7 +298,13 @@ export function ProductFormPage() {
       }
       const id = editSeedQuery.data?.detail.id ?? editSeedQuery.data?.summary.id
       if (!id) throw new Error('수정할 품목을 찾을 수 없습니다.')
-      return updateProduct(id, buildUpdateProductRequest(values))
+      return updateProduct(id, {
+        ...buildUpdateProductRequest(values),
+        ...(confirmBundleChildrenDeletion ? {
+          confirmBundleChildrenDeletion: true,
+          expectedBundleComponentSetToken: bundleComponentSetToken,
+        } : {}),
+      })
     },
     onSuccess: () => {
       setFormError(null)
@@ -300,8 +313,21 @@ export function ProductFormPage() {
     },
     onError: (err) => {
       setFormError(errorMsg(err))
+      if (requiresBundleChildrenConfirmation) {
+        void editSeedQuery.refetch()
+      }
     },
   })
+
+  const handleSave = () => {
+    const needsConfirmation = requiresBundleChildrenConfirmation && bundleComponentCount > 0
+    if (needsConfirmation && !window.confirm(
+      `이 세트의 구성품 ${bundleComponentCount}건이 삭제됩니다. 계속 저장하시겠습니까?`,
+    )) {
+      return
+    }
+    saveMutation.mutate(needsConfirmation)
+  }
 
   const patchValues = (patch: Partial<ProductFormValues>) => {
     setValues((current) => ({ ...current, ...patch }))
@@ -424,7 +450,7 @@ export function ProductFormPage() {
           </Button>
           <Button
             variant="primary"
-            onClick={() => saveMutation.mutate()}
+            onClick={handleSave}
             loading={isSaving}
             disabled={isSaving}
             data-testid="product-form-save-button"

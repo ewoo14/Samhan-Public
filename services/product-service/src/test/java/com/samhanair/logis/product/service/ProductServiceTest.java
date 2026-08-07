@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 import com.samhanair.logis.common.exception.BusinessException;
 import com.samhanair.logis.common.exception.ErrorCode;
 import com.samhanair.logis.product.domain.BundleComponent;
+import com.samhanair.logis.product.domain.BundleComponentConsentToken;
 import com.samhanair.logis.product.domain.BundleMode;
 import com.samhanair.logis.product.domain.Category;
 import com.samhanair.logis.product.domain.Product;
@@ -452,6 +453,128 @@ class ProductServiceTest {
 
         org.mockito.Mockito.verify(bundleComponentService)
                 .removeBundleChildren(productId, "system");
+    }
+
+    @Test
+    void update_setToGeneral_requiresExplicitConfirmationWhenChildrenExist() {
+        product.changeModelCode("SET-001");
+        product.changeBundle(ProductType.BUNDLE, BundleMode.EXPAND);
+        when(productRepository.findById(productId)).thenReturn(Optional.of(product));
+        when(bundleComponentRepository.findByBundleProductId(productId)).thenReturn(children(productId, 3));
+
+        assertThatThrownBy(() -> service.update(productId, new UpdateProductRequest(
+                null, null, null, null,
+                ProductItemKind.GENERAL, null, null, null, null,
+                null, null, null, null)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("3")
+                .satisfies(ex -> assertThat(((BusinessException) ex).getErrorCode())
+                        .isEqualTo(ErrorCode.INVALID_INPUT));
+
+        verify(bundleComponentService, never()).removeBundleChildren(productId, "system");
+        assertThat(product.getProductType()).isEqualTo(ProductType.BUNDLE);
+    }
+
+    @Test
+    void update_setToGeneral_removesChildrenAfterExplicitConfirmation() {
+        product.changeModelCode("SET-001");
+        product.changeBundle(ProductType.BUNDLE, BundleMode.EXPAND);
+        when(productRepository.findById(productId)).thenReturn(Optional.of(product));
+        List<BundleComponent> children = children(productId, 3);
+        when(bundleComponentRepository.findByBundleProductId(productId)).thenReturn(children);
+
+        service.update(productId, new UpdateProductRequest(
+                null, null, null, null,
+                ProductItemKind.GENERAL, null, null, null, null,
+                null, null, null, null, null, null, null, true,
+                BundleComponentConsentToken.from(children)));
+
+        verify(bundleComponentService).removeBundleChildren(productId, "system");
+        assertThat(product.getProductType()).isEqualTo(ProductType.SINGLE);
+    }
+
+    @Test
+    void update_materialTransition_requiresExplicitConfirmationWhenBundleChildrenExist() {
+        product.changeModelCode("SET-001");
+        product.changeBundle(ProductType.BUNDLE, BundleMode.EXPAND);
+        when(productRepository.findById(productId)).thenReturn(Optional.of(product));
+        when(bundleComponentRepository.findByBundleProductId(productId)).thenReturn(children(productId, 2));
+
+        assertThatThrownBy(() -> service.update(productId, new UpdateProductRequest(
+                null, null, null, null,
+                ProductItemKind.SET, ProductCategory.MATERIAL, BundleMode.EXPAND, null, null,
+                null, null, null, null)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("2");
+
+        verify(bundleComponentService, never()).removeBundleChildren(productId, "system");
+    }
+
+    @Test
+    void update_materialTransition_removesChildrenAfterExplicitConfirmation() {
+        product.changeModelCode("SET-001");
+        product.changeBundle(ProductType.BUNDLE, BundleMode.EXPAND);
+        when(productRepository.findById(productId)).thenReturn(Optional.of(product));
+        List<BundleComponent> children = children(productId, 2);
+        when(bundleComponentRepository.findByBundleProductId(productId)).thenReturn(children);
+
+        service.update(productId, new UpdateProductRequest(
+                null, null, null, null,
+                ProductItemKind.SET, ProductCategory.MATERIAL, BundleMode.EXPAND, null, null,
+                null, null, null, null, null, null, null, true,
+                BundleComponentConsentToken.from(children)));
+
+        verify(bundleComponentService).removeBundleChildren(productId, "system");
+        assertThat(product.getProductType()).isEqualTo(ProductType.SINGLE);
+        assertThat(product.getProductCategory()).isEqualTo(ProductCategory.MATERIAL);
+    }
+
+    @Test
+    void update_rejectsComponentIncreaseAfterConsent() {
+        assertConsentSetChangedIsRejected(children(productId, 2), children(productId, 3));
+    }
+
+    @Test
+    void update_rejectsComponentDecreaseAfterConsent() {
+        assertConsentSetChangedIsRejected(children(productId, 3), children(productId, 2));
+    }
+
+    @Test
+    void update_rejectsSameCountComponentReplacementAfterConsent() {
+        List<BundleComponent> originallyShown = children(productId, 2);
+        List<BundleComponent> replacement = List.of(
+                component(productId, "REPLACED-0"), component(productId, "REPLACED-1"));
+        assertConsentSetChangedIsRejected(originallyShown, replacement);
+    }
+
+    @Test
+    void update_rejectsConcurrentComponentDeletionAfterConsent() {
+        assertConsentSetChangedIsRejected(children(productId, 2), List.of());
+    }
+
+    private void assertConsentSetChangedIsRejected(List<BundleComponent> consented,
+                                                   List<BundleComponent> current) {
+        product.changeModelCode("SET-001");
+        product.changeBundle(ProductType.BUNDLE, BundleMode.EXPAND);
+        when(productRepository.findById(productId)).thenReturn(Optional.of(product));
+        when(bundleComponentRepository.findByBundleProductId(productId)).thenReturn(current);
+
+        assertThatThrownBy(() -> service.update(productId, new UpdateProductRequest(
+                null, null, null, null, ProductItemKind.GENERAL, null, null, null, null,
+                null, null, null, null, null, null, null, true,
+                BundleComponentConsentToken.from(consented))))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("집합이 변경");
+        verify(bundleComponentService, never()).removeBundleChildren(productId, "system");
+    }
+
+    private BundleComponent component(UUID parentId, String code) {
+        BundleComponent component = BundleComponent.seed(parentId, code, BigDecimal.ONE,
+                BundleComponent.QtyMode.FOLLOW_SET, BundleComponent.ComponentKind.ACCESSORY,
+                null, false, null);
+        org.springframework.test.util.ReflectionTestUtils.setField(component, "id", UUID.nameUUIDFromBytes(
+                (parentId + ":" + code).getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        return component;
     }
 
     @Test
@@ -1097,5 +1220,16 @@ class ProductServiceTest {
     @Test
     void escapeLikeWildcards_noSpecialChars_unchanged() {
         assertThat(ProductService.escapeLikeWildcards("AJ040RXH4BC1")).isEqualTo("AJ040RXH4BC1");
+    }
+
+    private List<BundleComponent> children(UUID parentId, int count) {
+        return IntStream.range(0, count).mapToObj(i -> {
+            BundleComponent child = BundleComponent.seed(parentId, "CHILD-" + i,
+                    BigDecimal.ONE, BundleComponent.QtyMode.FOLLOW_SET,
+                    BundleComponent.ComponentKind.ACCESSORY, null, false, null);
+            org.springframework.test.util.ReflectionTestUtils.setField(child, "id", UUID.nameUUIDFromBytes(
+                    (parentId + ":" + i).getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+            return child;
+        }).toList();
     }
 }

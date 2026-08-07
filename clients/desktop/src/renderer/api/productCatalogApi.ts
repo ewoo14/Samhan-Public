@@ -111,6 +111,8 @@ export interface ProductCatalogRow {
   productType?: ProductType
   /** 활성 구성품 수 — BUNDLE 외 0. BE 응답 없을 시 undefined */
   componentCount?: number
+  /** 서버가 계산한 활성 구성품 집합 결박 토큰(구성품 UUID 자체는 노출하지 않음). */
+  componentSetToken?: string
 }
 
 /** Classification 단계 — BE Classification.CatLevel enum 과 동일 */
@@ -318,6 +320,8 @@ export interface CreateProductRequest {
   usageScope?: UsageScope | null
   estimateCategories?: EstimateCategory[] | null
   specs: ProductSpecInput[]
+  /** BUNDLE 구성품 soft-delete 확인. 생략/false면 서버가 위험 전환을 차단한다. */
+  confirmBundleChildrenDeletion?: boolean
 }
 
 /** `PATCH /api/v1/products/{id}` 요청 body — 폼에서는 단일/세트만 수정한다 */
@@ -336,6 +340,8 @@ export interface UpdateProductRequest {
   usageScope?: UsageScope | null
   estimateCategories?: EstimateCategory[] | null
   specs: ProductSpecInput[]
+  confirmBundleChildrenDeletion?: boolean
+  expectedBundleComponentSetToken?: string
 }
 
 // ---------------------------------------------------------------------------

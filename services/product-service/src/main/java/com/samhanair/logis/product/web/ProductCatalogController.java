@@ -3,6 +3,8 @@ package com.samhanair.logis.product.web;
 import static com.samhanair.logis.product.service.ProductService.escapeLikeWildcards;
 
 import com.samhanair.logis.product.domain.EstimateCategory;
+import com.samhanair.logis.product.domain.BundleComponent;
+import com.samhanair.logis.product.domain.BundleComponentConsentToken;
 import com.samhanair.logis.product.domain.Product;
 import com.samhanair.logis.product.domain.ProductEstimateExposure;
 import com.samhanair.logis.product.domain.ProductSpec;
@@ -176,9 +178,10 @@ public class ProductCatalogController {
                 .map(Product::getId)
                 .collect(Collectors.toSet());
 
-        Map<UUID, Long> countMap = bundleIds.isEmpty()
+        Map<UUID, List<BundleComponent>> componentsByBundleId = bundleIds.isEmpty()
                 ? Map.of()
-                : bundleComponentRepository.countMapByBundleProductIds(bundleIds);
+                : bundleComponentRepository.findActiveByBundleProductIdIn(bundleIds).stream()
+                        .collect(Collectors.groupingBy(BundleComponent::getBundleProductId));
 
         Map<UUID, List<ProductEstimateExposure>> exposuresByProductId = products.isEmpty()
                 ? Map.of()
@@ -195,8 +198,8 @@ public class ProductCatalogController {
                     if (p.getProductType() != ProductType.BUNDLE) {
                         return r;
                     }
-                    long cnt = countMap.getOrDefault(p.getId(), 0L);
-                    return r.withComponentCount((int) cnt);
+                    List<BundleComponent> components = componentsByBundleId.getOrDefault(p.getId(), List.of());
+                    return r.withComponentCount(components.size(), BundleComponentConsentToken.from(components));
                 })
                 .toList();
 
