@@ -115,6 +115,47 @@ const MULTI_FIELD_REVISION: SlipRevision[] = [
 ]
 
 describe('SlipVersionHistoryPanel', () => {
+  it('버전이력 버튼을 눌러야 모달이 열리고 변경항목은 접힌 채 전부 도달 가능하다', async () => {
+    vi.mocked(slipRevisionApi.listRevisions).mockResolvedValue([
+      {
+        ...HEADER_PREFIXED_REVISION[0],
+        revisionNo: 2,
+        createdAt: '2026-06-30T09:15:00',
+        fieldChanges: Array.from({ length: 78 }, (_, index) => ({
+          fieldPath: `header.field${index}`,
+          label: `변경 항목 ${index + 1}`,
+          beforeValue: `이전 ${index + 1}`,
+          afterValue: `이후 ${index + 1}`,
+          actorName: '김영업',
+          actorColor: '#DB2777',
+          changedAt: '2026-06-30T09:15:00',
+        })),
+      },
+      {
+        ...HEADER_PREFIXED_REVISION[0],
+        revisionNo: 1,
+        createdAt: '2026-06-29T09:15:00',
+        fieldChanges: [],
+      },
+    ])
+
+    renderPanel()
+
+    expect(screen.queryByTestId('slip-version-history-list')).toBeNull()
+    fireEvent.click(await screen.findByRole('button', { name: '버전이력' }))
+
+    const list = await screen.findByTestId('slip-version-history-list')
+    expect(list).toBeTruthy()
+    const changes = screen.getByTestId('slip-version-history-changes-2')
+    expect(changes.tagName).toBe('DETAILS')
+    expect((changes as HTMLDetailsElement).open).toBe(false)
+
+    fireEvent.click(changes.querySelector('summary')!)
+    expect((changes as HTMLDetailsElement).open).toBe(true)
+    expect(screen.getByTestId('slip-version-history-change-header-field77')).toBeTruthy()
+    expect(screen.getByTestId('slip-version-history-row-1')).toBeTruthy()
+  })
+
   it('버전별 필드/품목 셀 변경 목록과 단일 actor 색상을 표시한다', async () => {
     vi.mocked(slipRevisionApi.listRevisions).mockResolvedValue([
       {
@@ -156,6 +197,7 @@ describe('SlipVersionHistoryPanel', () => {
     ])
 
     renderPanel()
+    fireEvent.click(screen.getByRole('button', { name: '버전이력' }))
 
     const memoChange = await screen.findByTestId('slip-version-history-change-header-memo')
     const quantityChange = await screen.findByTestId('slip-version-history-change-lines-0-quantity')
@@ -184,6 +226,7 @@ describe('SlipVersionHistoryPanel', () => {
     // "memo" 는 SlipCollaborationPanel 의 normalizeCollabAnchor('memo') 결과와 동일한 형태 —
     // 코멘트 anchor 클릭이 실제로 만드는 activeFieldPaths 배열 값을 그대로 재현한다.
     renderPanel({ activeFieldPaths: ['memo'] })
+    fireEvent.click(screen.getByRole('button', { name: '버전이력' }))
 
     const memoChange = await screen.findByTestId('slip-version-history-change-header-memo')
     expect(memoChange.getAttribute('data-active')).toBe('true')
@@ -200,6 +243,7 @@ describe('SlipVersionHistoryPanel', () => {
     const onRevisionSelect = vi.fn()
 
     renderPanel({ onRevisionSelect })
+    fireEvent.click(screen.getByRole('button', { name: '버전이력' }))
 
     const memoChange = await screen.findByTestId('slip-version-history-change-header-memo')
     fireEvent.click(memoChange)
@@ -217,6 +261,7 @@ describe('SlipVersionHistoryPanel', () => {
     vi.mocked(slipRevisionApi.listRevisions).mockResolvedValue(MULTI_FIELD_REVISION)
 
     renderPanel({ activeFieldPaths: ['shippingAddress'] })
+    fireEvent.click(screen.getByRole('button', { name: '버전이력' }))
 
     const memoChange = await screen.findByTestId('slip-version-history-change-header-memo')
     const shippingChange = await screen.findByTestId('slip-version-history-change-header-shippingAddress')
@@ -231,6 +276,7 @@ describe('SlipVersionHistoryPanel', () => {
     vi.mocked(slipRevisionApi.listRevisions).mockResolvedValue(MULTI_FIELD_REVISION)
 
     renderPanel({ activeFieldPaths: ['memo', 'shippingAddress'] })
+    fireEvent.click(screen.getByRole('button', { name: '버전이력' }))
 
     const memoChange = await screen.findByTestId('slip-version-history-change-header-memo')
     const shippingChange = await screen.findByTestId('slip-version-history-change-header-shippingAddress')

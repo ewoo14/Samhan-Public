@@ -10,7 +10,7 @@
  * <p>slipId 는 prop/path 전용 — 화면 노출 X. 표시 텍스트는 actorName / slipNo 만 사용한다
  * ([[uuid-no-user-visibility]]).
  */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Badge, Button, Card, Modal, Spinner } from '@samhan/design-system'
 import {
@@ -196,6 +196,8 @@ export function SlipVersionHistoryPanel({
   onRevisionSelect,
 }: SlipVersionHistoryPanelProps) {
   const queryClient = useQueryClient()
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [expandedRevisionNos, setExpandedRevisionNos] = useState<Set<number>>(() => new Set())
   /** 복원 confirm modal 대상 revision (null = 미오픈). */
   const [restoreTarget, setRestoreTarget] = useState<SlipRevision | null>(null)
   /** 복원 성공/실패 toast. */
@@ -204,7 +206,7 @@ export function SlipVersionHistoryPanel({
   const revisionsQuery = useQuery({
     queryKey: ['slipRevisions', slipId],
     queryFn: () => listRevisions(slipId),
-    enabled: !!slipId,
+    enabled: !!slipId && historyOpen,
   })
 
   const restoreMutation = useMutation({
@@ -239,6 +241,30 @@ export function SlipVersionHistoryPanel({
       .filter((path) => path.length > 0),
   )
 
+  const hasActiveHistoryTarget = activeRevisionNo !== null || normalizedActiveFieldPaths.size > 0
+
+  useEffect(() => {
+    if (hasActiveHistoryTarget) setHistoryOpen(true)
+  }, [activeRevisionNo, hasActiveHistoryTarget, normalizedActiveFieldPaths])
+
+  useEffect(() => {
+    if (!hasActiveHistoryTarget || revisions.length === 0) return
+    const matchingRevisionNos = revisions
+      .filter((revision) => {
+        if (activeRevisionNo === revision.revisionNo) return true
+        return revision.fieldChanges?.some((change) => (
+          normalizedActiveFieldPaths.has(normalizeFieldPath(change.fieldPath))
+        )) ?? false
+      })
+      .map((revision) => revision.revisionNo)
+    if (matchingRevisionNos.length === 0) return
+    setExpandedRevisionNos((previous) => {
+      const next = new Set(previous)
+      matchingRevisionNos.forEach((revisionNo) => next.add(revisionNo))
+      return next.size === previous.size ? previous : next
+    })
+  }, [activeRevisionNo, hasActiveHistoryTarget, normalizedActiveFieldPaths, revisions])
+
   return (
     <Card
       padding={4}
@@ -246,7 +272,14 @@ export function SlipVersionHistoryPanel({
       style={{ marginTop: 24 }}
       data-testid="slip-version-history-panel"
     >
-      <h4 style={{ marginTop: 0 }}>버전 이력</h4>
+      <Button
+        variant="secondary"
+        type="button"
+        data-testid="slip-version-history-open"
+        onClick={() => setHistoryOpen(true)}
+      >
+        버전이력
+      </Button>
 
       {/* 복원 결과 toast — 사용자 닫기 가능 */}
       {toast ? (
@@ -295,6 +328,12 @@ export function SlipVersionHistoryPanel({
         </div>
       ) : null}
 
+      <Modal
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        title="버전 이력"
+        size="xl"
+      >
       {revisionsQuery.isLoading ? (
         <div
           style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0' }}
@@ -383,26 +422,38 @@ export function SlipVersionHistoryPanel({
                     {formatChangeSummary(rev)}
                   </span>
                   {fieldChanges.length > 0 ? (
-                    <div
+                    <details
                       data-testid={`slip-version-history-changes-${rev.revisionNo}`}
+                      open={expandedRevisionNos.has(rev.revisionNo)}
+                      onToggle={(event) => {
+                        const open = event.currentTarget.open
+                        setExpandedRevisionNos((previous) => {
+                          const next = new Set(previous)
+                          if (open) next.add(rev.revisionNo)
+                          else next.delete(rev.revisionNo)
+                          return next
+                        })
+                      }}
                       style={{
-                        display: 'grid',
-                        gap: 4,
                         marginTop: 4,
-                        paddingLeft: 2,
                       }}
                     >
-                      {fieldChanges.map((change) => {
-                        const normalized = normalizeFieldPath(change.fieldPath)
-                        return renderFieldChange(change, {
-                          active: activeRevisionNo === rev.revisionNo
-                            || normalizedActiveFieldPaths.has(normalized),
-                          onSelect: onRevisionSelect
-                            ? () => onRevisionSelect(rev.revisionNo, [normalized])
-                            : undefined,
-                        })
-                      })}
-                    </div>
+                      <summary style={{ cursor: 'pointer', fontSize: 12, color: 'var(--color-neutral-600)' }}>
+                        변경 항목 {fieldChanges.length}개
+                      </summary>
+                      <div style={{ display: 'grid', gap: 4, marginTop: 4, paddingLeft: 2 }}>
+                        {fieldChanges.map((change) => {
+                          const normalized = normalizeFieldPath(change.fieldPath)
+                          return renderFieldChange(change, {
+                            active: activeRevisionNo === rev.revisionNo
+                              || normalizedActiveFieldPaths.has(normalized),
+                            onSelect: onRevisionSelect
+                              ? () => onRevisionSelect(rev.revisionNo, [normalized])
+                              : undefined,
+                          })
+                        })}
+                      </div>
+                    </details>
                   ) : null}
                 </div>
                 {!isLatest ? (
@@ -424,6 +475,8 @@ export function SlipVersionHistoryPanel({
           })}
         </ul>
       )}
+
+      </Modal>
 
       {/* 복원 confirm modal — DS Modal */}
       <Modal

@@ -111,6 +111,8 @@ describe('PartnerOrderCollaborationPanel + PartnerOrderVersionHistoryPanel row b
     expect(dueDateComment!.getAttribute('data-active')).toBeNull()
     expect(generalComment!.getAttribute('data-active')).toBeNull()
 
+    fireEvent.click(memoComment!)
+
     fireEvent.click(await screen.findByTestId('partner-order-version-history-row-4'))
 
     await waitFor(() => {

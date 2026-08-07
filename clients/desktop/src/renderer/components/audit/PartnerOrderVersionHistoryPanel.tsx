@@ -22,7 +22,7 @@
  *
  * <p>{@link ./PartnerVersionHistoryPanel} 미러 (partner-service → partner-order-service 이식).
  */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Badge, Button, Card, Modal, Spinner } from '@samhan/design-system'
 import {
@@ -149,6 +149,7 @@ export function PartnerOrderVersionHistoryPanel({
   onRevisionSelect,
 }: PartnerOrderVersionHistoryPanelProps) {
   const queryClient = useQueryClient()
+  const [historyOpen, setHistoryOpen] = useState(false)
 
   /** 복원 confirm modal 대상 revision (null = 미오픈). */
   const [restoreTarget, setRestoreTarget] = useState<PartnerOrderRevision | null>(null)
@@ -165,7 +166,7 @@ export function PartnerOrderVersionHistoryPanel({
   const revisionsQuery = useQuery({
     queryKey: ['partner-order-revisions', orderId],
     queryFn: () => listPartnerOrderRevisions(orderId),
-    enabled: !!orderId,
+    enabled: !!orderId && historyOpen,
   })
 
   const restoreMutation = useMutation({
@@ -202,6 +203,10 @@ export function PartnerOrderVersionHistoryPanel({
     ? revisionsQuery.data
     : []
 
+  useEffect(() => {
+    if (activeRevisionNo !== null || activeFieldPath) setHistoryOpen(true)
+  }, [activeFieldPath, activeRevisionNo])
+
   return (
     <Card
       padding={4}
@@ -209,7 +214,14 @@ export function PartnerOrderVersionHistoryPanel({
       style={{ marginTop: 24 }}
       data-testid="partner-order-version-history-panel"
     >
-      <h4 style={{ marginTop: 0 }}>버전 이력</h4>
+      <Button
+        variant="secondary"
+        type="button"
+        data-testid="partner-order-version-history-open"
+        onClick={() => setHistoryOpen(true)}
+      >
+        버전이력
+      </Button>
 
       {/* 복원 불가 상태 안내 — CONFIRMING / CANCELED 는 복원 불가 */}
       {!restorable ? (
@@ -275,6 +287,12 @@ export function PartnerOrderVersionHistoryPanel({
         </div>
       ) : null}
 
+      <Modal
+        open={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        title="버전 이력"
+        size="xl"
+      >
       {revisionsQuery.isLoading ? (
         <div
           style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0' }}
@@ -397,6 +415,8 @@ export function PartnerOrderVersionHistoryPanel({
           })}
         </ul>
       )}
+
+      </Modal>
 
       {/* 복원 confirm modal — DS Modal (native confirm 금지, PR #320 교훈). */}
       <Modal

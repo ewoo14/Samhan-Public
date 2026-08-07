@@ -111,6 +111,8 @@ describe('EstimateCollaborationPanel + EstimateVersionHistoryPanel row bridge', 
     expect(validUntilComment!.getAttribute('data-active')).toBeNull()
     expect(generalComment!.getAttribute('data-active')).toBeNull()
 
+    fireEvent.click(memoComment!)
+
     fireEvent.click(await screen.findByTestId('estimate-version-history-row-3'))
 
     await waitFor(() => {
