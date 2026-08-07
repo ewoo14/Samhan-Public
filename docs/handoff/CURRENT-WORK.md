@@ -1,115 +1,93 @@
 # 현재 작업 핸드오프 노트
 
-## 2026-08-07 집PC 세션 — **머지 2건 완료** · 세션 재시작 지점
+## 2026-08-07 집PC 세션 (23:20 갱신) — **머지 10건** · 세션 재시작 지점
 
 > **재시작 시 이 절만 읽으면 된다.** 아래 절들은 이력이다.
 
 ### 0. 한 줄 결론
 
-**GitHub Actions 장애가 복구돼 밤새 막혔던 것이 풀렸고, 머지 2건을 끝냈다.**
-남은 5 PR 은 **전부 CI green(BE 샤드 12/12)** 이고 병목은 이제 **라이브QA** 다.
+**하루 10건을 머지했고, 열린 PR 4건은 전부 최종 라운드(재수렴/라이브QA)에 들어와 있다.**
 
 ```text
-✅ #1088  머지 257c8f9f7 · 이슈 #1013 close
-✅ #1077  머지 424bf88ef · 이슈 #1069 close   ← 11라운드 금액 결함
+✅ 머지 10건
+   #1078 7f7f8501a · #1083 414d9274a · #1066 a8e3ede37 · #1082 ad99dda99 · #1103 a26f27784
+   #1097 6d4172ad4 · #1109 0fb99833 · #1107 39ff2edd · #1104 0a78de74 · #1105 d59b0d43
 
-#1066  ①✅SOL R10 결함0  ②42/42(R10 커밋분 재실행 필요)  ③미실시
-#1097  ①✅  ②42/42  ③만 남음
-#1083  ①✅  ②43/43  ③만 남음 — slip-service 재빌드 필요
-#1082  ①✅  ②38/38  ③만 남음 — #1097 머지 후 (V16→V17)
-#1078  ①✅  ②49/49(병합 전 SHA)  main 병합 충돌 미해소
-열린 이슈 33
+🔵 열린 PR 4
+   #1115 (#1110 협업권위)   S5 커밋 64978ee43 — RED-A~E 동시 GREEN · CI 대기
+   #1117 (#1111 세트소관)   S6 라이브QA 중 · CI red 1(Playwright spec 3건 — 판정 완료, 갱신만 남음)
+   #1118 (#1116 가드모집단) S5 커밋 d5236a9bc — CI 재판정 대기
+   #1119 (#1113 smoke JWT)  S4 SOL 재수렴 중 · CI 38/38 ✅
+
+열린 이슈 31 (오늘 생성 0 · 통합 3)
 ```
 
-### 1. 🚨 재시작 후 첫 할 일 — `#1078` 병합 충돌
-
-병합은 **abort 해 뒀다**(세션 중단으로 미완). 판단표는 `f5e1932db` 에 커밋돼 있으니
-**재분석하지 말고 재사용**한다.
+### 1. 🚨 개발책임자 판단 대기 2건
 
 ```text
-워크트리   .claude/worktrees/t1075  (브랜치 feat/1075-estimate-product-candidate-modal)
-재개       git merge --no-commit --no-ff origin/main
-보고서     docs/dev-reports/2026-08-07-1075-main-merge-conflict-resolution.md
+#1106  마감 후 출고일 편집 허용 여부 — **무결성 도메인**이라 PM 이 추론 안 함
+       (가) 출고일을 편집 가능하게  (나) 안내 문구를 실제 가능한 행동으로
+#896   리모컨 vs 실외기 — 어느 쪽이 정본인가 (#1114 를 흡수)
+       식별자·백엔드(BundleExpander:398)·레거시는 전부 "리모컨" · 프런트 라벨만 "실외기"
 ```
 
-충돌 6파일은 전부 **"양쪽 병렬 보존"** 으로 결론났고 판단이 갈린 곳은 없다.
-
-🚨 **지정 충돌 밖의 의미 충돌이 진짜 막힌 지점이다.**
-main 이 `routes/components/BundleOptionRow.tsx` 를 삭제했는데 `EstimateFormPage.tsx` 가
-계속 import·렌더해서 Vite 해석이 실패한다.
-
-**PM 실측 판정: 복원하지 않는다.** main 이 `EstimateFormPage` 사용부까지 −27/+1 로 이미
-걷어냈다 — import · `updateSetOption` · 모바일카드/데스크톱 렌더 2곳.
-
-⚠️ 그중 이 한 줄은 단순 삭제가 아니라 **`#1077` 의 결함 수정**이라 반드시 살려야 한다:
-
-```diff
--  setOptions: emptyBundleSetOptions(),
-+  setOptions: line.setOptions ?? emptyBundleSetOptions(),
-```
-
-편집 모드에서 저장된 옵션을 빈 값으로 덮지 않게 한 것이다. 사라지면 금액이 틀어진다.
-
-### 2. 라이브QA 순서 — 데이터를 바꾸는 것을 뒤로
+### 2. 🚨 오늘 새로 박힌 규칙
 
 ```text
-#1083(무해) → #1078 → #1097(V117 이 시더문서 대량 soft-delete) → #1082
+🚫 이슈 생성 금지 (개발책임자 2026-08-07) — 07-30 자율 위임 철회
+   "이슈가 왜 자꾸 늘어... 이슈 생성하지마" (하루 6건 남발 후)
+   발견은 **현재 PR 안에서 흡수** · 정말 별 트랙이면 **먼저 묻는다** ·
+   어려우면 PR 코멘트/보고서에 **기록만**
+   → .claude/memory/feedback_issue_registration_delegated_to_pm.md
+
+🎮 사용자가 게임 중 — 모든 QA 는 headless · 라운드 끝에 프로세스 회수
+   node_repl 이 codex 툴콜마다 쌓인다(10분에 1개꼴). 주기적으로 걷는다
+   내 프로세스는 BelowNormal
 ```
 
-🔑 `#1097` 을 먼저 돌리면 이후 트랙 QA 가 표본을 잃어 **"결함 0" 이 아니라 "판정 불가"** 가 된다.
-🔑 `#1083` 은 slip-service main 소스 19개(창고 매핑 클라이언트·검증 서비스)가 바뀌었는데
-   배포본은 `#1077` QA 용이다 — **재빌드 후 QA**. 빌드는 BelowNormal 로.
-
-### 3. 🚨 게이트 ② 를 셀 때 — 두 PR 에서 같은 구멍이 났다
-
-`workflow_dispatch` 는 **지정한 워크플로우 하나만** 돈다.
-**PR close→reopen 이 전체 재발화 수단**이다(`arologis-ci.yml` 은 `workflow_dispatch` 가 없다).
+### 3. 🚨 오늘 배운 것 — 다음 세션이 반복하면 안 되는 것
 
 ```text
-#1077  ci.yml 만 23잡 green → QA E2E·mock gate·Detox 없음 → qa-e2e 발주 30잡
-       → 그래도 arologis 빌드 없음(shared/common·design-system 을 건드렸는데)
-       → close/reopen → 78잡. 아로로지스 7잡 전부 success 로 확인
-#1097  GitGuardian 1개뿐(BE샤드 0/12) → close/reopen → 42잡
+① 검증 보고를 **코드로 되짚지 않고** 게이트를 닫았다
+   #1109 S6 의 "삭제 관문 동작" 이 false positive 였는데 그대로 머지했다.
+   실제로는 DELETE endpoint 에 가드가 아예 없었고 구성품이 활성 고아로 남았다.
+   → #1108 에 정정 게시 · #1117 S5 에서 흡수해 고침
+
+② 만든 가드를 **CI 가 안 돌리고 있었다**
+   grep -rn "qa-credentials" .github/workflows/ → 0건
+   #1101 이 네 라운드 들여 만든 자격 가드를 CI 가 한 번도 실행하지 않았다.
+   → #1118 S5 에서 ci.yml 에 배선 + 위반 probe 로 exit 1 확인
+
+③ "0건" 은 없다가 아니라 **내 필터에 안 걸렸다** 일 수 있다
+   Grep 에 부정 glob 하나만 주면 제외가 아니라 **포함**으로 걸려 범위가 좁아진다.
+   전수는 `git ls-files` 를 권위로 삼는다.
+
+④ 빨개진 테스트는 고칠 대상이 아니라 **읽을 신호**
+   판별문 = "이 단정이 지키던 사용자 경로가 아직 살아 있는가"
+   살면 테스트 갱신(+없앤 동작을 단정하는 spec 신설) · 죽었으면 코드를 고친다
+
+⑤ 배포본 불일치로 라운드가 **네 번** 판정 불가였다
+   브리핑 맨 앞에 "환경 확인 절" 을 넣고, 검증자가 **직접** 배포 시각·클래스 존재를 확인하게 한다
+
+⑥ 한 칸씩 막지 말고 **규칙 하나**를 뽑는다
+   #1105 (결함 3 → 규칙 하나 → 0) · #1115 (다섯 라운드 → 규칙 하나 → RED-A~E GREEN)
 ```
 
-🔑 판별 = **직전 머지 PR 의 잡 목록과 `comm -23` 대조** · **BE 샤드 12/12 를 셀 것**
-🔑 변경 경로는 `gh pr diff --name-only` 가 **0을 낼 수 있다** — `git merge-base` + `git diff` 로 재라
-
-### 4. 개발책임자 결정 (기록 완료)
+### 4. 배포 상태 (라이브QA 전 반드시 확인)
 
 ```text
-#1066 D3   후속 전이는 결재선 개인·정적 권한자 **둘 다 가능**
-#1066      CONFIRMED 를 허용 상태에 추가 (확정 후에도 조회 가능)
-#1097      혼합 문서 전체 삭제 · QA797 은 삭제상태 + 복원차단
-#1090      레거시 모델코드 파싱이 정본
+Docker 스택 compose 프로젝트 = .claude/worktrees/t1096/infrastructure
+  ⚠️ t1096 워크트리는 **스택 호스트라 지우면 안 된다** (#1097 은 머지됐지만 유지)
+
+22:44:03 재배포  product-service (t1111 jar · V32 적용 확인) ·
+                partner-order-service (t1110 jar · AuthorityEventPublisher)
+19:08:01 재배포  slip-service (t1096)
+
+infrastructure/.env.local 은 gitignore 라 워크트리마다 따로 필요하다.
+  현재 8개 워크트리 + main 에 배포해 뒀다. 새 워크트리를 만들면 복사할 것
 ```
 
-### 5. 결정 대기
-
-```text
-#1092  4문 (담당 정의 · '복구' 의미 · 이력 포함 여부 · 기존 2,017건 소급 분류)
-#1083  D2① 최초기동 alias 준비 위치 · D2② 입력형식
-```
-
-### 6. 환경
-
-```text
-Docker      18컨테이너 healthy · compose 는 slip-port-override 포함 3개 파일
-slip 직접    :18086 (influxd 가 8086 선점)
-계정        dev_manager/${QA_DEV_DEFAULT_PASSWORD} · kimgicheol·kimeunji/${QA_MASTER_PASSWORD} · 아로로지스 admin/${QA_AROLOGIS_ADMIN_PASSWORD}
-QA 수단      clients/desktop **안에서** node <script>.mjs · chromium.launch({headless:true})
-typecheck   첫 단계는 design-system/dist 신선도 가드 — 타입 오류가 아니다
-배포본       QA 전에 **값을 내는 서비스**를 지목하고 fix 식별자를 grep (0건이면 중단·보고)
-프로세스     라운드 종료 후 회수 필수 — 워크트리를 지워도 402분 생존한 사례 있음
-            죽이기 전 **실행파일 경로**로 판별 (커맨드라인 매칭은 자기 셸까지 죽인다)
-```
-
-### 7. QA 가 바꾼 공유 데이터
-
-```text
-2026/08/07-3   INSPECTING → COMPLETED (kimgicheol 검수, 정상 경로)
-```
-
+---
 
 ## 2026-08-06 회사PC 세션 (**종료** · 집PC 인계) — 머지 0건 · 라운드 27건 · 개발책임자 결정 11건
 
