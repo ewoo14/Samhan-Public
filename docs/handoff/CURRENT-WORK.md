@@ -146,29 +146,26 @@ V97 이 `.list` 비트를 정본 코드로 복제하는 구조였습니다. **�
 
 ## 3. 트랙별 상태
 
-### #1124 마감날짜 — 머지 직전, main 만 기다림
-브랜치 `feat/1123-closed-date-guard` · 워크트리 `t1123` · HEAD `3cb7f0daa`
-```
-게이트 ①  도달 결함 0        SOL 재수렴 + 라이브QA 진행 중
-게이트 ②  CI                 실패 2잡 — 둘 다 같은 가드 하나(main 원인)
-게이트 ③  라이브QA           진행 중
-```
-재배포 완료: `slip-service` (2026-08-09 00:56 KST · healthy)
+| 트랙 | PR | HEAD | 상태 |
+|---|---|---|---|
+| 마감날짜 | #1124 | — | ✅ **머지** `d09d5db15` · 이슈 #1123 close |
+| 회계전표 P0-B | #1145 | `2c8ff777e` | CI ✅ · **질문 1·2 답만 기다림** |
+| 이월 배치 | #1127 | `fb36f317f` | D-1 fix 라운드 진행 중 |
+| 입고 lifecycle | #1130 | `f3cb1ffb4` | 정찰 완료 · **질문 3 대기** |
+| 끊긴 연결 | #1129 | `c4b57f1cf` | 정찰 완료 · **질문 4 대기** |
+| 구글 의존성 제거 | (main) | `841e5da81` | P1·P2 설계 완료 · **질문 5·6 대기** |
 
-🔑 이 트랙의 교훈: `inspect()` 하나 → 복원·revision → PUT/DELETE 로 **세 번 반복된 뒤에야** 전수 차집합으로 바꿨고, 그러자 8개가 한 번에 나왔습니다.
+### #1145 회계전표 P0-B
+R1 → R2 → R3 완료, 코멘트 3건 게시. 🚫 **더 이상 fix 라운드 돌지 않습니다** — 남은 것은 엔지니어링이 아니라 결정입니다.
 
-### #1145 회계전표 P0-B — 판단 대기
-브랜치 `feat/1144-accounting-slip-spec` · 워크트리 `t1144` · HEAD `a1837c93c`
-R1→R2→R3 완료, 코멘트 3건 게시. 🚫 **더 이상 fix 라운드 돌지 않습니다** — 남은 것은 엔지니어링이 아니라 결정입니다.
-
-### #896 구글 의존성 제거 — 조사 완료 · P0 완료
+### #896 구글 의존성 제거
 ```
 수식 인벤토리   3,391건 → 2,648그룹
-parity          불합격 확정 (같은 커밋 재측정으로 confound 제거)
 시트 탭         27개 중 code-read 17개 전부 CSV 확보
 열 계약         납품가-2 = 문맥 가격 · 141개는 배분 "가중치"
-재현 검증       일치 22 · 불일치 83 · 판정불가 36   ← 분류 라운드 진행 중
-셀 의미         $L$2·$I$1 = 변동DC 여부 · '용량' 단위 = kW (개발책임자 답변)
+불일치 83건     ✅ 계산 순서 차이 하나로 판명 · 결정 질문 0개
+P2 적재 설계    ✅ 기존 6테이블 재사용 + 신규 3
+합격 관문       explodeSetParts() 반환 상세행이 골든과 일치 (원시 셀 아님)
 ```
 🚨 앱 기본 소스는 **이미 DB** (`CATALOG_SOURCE` 기본값 `db`).
 
@@ -178,9 +175,8 @@ parity          불합격 확정 (같은 커밋 재측정으로 confound 제거)
 🚨 역연산 없는 재고 API 4개: deduct · ship-batch · lots/inbound · instances/batch
 되돌림 대상 60건 (INBOUND 20 + OUTBOUND 40)
 설계안: docs/dev-reports/2026-08-08-1142-inverse-ops-design.md
+PM 판단: 별도 트랙으로 빼지 않고 #1142 안에서 함께 간다
 ```
-
----
 
 ## 4. 운영 규칙 — 이번 세션에서 배운 것
 
@@ -201,7 +197,7 @@ parity          불합격 확정 (같은 커밋 재측정으로 confound 제거)
 ## 5. 환경
 
 ```
-Docker   slip-service = #1124 브랜치 빌드 (3cb7f0daa 시점, 00:56 KST)
+Docker   slip-service · auth-service · api-gateway = main 빌드 (d09d5db15, 02:5x KST)
          override 필수: -f docker-compose.yml -f docker-compose.local-all.yml
                         -f docker-compose.slip-port-override.yml
          재배포는 --no-deps 와 함께
