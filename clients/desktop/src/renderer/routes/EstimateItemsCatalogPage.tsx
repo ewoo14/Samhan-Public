@@ -68,7 +68,7 @@ import {
   listClassifications,
   type Classification,
 } from '../api/classificationApi'
-import { searchProducts as searchProductsApi } from '../api/productApi'
+import { isSelectableProductStatus, searchProducts as searchProductsApi } from '../api/productApi'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { usePermissions } from '../hooks/usePermissions'
 import { usePageTitleStore } from '../stores/pageTitle'
@@ -103,7 +103,7 @@ export async function searchMasterProducts(
 ): Promise<ProductOption[]> {
   const products = await searchProducts(q, { size: PAGE_SIZE })
   return products.filter((product) => {
-    if (product.productCategory === 'MATERIAL') return false
+    if (!isSelectableProductStatus(product.status) || product.productCategory === 'MATERIAL') return false
     return !(product.estimateCategories ?? []).includes(committedCategory)
   })
 }
