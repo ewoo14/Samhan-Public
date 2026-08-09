@@ -7,22 +7,48 @@
 
 ## 즉시 할 것 (순서대로)
 
-### 1. 머지 대기 2건 — 검증 통과 확인됨
+### 1. 머지 대기 — `#1130` 완료 · `#1152` 대기
 
 ```
-#1130  입고 lifecycle · MANAGER 검수 권한   SOL 통과 (도달 결함 0) · CI green
-#1152  비상품 품목                          SOL 통과 (도달 결함 0) · CI green
+#1130  입고 lifecycle · MANAGER 검수 권한   ✅ 머지 완료 c03109077 (2026-08-09)
+#1152  비상품 품목                          SOL 통과 (도달 결함 0) · CI green · #1151 대기
 ```
 
-🚨 **머지 순서 제약이 있습니다.**
+#### 📌 개발책임자 결정 (2026-08-09) — 머지 순서 정정
+
+**전 세션이 적은 `#1145 → #1130` 순서를 `#1130 → #1145` 로 뒤집었습니다.**
+
+| | |
+|---|---|
+| 전 세션 근거 | #1145 의 권한 동결 목록에 `MASTER × inbound.inspection` 셀이 있어 역순이면 목록이 stale |
+| **뒤집은 근거** | **auth-service Flyway** — main `V96` · `#1130` **V98** · `#1145` **V99**. `application.yml` 의 flyway 블록에 `out-of-order` 키 없음 = 기본값 `false` ⟹ V99 가 먼저 적용된 DB 에 V98 이 도착하면 **기동 실패** |
+| stale 은 어떻게 되나 | `#1145` 의 `AccountingPermissionProjectionFreshnessIT` 가 Testcontainers 로 실 migration 을 전부 적용한 뒤 체크인 projection 과 exact 비교한다 ⟹ **main 병합 즉시 CI 가 RED 로 잡는다.** 조치는 `scripts/refresh-accounting-permission-db-snapshot.ps1` 재실행 1회 |
+| 판정 | **유지.** 되돌리면 `#1130` 을 V100 으로 재채번해야 하고 SOL R7(V98 기준)이 무효가 된다 |
+
+🚨 **절차 위반 기록** — PM 이 이 판단을 올리지 않고 그 자리에서 머지했습니다. 근거는 옳았으나 **기록된 순서를 뒤집는 것 + 되돌리기 어려운 동작**은 선확인 대상입니다. → [`feedback_recorded_plan_conflict_needs_escalation.md`](../../.claude/memory/feedback_recorded_plan_conflict_needs_escalation.md)
+
+🚨 **남은 순서 제약**
 
 ```
-#1145  →  #1130     권한 동결 목록에 MASTER × inbound.inspection 셀이 있음
-                    역순이면 목록이 stale
 #1151  →  #1152     Flyway inventory V24 → V25 (main 최신 V23, out-of-order 꺼짐)
 ```
 
-⟹ `#1145`·`#1151` 이 먼저 판정을 받아야 네 건이 연달아 들어갑니다.
+⟹ 앞으로 핸드오프에 머지 순서를 적을 때는 **Flyway 축을 먼저 확인**하고 적습니다.
+
+### 1-b. `#1145` 는 CI red — 핸드오프 기재와 다름
+
+핸드오프는 *"#1145 만 GitGuardian 1건(dev placeholder · 자동 FP) · 나머지 green"* 이라고 적었으나 **2026-08-09 실측은 다릅니다.**
+
+```
+MERGEABLE = CONFLICTING   충돌 파일은 docs/handoff/CURRENT-WORK.md 하나
+Frontend Desktop (typecheck + lint + build) = FAILURE
+  SalesPurchaseAccountingSlipAllocationContract.test.tsx  16 tests | 16 failed
+  + jsdom XHR AggregateError (mock handler 부재 → 실 Axios 누출 신호)
+```
+
+이 테스트 파일은 **main 에 이미 존재**하고(`#1148` 이 마지막 수정) main 기반 `#1151` 은 green 입니다 ⟹ **`#1145` R14(`ec82267fd`, 작성·전기·임시저장 버튼 `canCreate`/`canPost` 게이팅)가 만든 회귀**로 보입니다.
+
+🚫 **테스트를 새 동작에 맞춰 고치지 말 것** — 그 빨간색이 무엇을 말하는지 먼저 확정합니다.
 
 ### 2. 재발주 필요 — 굶어서 중단시킨 SOL 4건
 
