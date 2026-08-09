@@ -56,8 +56,6 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class StockService {
 
-    private static final String PRODUCT_TYPE_BUNDLE = "BUNDLE";
-
     private final StockLotRepository stockLotRepository;
     private final StockBalanceRepository stockBalanceRepository;
     private final StockMovementRepository stockMovementRepository;
@@ -240,6 +238,11 @@ public class StockService {
      * @throws BusinessException(CONFLICT) 가용 재고 부족 또는 낙관적 락 1회 재시도 후에도 실패할 때
      */
     public ReservationResponse reserve(ReserveRequest req, String actorUserId) {
+        if (isInventoryExcluded(productClient.requireExists(req.productId()))) {
+            // 비상품/세트 SKU — balance/reserve movement 를 만들지 않고 no-op skip.
+            return new ReservationResponse(req.productId(), req.warehouseId(), 0,
+                    0, 0, actorUserId);
+        }
         Warehouse warehouse = loadWarehouseOrThrow(req.warehouseId());
         // 가용 재고가 없거나(balance 미존재) 부족한 경우 모두 CONFLICT(409) 사전차단 —
         // Phase 2.6c §0 도메인 규칙: 입고된 적 없는 제품에 대한 예약도 동일하게 차단.
@@ -287,6 +290,11 @@ public class StockService {
      * @throws BusinessException(CONFLICT) 예약 재고 부족 또는 낙관적 락 1회 재시도 후에도 실패할 때
      */
     public ReservationResponse release(ReleaseRequest req, String actorUserId) {
+        if (isInventoryExcluded(productClient.requireExists(req.productId()))) {
+            // 예약되지 않은 비상품/세트 SKU의 보상 해제도 재고를 만들지 않고 no-op skip.
+            return new ReservationResponse(req.productId(), req.warehouseId(), 0,
+                    0, 0, actorUserId);
+        }
         Warehouse warehouse = loadWarehouseOrThrow(req.warehouseId());
         StockBalance balance = loadBalanceOrThrow(req.productId(), req.warehouseId());
 
@@ -513,7 +521,7 @@ public class StockService {
      * 세트가 들어와도 비상품과 동일하게 no-op skip 한다.
      */
     private boolean isInventoryExcluded(ProductSummary product) {
-        return !product.goods() || PRODUCT_TYPE_BUNDLE.equals(product.productType());
+        return InventoryProductGate.isExcluded(product);
     }
 
     /**
