@@ -292,8 +292,9 @@ public class SlipService {
 
         // 4. 라인 추가 — 직접 전표생성도 등록품목으로(개발책임자). BUNDLE(세트)면 product-service expand
         //    로 구성품 라인 N개 전개(견적 경로와 동일 단일 엔진), 아니면 1 라인.
-        String resolvedPartnerCode = req.slipType() == SlipType.OUTBOUND
-                ? partnerInternalClient.resolvePartnerCode(req.partnerId()).orElse(null) : null;
+        // OUTBOUND/INBOUND 모두 partnerId를 partner-service의 업무 식별자 partnerCode로 snapshot한다.
+        // lookup 실패는 기존 전표 생성 계약대로 빈 코드만 남기고 저장을 막지 않는다.
+        String resolvedPartnerCode = partnerInternalClient.resolvePartnerCode(req.partnerId()).orElse(null);
         // 단가는 화면이 DC/최근단가/사용자 협의가를 반영해 확정한 값을 정본으로 사용한다.
         // 서버에서 다시 dc-config-service를 호출하면 화면의 할인 완료 단가를 정가로 오인해
         // 전역DC를 재적용하므로(예: 970,200 -> 494,802) 계산하지 않는다.
@@ -405,8 +406,10 @@ public class SlipService {
         }
         // PR-H2 — memo 변경분 audit 사전 snapshot (도메인 mutation 직전 oldValue 보존)
         String oldMemo = slip.getMemo();
+        UUID previousPartnerId = slip.getPartnerId();
         applyMutation(() -> slip.editHeader(req.partnerId(), req.partnerName(),
                 req.deliveryTag(), req.memo(), req.driverName(), req.driverPhone()));
+        syncPartnerCodeAfterHeaderMutation(slip, previousPartnerId, req.partnerId());
         // [게이트⑦-배송일정] 태그 신규/변경 OR unloadDate override 시에만 재계산.
         // 태그 미변경+unloadDate 미전달이면 기존 unloadDate 유지(사용자 override 보존 — Codex 라운드 회귀 fix).
         if (tagChanged || req.unloadDate() != null) {
@@ -499,21 +502,7 @@ public class SlipService {
         if (effectivePartnerId != null && (slip.getBusinessNumber() == null || req.partnerId() != null)) {
             resolvedBusinessNumber = resolveBusinessNumber(effectivePartnerId);
         }
-        // partnerCode snapshot (2026-06-10) — partnerId 변경 또는 기존 NULL 시 resolve.
-        // '진짜 변경'(이전 partnerId 와 상이) 시에만 resolve 실패를 NULL clear 로 처리 —
-        // 이전 거래처 code 잔존(stale) 방지 (사이클1 P1). 같은 partnerId 재전송(FE 전체필드
-        // 전송 관행)은 백필 의미론(성공 시만 채움)이라 정상 code 가 clear 되지 않음 (사이클2 P1).
-        boolean partnerActuallyChanged =
-                req.partnerId() != null && !req.partnerId().equals(previousPartnerId);
-        if (effectivePartnerId != null && (slip.getPartnerCode() == null || partnerActuallyChanged)) {
-            java.util.Optional<String> resolvedCode =
-                    partnerInternalClient.resolvePartnerCode(effectivePartnerId);
-            if (partnerActuallyChanged) {
-                slip.setPartnerCode(resolvedCode.orElse(null));
-            } else {
-                resolvedCode.ifPresent(slip::setPartnerCode);
-            }
-        }
+        syncPartnerCodeAfterHeaderMutation(slip, previousPartnerId, req.partnerId());
         slip.withProjectInfo(
                 resolvedBusinessNumber,
                 req.deliveryAddress(),
@@ -909,6 +898,7 @@ public class SlipService {
         Slip slip = loadOrThrow(id);
         closedDateGuard.assertAllowed(slip.getSlipType(), slip.getSlipDate(), callerId);
         applyMutation(() -> {
+            ensurePartnerCodeBeforeCommitTransition(slip);
             slip.send();
             if (slip.getSlipType() != SlipType.OUTBOUND) {
                 slip.captureRedlineAnchorIfAbsent(maxStoredRevisionNo(slip.getId()));
@@ -1407,7 +1397,10 @@ public class SlipService {
     public SlipDetailResponse confirm(UUID id, String callerId) {
         Slip slip = loadOrThrow(id);
         closedDateGuard.assertAllowed(slip.getSlipType(), slip.getSlipDate(), callerId);
-        applyMutation(slip::confirm);
+        applyMutation(() -> {
+            ensurePartnerCodeBeforeCommitTransition(slip);
+            slip.confirm();
+        });
         return SlipDetailResponse.from(slip);
     }
 
@@ -1839,6 +1832,41 @@ public class SlipService {
             // 상세 조회(getOne)는 정상 반환해야 하므로 graceful fallback — 이름 null.
             return null;
         }
+    }
+
+    /**
+     * 헤더 mutation 뒤 partnerId/partnerCode snapshot을 동일한 규칙으로 동기화한다.
+     *
+     * <p>요청에 partnerId가 있고 이전 값과 달라졌으면 lookup 실패도 stale code 방지를 위해
+     * null로 지운다. 같은 partnerId 재전송 또는 partnerId 생략 시에는 lookup 성공 때만
+     * 빈 snapshot을 채워 기존 snapshot을 보존한다.
+     */
+    private void syncPartnerCodeAfterHeaderMutation(Slip slip, UUID previousPartnerId,
+                                                     UUID requestedPartnerId) {
+        UUID effectivePartnerId = requestedPartnerId != null ? requestedPartnerId : slip.getPartnerId();
+        boolean partnerActuallyChanged = requestedPartnerId != null
+                && !requestedPartnerId.equals(previousPartnerId);
+        if (effectivePartnerId == null
+                || (!partnerActuallyChanged && slip.getPartnerCode() != null
+                && !slip.getPartnerCode().isBlank())) {
+            return;
+        }
+        Optional<String> resolvedCode = partnerInternalClient.resolvePartnerCode(effectivePartnerId);
+        if (partnerActuallyChanged) {
+            slip.setPartnerCode(resolvedCode.orElse(null));
+        } else {
+            resolvedCode.ifPresent(slip::setPartnerCode);
+        }
+    }
+
+    /** 확정 전이 직전에 빈 partnerCode만 best-effort로 보강한다. */
+    private void ensurePartnerCodeBeforeCommitTransition(Slip slip) {
+        if (slip.getPartnerId() == null
+                || (slip.getPartnerCode() != null && !slip.getPartnerCode().isBlank())) {
+            return;
+        }
+        partnerInternalClient.resolvePartnerCode(slip.getPartnerId())
+                .ifPresent(slip::setPartnerCode);
     }
 
     private Slip loadOrThrow(UUID id) {

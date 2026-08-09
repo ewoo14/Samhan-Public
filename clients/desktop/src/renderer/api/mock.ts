@@ -13300,8 +13300,8 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     const header = '행번호,전표번호,작성일자,공급자상호,공급자사업자번호,공급받는자상호,공급받는자사업자번호,공급가액,세액,합계\n'
     const csv = pageRows
       .map((r) =>
-        [r.rowNo, r.slipNo, r.issueDate, r.supplierName, r.supplierBusinessNo,
-          r.recipientName, r.recipientBusinessNo, r.supplyAmount, r.vatAmount, r.totalAmount].join(','),
+        [r.rowNo, r.slipNo, r.writeDate, r.supplierName, r.supplierRegNo,
+          r.buyerName, r.buyerRegNo, r.supplyAmount, r.vatAmount, r.totalAmount].join(','),
       )
       .join('\n')
     // responseType:'blob' 소비자(downloadHometaxSplit)가 res.data 를 Blob 으로 사용하므로 실제 Blob 반환.
@@ -13401,8 +13401,8 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
     const header = '행번호,전표번호,작성일자,공급자상호,공급자사업자번호,공급받는자상호,공급받는자사업자번호,공급가액,세액,합계\n'
     const csv = pageRows
       .map((r) =>
-        [r.rowNo, r.slipNo, r.issueDate, r.supplierName, r.supplierBusinessNo,
-          r.recipientName, r.recipientBusinessNo, r.supplyAmount, r.vatAmount, r.totalAmount].join(','),
+        [r.rowNo, r.slipNo, r.writeDate, r.supplierName, r.supplierRegNo,
+          r.buyerName, r.buyerRegNo, r.supplyAmount, r.vatAmount, r.totalAmount].join(','),
       )
       .join('\n')
     // responseType:'blob' 소비자(downloadHometaxSplit)가 res.data 를 Blob 으로 사용하므로 실제 Blob 반환.
@@ -18644,21 +18644,21 @@ function generateMockBatchRows(count: number) {
     return {
       rowNo,
       slipNo: `2026/05/${day}-${rowNo}`,
-      issueDate: `2026-05-${day}`,
+      writeDate: `202605${day}`,
       supplierName: supplier.name,
-      supplierBusinessNo: supplier.bizNo,
-      recipientName: p.name,
-      recipientBusinessNo: p.bizNo,
-      recipientEmail: `billing@partner${(i % 5) + 1}.co.kr`,
+      supplierRegNo: supplier.bizNo.replace(/-/g, ''),
+      buyerName: p.name,
+      buyerRegNo: p.bizNo.replace(/-/g, ''),
+      buyerEmail1: `billing@partner${(i % 5) + 1}.co.kr`,
       supplyAmount,
       vatAmount,
       totalAmount,
-      itemName: i % 3 === 0 ? '냉난방 설비 운반' : i % 3 === 1 ? '자재 운송' : '물류 서비스',
-      specification: i % 2 === 0 ? '일식' : null,
-      quantity: '1',
-      unitPrice: supplyAmount,
+      itemName1: i % 3 === 0 ? '냉난방 설비 운반' : i % 3 === 1 ? '자재 운송' : '물류 서비스',
+      itemSpec1: i % 2 === 0 ? '일식' : '',
+      itemQty1: '1',
+      itemPrice1: supplyAmount,
       partnerCode: p.code,
-      remark: i % 5 === 0 ? '현장 배송 완료' : null,
+      remark: i % 5 === 0 ? '현장 배송 완료' : '',
     }
   })
 }
