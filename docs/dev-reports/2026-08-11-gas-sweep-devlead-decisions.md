@@ -102,6 +102,61 @@ Critic 이 올린 13건을 그대로 묻지 않았습니다. 이번 세션에 **
 직접 새로 만드는 기존 경로"*. 버튼을 붙이면서 이 둘 중 하나가 막히는 것이
 이 저장소에서 가장 자주 나온 실패 방식입니다(fix 가 정상 경로를 막는다).
 
+#### 🆕 추가 결정 (2026-08-11 개발책임자) — **정산 자체가 문서다 · 번호 `YYYY/MM/DD-{문서번호}`**
+
+> *"영업수수료 계산도 **하나의 문서**로 `YYYY/MM/DD-{문서번호}` 형태로 하여 이를 그룹웨어 문서에 연결"*
+
+```text
+의미   영업수수료 정산은 화면의 계산 결과가 아니라 **채번된 문서**다.
+       번호가 있어야 결재가 그것을 가리킬 수 있고, 나중에 "어느 정산이 어느 결의서로 나갔나" 를 추적할 수 있다
+```
+
+🔑 **이 번호 체계는 발명 대상이 아닙니다 — 저장소 표준입니다.** `yyyy/MM/dd-N` 으로 이미 채번하는 문서가 5종:
+
+| 문서 | 채번 |
+|---|---|
+| 분개 | `JournalNumberSequence` · `JournalNumberService` |
+| 세금계산서 | `TaxInvoiceNumberSequence` (ISSUED 진입 시 채번 · DRAFT 는 NULL) |
+| 입금보고서 | `CashReceiptNumberService` |
+| 판매/구매 회계전표 | `SalesAccountingSlipNumberGenerator` · `PurchaseAccountingSlipNumberGenerator` |
+
+공통 구현 형태 (`CashReceiptNumberService:24-33`):
+
+```java
+// 일자별 시퀀스 행을 insertIfAbsent 후 row lock 으로 잡고 N 을 증가시킨다
+sequenceRepository.insertIfAbsent(UUID.randomUUID(), date);
+return date.format(DATE_FMT) + "-" + seq.next();   // yyyy/MM/dd-N
+```
+
+**🚩 결정적 발견 — 그룹웨어 연결이 이 번호로 이미 설계돼 있습니다.**
+
+`ApprovalAttachment` 는 참조 대상을 **UUID 가 아니라 문서번호 문자열**로 잡습니다:
+
+```java
+@Column(name = "ref_doc_no", length = 40)      private String refDocNo;
+@Enumerated(EnumType.STRING)
+@Column(name = "ref_doc_type", length = 30)    private ApprovalReferenceDocType refDocType;
+```
+
+⟹ 정산서에 `yyyy/MM/dd-N` 을 채번해 두면 **그룹웨어 쪽 스키마 변경 없이** enum 값 하나만 추가하면 연결됩니다.
+`ref_doc_no` 는 40자라 `2026/08/11-1234` 는 여유롭게 들어갑니다.
+
+**구현 요구:**
+
+```text
+1  영업수수료 정산 엔티티에 문서번호 컬럼 + **일자별 atomic 시퀀스 테이블**
+   🚫 새 채번 방식을 만들지 말 것 — 위 5종 중 하나를 그대로 따를 것
+   🔑 어느 날짜로 채번하는가를 먼저 정할 것 (정산 기준일? 작성일? 지급예정일?)
+      세금계산서는 "ISSUED 진입 시 채번" 이라 DRAFT 는 번호가 없다 —
+      정산서도 확정 전에는 번호 없이 둘지 결정 필요
+2  ApprovalReferenceDocType 에 7번째 값 추가 · ref_doc_no 에 정산서 번호를 넣는다
+3  🚨 채번된 번호가 **실제로 채워지는지** 확인할 것.
+   이 저장소는 "조인 키로 쓰는 코드 컬럼이 비어 있고 UUID 만 채워진" 결함을 하루에 세 번 낸 적이 있다
+   (#1060 주문 2,024건 중 조회 1건 · #1061 원장 후보 31건 전부 공백 · 12,276,000원 소실)
+   ⟹ 구현 브리핑에 **"정산서 생성 직후 ref_doc_no 로 되찾아오는 왕복 테스트"** 를 RED 로 요구할 것
+4  같은 날 여러 건이면 N 이 순증하는지 · 동시 생성 시 중복이 안 나는지 (row lock 이 그것을 막는다)
+```
+
 ### D-G2. 견적/주문 DC 상한 → **주문서 48% 로 통일 (B)** ⚠️ 권고와 다름
 
 ```text
