@@ -11,7 +11,7 @@ spring:
     # W10-5 회고 — chained-default 표준 통일 (SAMHAN_DC_CONFIG_DB_* 우선, LEGACY_DB_* fallback, samhan default).
     url: jdbc:postgresql://${SAMHAN_DC_CONFIG_DB_HOST:${LEGACY_DB_HOST:${DB_HOST:localhost}}}:${SAMHAN_DC_CONFIG_DB_PORT:${LEGACY_DB_PORT:${DB_PORT:5432}}}/${SAMHAN_DC_CONFIG_DB_NAME:${LEGACY_DB_NAME:${DB_NAME:dc_config_db}}}
     username: ${SAMHAN_DC_CONFIG_DB_USER:${LEGACY_DB_USER:${DB_USER:samhan}}}
-    password: ${SAMHAN_DC_CONFIG_DB_PASSWORD:${LEGACY_DB_PASSWORD:${DB_PASSWORD:samhan_dev_pw}}}
+    password: ${SAMHAN_DC_CONFIG_DB_PASSWORD:${LEGACY_DB_PASSWORD:${DB_PASSWORD}}}
   jpa:
     hibernate:
       ddl-auto: validate

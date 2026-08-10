@@ -30,7 +30,7 @@ Producers publish `AuditLogEvent` JSON with routing key `audit.<topic>`
 | `RABBIT_HOST`    | `localhost`                   |
 | `RABBIT_PORT`    | `5672`                        |
 | `RABBIT_USER`    | `samhan`                      |
-| `RABBIT_PASSWORD`| `samhan_dev_pw`               |
+| `RABBIT_PASSWORD`| `infrastructure/.env`        |
 | `EUREKA_URL`     | `http://localhost:8761/eureka/` |
 
 ## REST endpoints

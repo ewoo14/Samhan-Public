@@ -28,9 +28,9 @@ powershell.exe -ExecutionPolicy Bypass -File scripts/seed-local-stack.ps1
 |---|---|---|
 | API Gateway | http://localhost:8080 | Samhan Public 통합 진입점 |
 | Eureka | http://localhost:8761 | 서비스 등록 상태 |
-| Grafana | http://localhost:3000 | `admin / samhan_dev_pw` |
+| Grafana | http://localhost:3000 | `infrastructure/.env` 의 자격 |
 | Prometheus | http://localhost:9090 | MIG-21 metrics |
-| MinIO Console | http://localhost:9001 | `samhan / samhan_dev_pw` |
+| MinIO Console | http://localhost:9001 | `infrastructure/.env` 의 자격 |
 | desktop | Electron 자동 실행, renderer http://localhost:5173 | 회계/영업 admin |
 | mobile | Expo QR | 거래처 주문서 WebView |
 | mobile-staff | Expo QR | 현장 직원 견적 WebView |

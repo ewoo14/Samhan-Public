@@ -43,7 +43,7 @@ DC 데이터의 외부 노출은 다음 5겹 가드로 격리된다.
 |---|---|---|
 | `DB_HOST` / `DB_PORT` / `DB_NAME` / `DB_USER` / `DB_PASSWORD` | localhost / 5432 / `dc_config_db` / `samhan` / `dev-pw-change-me` | placeholder |
 | `EUREKA_URL` | `http://localhost:8761/eureka/` | |
-| `INTERNAL_TOKEN` | `dev-internal-token-change-me` (placeholder) | prod 프로파일에서 default 사용 시 부팅 거부 (`InternalTokenGuard`) |
+| `INTERNAL_TOKEN` | `CHANGE_ME_LOCAL_ONLY` (placeholder) | prod 프로파일에서 placeholder 사용 시 부팅 거부 (`InternalTokenGuard`) |
 
 ## Profiles
 

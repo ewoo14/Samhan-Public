@@ -17,7 +17,7 @@ spring:
     url: jdbc:postgresql://${SAMHAN_AROLOGIS_DB_HOST:${LEGACY_DB_HOST:localhost}}:${SAMHAN_AROLOGIS_DB_PORT:${LEGACY_DB_PORT:5432}}/${SAMHAN_AROLOGIS_DB_NAME:${LEGACY_DB_NAME:arologis_db}}
     # W10-5 회고 — chained-default + samhan default fallback (env 미설정 시 connection refused 회피)
     username: ${SAMHAN_AROLOGIS_DB_USER:${LEGACY_DB_USER:${DB_USER:samhan}}}
-    password: ${SAMHAN_AROLOGIS_DB_PASSWORD:${LEGACY_DB_PASSWORD:${DB_PASSWORD:samhan_dev_pw}}}
+    password: ${SAMHAN_AROLOGIS_DB_PASSWORD:${LEGACY_DB_PASSWORD:${DB_PASSWORD}}}
   jpa:
     hibernate:
       ddl-auto: validate
@@ -114,7 +114,7 @@ app:
   security:
     internal:
       # Phase 10 — SAMHAN_INTERNAL_TOKEN 표준 (chained-default).
-      token: ${SAMHAN_INTERNAL_TOKEN:${INTERNAL_AUTH_TOKEN:dev-internal-token-change-me}}
+      token: ${SAMHAN_INTERNAL_TOKEN:${INTERNAL_AUTH_TOKEN:CHANGE_ME_LOCAL_ONLY}}
   # Stage 3 local-test seed toggle (DriverSeeder + DispatchSeeder).
   # 운영/CI 에서는 반드시 false (또는 미설정) 유지. dev profile + 본 토글 양쪽 활성 시에만 시드 진입.
   arologis:
