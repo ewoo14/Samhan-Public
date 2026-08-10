@@ -20,7 +20,6 @@
 
 | 트랙 | 워크트리 | 브랜치 | 무엇을 시켰나 |
 |---|---|---|---|
-| `#1126` R32 | `D:\dev\Samhan-Public` (메인) | `feat/896-qty-sync-chip-track` | SOL 검증 — **R31 차단이 정상 경로를 막는가** |
 | `#1134` R8 | `.claude/worktrees/w1134` | `feat/1091-version-history-remaining` | SOL 검증 — **7상태 표시가 틀린 조합** |
 | `#1162` 범위확대 | `.claude/worktrees/w1162` | `fix/it-ephemeral-credentials` | LUNA 구현 — **배포물 자격 제거** |
 
@@ -34,7 +33,7 @@
 
 | 트랙 | PR | 상태 | 다음 한 수 |
 |---|---|---|---|
-| **수량동기화 칩** | `#1126` | R31 커밋 `17becb74a` · CI 52/52 (`1294cdb5a` 기준) | R32 SOL 회수 → 결함 0 이면 라이브QA |
+| **수량동기화 칩** | `#1126` | R31 `17becb74a` · **R32 SOL 도달결함 2건** | 🔴 **R33 시트동기화 가드** — 아래 참조 |
 | **버전이력 모달** | `#1134` | R7 커밋 `d55a927a7` · CI 51/51 (`0db123837` 기준) | R8 SOL 회수 |
 | **자격 노출** | `#1162` | 범위 확대 발주 · CI 40/40 (`db692e813` 기준) | 구현 회수 → SOL 재검증 |
 | **중앙 감사로그** | 이슈 `#1161` | S0 실측 완료 · 보존/실패 **권장안 확정 게시** | **S1.5** (보존 정책 + 실패 경로) 착수 |
@@ -57,6 +56,63 @@
 #896 결정 A         음수 factor 허용 + 평가기 전역 max(0,·) 클램프
                     QuantitySyncRuleValidator.java:459 의 signum() <= 0 거부가 막고 있음
 ```
+
+---
+
+## 1-B. 🔴 `#1126` R32 결과 — 다음 라운드가 정해져 있습니다
+
+### ⚠️ 이 PC 에서는 게이트 ① **판정 불가**
+
+```sql
+SELECT COUNT(*) FROM quantity_sync_rule WHERE is_deleted=false AND enabled=true;  -- 0
+```
+
+**표본 0 = "결함 0" 이 아니라 "판정 불가"** 입니다.
+집PC 에서 규칙을 넣고 *"정상 경로가 막히는가"* 각도를 **다시 돌려야** ①이 채워집니다.
+
+### 🔴 HIGH — 시트 동기화가 R31 검증을 통째로 우회한다 (PM 직접 확인)
+
+```java
+// ProductSheetSyncService.java:1403 — 앞뒤에 가드 호출 없음
+if (!p.isClassificationManual()) {
+    p.changeClassifications(classifications.catL(), classifications.catM(), classifications.catS());
+}
+```
+
+```text
+가드 있음   ProductService.java:743,:760 (수동 수정) · ClassificationService.java:67 (분류명)
+가드 없음   🚨 ProductSheetSyncService.java:1403 (시트 동기화 · 기존 품목)
+DB 트리거   없음 (products 에 INSERT 트리거 하나뿐)
+```
+
+경로: 시트 관리 품목을 규칙에 연결 → 시트에서 분류 변경 → `/admin/sheet-sync` "지금 동기화"
+→ `catL` 이 바뀌고 **규칙은 enabled 인 채 역할만 깨진다**.
+
+### R33 지시 (그대로 발주하면 됩니다)
+
+```text
+불변식  기존 품목의 catL·goodsType 을 바꾸는 **모든 운영 쓰기**는
+        enabled·비삭제·비shadow 규칙의 역할을 저장 후에도 유지해야 한다
+        🚨 자동 동기화도 예외가 아니다
+RED     활성 비shadow 규칙에 연결된 classificationManual=false 품목이
+        시트 동기화로 반대 역할 L분류에 재배치될 때 불변식이 깨지지 않아야 한다
+좌표    ProductSheetSyncService.java:1403
+🚩 반대급부 — 시트 동기화가 **정상 품목까지 멈추면 안 된다**
+   전체 중단인지 그 품목만 건너뛰고 보고인지 **먼저 정할 것** (PM 설계 몫)
+```
+
+### 🟡 MED — 409 를 받은 사용자가 규칙에 도달할 수 없다
+
+```text
+문구에 rule key 만 있고, 화면에 rule key 로 규칙을 찾아갈 경로가 없다
+EstimateItemsCatalogPage.tsx:227 은 source 모델코드로만 찾고 :701 칩은 target 만 표시
+⟹ UX 가 아니라 막다른 길
+```
+
+### 🚩 결정 필요 — `active=false` 분류
+
+역할 판정이 `Classification.active` 를 **안 봅니다**. 분류를 중지해도 규칙은 유효.
+의도인지 아닌지 어디에도 명시돼 있지 않습니다.
 
 ---
 
