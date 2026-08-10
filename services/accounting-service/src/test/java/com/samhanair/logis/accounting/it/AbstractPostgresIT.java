@@ -30,12 +30,14 @@ public abstract class AbstractPostgresIT {
     @Autowired
     protected DynamicPermissionClient dynamicPermissionClient;
 
+    private static final String POSTGRES_PASSWORD = UUID.randomUUID().toString();
+
     @SuppressWarnings("resource")
     protected static final PostgreSQLContainer<?> POSTGRES =
             new PostgreSQLContainer<>("postgres:16-alpine")
                     .withDatabaseName("accounting_db")
                     .withUsername("samhan")
-                    .withPassword("samhan_dev_pw");
+                    .withPassword(POSTGRES_PASSWORD);
 
     static {
         try {

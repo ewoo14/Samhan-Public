@@ -54,12 +54,14 @@ public abstract class AbstractPostgresIT {
                 .thenReturn(new ApprovalLineAuthorizeResult(false, false));
     }
 
+    private static final String POSTGRES_PASSWORD = UUID.randomUUID().toString();
+
     @SuppressWarnings("resource")
     protected static final PostgreSQLContainer<?> POSTGRES =
             new PostgreSQLContainer<>("postgres:16-alpine")
                     .withDatabaseName("slip_db")
                     .withUsername("samhan")
-                    .withPassword("samhan_dev_pw");
+                    .withPassword(POSTGRES_PASSWORD);
 
     static {
         try {

@@ -1,5 +1,6 @@
 package com.samhanair.logis.product.it;
 
+import java.util.UUID;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -22,12 +23,14 @@ import org.testcontainers.containers.PostgreSQLContainer;
 @ExtendWith(AbstractPostgresIT.DockerAvailableCondition.class)
 public abstract class AbstractPostgresIT {
 
+    private static final String POSTGRES_PASSWORD = UUID.randomUUID().toString();
+
     @SuppressWarnings("resource")
     protected static final PostgreSQLContainer<?> POSTGRES =
             new PostgreSQLContainer<>("postgres:16-alpine")
                     .withDatabaseName("product_db")
                     .withUsername("samhan")
-                    .withPassword("samhan_dev_pw");
+                    .withPassword(POSTGRES_PASSWORD);
 
     static {
         try {
