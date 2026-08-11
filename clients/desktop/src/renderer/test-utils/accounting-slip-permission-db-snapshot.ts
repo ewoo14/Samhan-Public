@@ -1,7 +1,7 @@
 import { PERMISSION_PAGE_CODES } from './accounting-slip-permission-snapshot'
 
 // auth_db role_page_permission_templates projection, derived from all Flyway migrations in this repository.
-// Scope: PERMISSION_ROLES 횞 PERMISSION_PAGE_CODES. Missing DB rows are 0000000.
+// Scope: PERMISSION_ROLES × PERMISSION_PAGE_CODES. Missing DB rows are 0000000.
 const TEMPLATE_PERMISSION_DB_BITS_BY_ROLE: Record<string, Record<string, string>> = {
   'MASTER': {
     'partners.delete': '1111100',
@@ -42,6 +42,7 @@ const TEMPLATE_PERMISSION_DB_BITS_BY_ROLE: Record<string, Record<string, string>
     'accounting.bank-matching': '1110000',
     'accounting.deposit-match': '1111000',
     'accounting.cash-receipts': '1111000',
+    'accounting.sales-commission-settlement': '1110000',
     'accounting.period-close': '1111000',
     'accounting.statement-batch': '1111001',
     'accounting.partner-ledger': '1111001',
@@ -150,6 +151,7 @@ const TEMPLATE_PERMISSION_DB_BITS_BY_ROLE: Record<string, Record<string, string>
     'accounting.bank-matching': '1110000',
     'accounting.deposit-match': '1000000',
     'accounting.cash-receipts': '1111000',
+    'accounting.sales-commission-settlement': '1110000',
     'accounting.period-close': '1000000',
     'accounting.statement-batch': '1000001',
     'accounting.partner-ledger': '1000001',
@@ -284,6 +286,7 @@ const TEMPLATE_PERMISSION_DB_BITS_BY_ROLE: Record<string, Record<string, string>
     'accounting.bank-matching': '1110000',
     'accounting.deposit-match': '1111000',
     'accounting.cash-receipts': '1111000',
+    'accounting.sales-commission-settlement': '1110000',
     'accounting.period-close': '1111000',
     'accounting.statement-batch': '1111001',
     'accounting.partner-ledger': '1000001',
