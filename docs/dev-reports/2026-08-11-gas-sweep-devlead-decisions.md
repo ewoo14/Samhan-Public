@@ -102,6 +102,37 @@ Critic 이 올린 13건을 그대로 묻지 않았습니다. 이번 세션에 **
 직접 새로 만드는 기존 경로"*. 버튼을 붙이면서 이 둘 중 하나가 막히는 것이
 이 저장소에서 가장 자주 나온 실패 방식입니다(fix 가 정상 경로를 막는다).
 
+#### 🆕 추가 결정 (2026-08-11 개발책임자) — **회계 탭에 메뉴 신설**
+
+> *"영업수수료 정산은 **회계 탭에 메뉴 신설** 요청"*
+
+```text
+의미   정산 화면은 독립 메뉴가 아니라 기존 회계 카테고리 안에 들어간다
+⟹ 서비스 배치도 이것으로 정해집니다 — **accounting-service**
+   (S1 에서 "어느 서비스에 둘지" 를 구현자 판단으로 남겼으나 이 결정이 확정합니다)
+```
+
+**좌표 (PM 실측):**
+
+| 실물 | 좌표 |
+|---|---|
+| 회계 사이드바 카테고리 | `clients/desktop/src/renderer/components/AppLayout.tsx:909` — `<SidebarCategory label="회계">` |
+| 경로 접두 · 권한 | `AppLayout.tsx:192` — `{ prefix: '/accounting', pageCode: 'accounting.reports', label: '회계' }` |
+| 형제 메뉴 | `/accounting/sales-slips` · `/purchase-slips` · `/journals` · `/tax-invoices` · `/partner-ledger` · `/period-close` 등 **20+** |
+| 권한 매트릭스 | `PermissionMatrixPage.tsx:108` — `label: '회계'` |
+
+**구현 요구:**
+
+```text
+1  새 라우트를 /accounting/… 아래에 두고 SidebarCategory "회계" 의 activeTargets 에 추가
+2  🚨 권한 pageCode 를 새로 만들 것인지 기존 accounting.* 를 쓸 것인지 정할 것.
+   PermissionMatrixPage 에도 같이 반영해야 화면·백엔드가 어긋나지 않는다
+   🔑 이 저장소는 권한을 mock 만 맞추고 백엔드를 안 맞춰 false-green 을 낸 적이 있다
+      (#1130 — DRIVER 를 부여해도 161/161 통과). 전수 대조표를 요구할 것
+3  RED-B 표적 = **기존 회계 메뉴 20여 개가 그대로 보이고 그대로 열린다**
+   (카테고리에 항목을 더하면서 기존 것이 사라지는 것이 이 저장소의 단골 실패다)
+```
+
 #### 🆕 추가 결정 (2026-08-11 개발책임자) — **정산 자체가 문서다 · 번호 `YYYY/MM/DD-{문서번호}`**
 
 > *"영업수수료 계산도 **하나의 문서**로 `YYYY/MM/DD-{문서번호}` 형태로 하여 이를 그룹웨어 문서에 연결"*
