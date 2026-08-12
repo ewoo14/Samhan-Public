@@ -36,13 +36,50 @@ docker compose -f infrastructure/docker-compose.yml -f infrastructure/docker-com
 
 `infrastructure/docker-compose.local-portfix.yml` 로 우회(host 8186). 🚫 커밋 금지.
 
-### 🚩 미해결 — `auth_db` 에 미적용 마이그레이션 `99`·`100`
+### ✅ 해소 — `auth_db` 미적용 마이그레이션 (2026-08-12)
 
-배포된 auth-service 가 main 보다 낡습니다. auth 축 라이브QA 전에 재배포 필요.
+`V98` 까지만 적용돼 있어 auth 축 라이브QA 가 낡은 스키마를 보고 있었습니다.
+개발책임자 결정으로 **auth-service 만 `--no-deps` 재배포** → `V99·V100·V101` 전부 적용 · healthy 확인.
+
+### 🚨 라이브QA 의 숨은 전제 — **로그인 자체가 write 다**
+
+이번 세션 최대 발견입니다.
+
+```text
+SOL 실측  라이브QA 가 read-only 계약을 위반했고, 원인은 로그인이
+          공유 DB 의 dev_master.last_login_at 을 갱신한 것
+
+🔑 그동안 **모든** 브리핑이 "공유 DB 는 조회만" 을 적으면서 로그인을 예외로 세지 않았다.
+   화면을 밟으려면 로그인해야 하고, 로그인은 write 다 ⟹ 계약이 처음부터 성립 불가였다
+```
+
+⟹ 브리핑 문구를 **"공유 스택으로 화면을 밟지 말 것 · 화면 QA 는 격리 DB/서비스로"** 로 바꿨습니다.
+이미 갱신된 값은 **되돌리지 않습니다**(되돌리는 것도 write).
+
+### 🚩 미해결 — 공유 DB QA 잔재 (개발책임자 승인 대기)
+
+```text
+partner_db  SOL1154R20-BULK-* 1,001건 + sol-pr1154-r1 49건
+slip_db     끊긴 참조 646 lines / 304 slips (QA·TEST 잔재 103종)
+```
+
+집계·화면 수치를 오염시킵니다. 개발책임자 결정 = **식별 먼저, 삭제는 승인 후 soft-delete**.
+아직 식별 트랙을 열지 않았습니다.
+
+### 🚩 워크트리 만들면 `.env.local` 을 복사하십시오
+
+```bash
+git worktree add -b <branch> .claude/worktrees/<w> origin/main
+cp infrastructure/.env.local .claude/worktrees/<w>/infrastructure/.env.local
+git -C .claude/worktrees/<w> check-ignore infrastructure/.env.local   # 무시 확인
+```
+
+`resolveQaCredential` 이 이 파일을 읽는데 **gitignore 대상이라 워크트리에 안 딸려옵니다.**
+이번 세션에 워크트리 5개 전부 없어서 **라이브QA 가 조용히 막혀** 있었습니다.
 
 ---
 
-## 1. 이번 세션 머지 5건
+## 1. 이번 세션 머지 **13건**
 
 | PR | 머지 | 내용 |
 |---|---|---|
@@ -50,7 +87,16 @@ docker compose -f infrastructure/docker-compose.yml -f infrastructure/docker-com
 | `#1134` | `97da5590` | 버전이력 모달 |
 | `#1132` | `6b801a553` | 세트 전개 기본구성품 + 정액DC 분류축 |
 | `#1167` | `a16eb48b6` | 입출고 예측 '—' 표시 |
-| `#1164` | `62898108f` | UUID 잔여 노출 |
+| `#1164` | `62898108f` | UUID 잔여 노출 1차 |
+| `#1165` | `9b804493c` | 영업수수료 정산 도메인 S1·S2 |
+| `#1131` | `4eda57a6b` | 판매전표 계보·instanceKey (V119) |
+| `#1168` | `da09abcec` | 정산 S3 — 그룹웨어 참조 첨부 + 역방향 조회 |
+| `#1171` | `72cab52e` | 끊긴 참조 하나가 재고 잔고 전체를 막던 것 |
+| `#1169` | `b1f3a08e` | D-G7 정산서 확정 취소 |
+| `#1166` | `6a219fa8` | 제품구분 정비 + 주문 40% 규칙 |
+| `#1170` | `f73be267` | 정산 S4a — REST API + 회계 탭 + 권한 |
+| `#1173` | `df800f3a` | logging-service 로컬 opt-in 기동 |
+
 
 ---
 
@@ -188,4 +234,98 @@ D-G8  제품구분 정비 — 품목명 자동분류 + 미분류
 ✅ Playwright Chromium-1217 live QA 및 스크린샷 3장
 📄 docs/dev-reports/2026-08-11-dg7-toctou-fix3.md
 📁 docs/qa/2026-08-11-dg7-fix3/
+```
+
+---
+
+## 🔚 2026-08-12 세션 종료 상태 (집PC · 자율 운행)
+
+### 머지 **14건** (이 세션)
+
+`#1126` `#1134` `#1132` `#1167` `#1164` `#1165` `#1131` `#1168` `#1171` `#1169` `#1166` `#1170` `#1173` `#1174`
+
+### 🔴 이월 PR — 셋 다 **기능은 끝났고 게이트만 남았습니다**
+
+| PR | 남은 것 | 다음 세션이 할 일 |
+|---|---|---|
+| `#1172` 전표 헤더 전잔/후잔 | 🚨 **GitGuardian 33건** (원인 미특정) | 대시보드에서 실체 확인 → 진짜면 rotate, dev placeholder 면 **값 단위** 등록. 🚫 ignored-paths 광역 금지 |
+| `#1175` 주문·견적 상세 DS | Desktop Playwright 1건 | 실패 스펙 이름부터 확인 · 라이브QA 는 **격리 DB/서비스**로 |
+| `#1162` 통합테스트 자격 | 회사PC 이월 (기존 결정) | — |
+
+```text
+#1172 기능 완료분
+  전잔 = R22 원장 판매 상태 (PartnerLedgerContract.CANONICAL_SALE_STATUSES **직접 사용**)
+  dedup = JournalSourceType.SLIP + journalNo == slipNo · MANUAL/역분개 보존
+  상쇄 = POSTED + REVERSED 함께 읽기
+  🚨 뮤테이션 둘 다 RED · accounting 1,910 / partner 339 전량 통과
+
+#1175 기능 완료분
+  sales.module.css 1,194 → 513줄 · 죽은 selector 44 → 0
+  주문·견적 상세가 Card + detail-grid (SlipDetailPage · TransferDetailPage 와 동일)
+  값 회귀 0 (SOL 재검토1) — 금액·수량·상태 11종·문서번호·날짜·인쇄
+```
+
+### ⏸️ 중단·파킹한 트랙 둘
+
+```text
+`#845` DS-4 반복 detail 밴드   2시간 무출력으로 중단. 워크트리 w845 · 산출물 없음
+mock fail-closed              측정 착수 단계에서 중단. 워크트리 wmock
+
+🔑 mock 이 남긴 좌표는 버리지 마십시오 (재측정 불필요):
+   client.ts:64-83  isMockMode() → getMockResponse(config)
+                    **null 이면 종료 분기가 없어** :85 이후 실제 Axios 로 나간다
+   fetch 경로       realtime/createCoeditProvider.ts:317 등 co-edit 계열
+   실측(SOL)        외부 trap 시 이탈 36건 — collab/stream OPTIONS 33 · 레거시 slip 2 · sync/last 1
+   개발책임자 승인   fail-closed 전환 (별도 트랙)
+```
+
+### 🚨 이 세션 후반의 운영 이슈 — **codex 응답 저하**
+
+```text
+7200초 타임아웃 4건  #1170 rebase · #1172 SOL3 · #1175 SOL2 · #1174 fix6
+2시간 무출력 1건     #845 DS-4
+공통점  전부 **라이브QA 를 포함한 다임무 라운드**
+
+✅ 대응이 통했다 — 브리핑을 좁히면 나온다
+   wmock 재발행(측정만·20분 제한) → 29분 만에 보고서 작성 시작
+   #1175 SOL2 재발행(확인 3가지·라이브QA 금지) → 완주
+
+🚨 브리핑에 넣을 문구 (효과 확인됨)
+   "측정이 끝날 때마다 보고서를 **이어 붙여라**. 마지막에 몰아 쓰지 마라"
+   "N분 넘기면 그때까지 결과로 보고하라. **완주보다 보고가 먼저**다"
+```
+
+### 🚨 라운드 종료 절차에 추가된 것
+
+```text
+git diff --name-status origin/main...HEAD | grep '^D'
+```
+
+타임아웃으로 죽은 라운드가 **워크트리를 더럽힌 채** 끝납니다.
+`tools/.s24-build-only/build/deep/tracked-writer.mjs` 가 **두 워크트리에서 각각** 지워져 있었습니다.
+
+### 개발책임자 결정 (2026-08-12)
+
+```text
+전잔 시점    회계일자 + **전표번호 순** · 번호 없는 분개·입금은 당일 맨 뒤
+전잔 정본    🚩 **R22 유지 — 전표 상태 기준**
+             (PM 이 "posted 분개" 로 받았다가, 기존 결정 대조에서 뒤집힘)
+2중계상 키   journalNo == slipNo exact (새 컬럼 없이 최소 변경)
+mock 누수    fail-closed 전환을 별도 트랙으로 승인
+감사 테이블  서비스별 + 중앙 **둘 다 유지** (#1161 S2~S4 착수 가능)
+DS 표준      2026-07-05 결정이 유효 · sales.module.css 의 "DS import 금지" 폐기
+             견적서 **동반 이행**
+배포         auth-service 재배포 (완료)
+QA 잔재      **식별 먼저, 삭제는 승인 후 soft-delete** (식별 트랙 미개설)
+```
+
+### 🚩 PM 이 이 세션에 낸 오류 — 전부 회수됨
+
+```text
+· 결정을 묻기 전 **기존 결정을 대조하지 않았다** (#1068 본문에 "#1061 이 확정" 이 있었다)
+  ⟹ 개발책임자 지시로 대조해 R22 로 되돌림. **이 세션에서 내가 만든 3축 대조 규칙을 내가 안 지켰다**
+· `#1158` 이 이미 `#845` 트랙 PR 인데 **별도 브랜치를 팠다** (중복 트랙)
+· RED-B 에 "변경 모듈 전량" 을 안 넣어 `#1174` 가 focused 143 으로만 검증 → CI 백엔드 3묶음 red
+· rebase + 전량검증 + 라이브QA 를 **한 라운드에 묶어** 7200초 타임아웃
+· CI 를 라운드마다 안 보고 머지 직전에 봐서 `#1168` 이 fix 라운드를 하나 더 씀
 ```
