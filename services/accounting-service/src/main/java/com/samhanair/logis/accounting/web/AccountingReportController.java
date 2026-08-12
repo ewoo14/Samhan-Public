@@ -147,7 +147,8 @@ public class AccountingReportController {
         for (PartnerLedgerResponse.Document document : source.documents()) {
             if ("SALE".equals(document.type()) && !document.lines().isEmpty()) {
                 for (PartnerLedgerResponse.Line line : document.lines()) {
-                    BigDecimal debit = line.lineAmount();
+                    boolean authoritative = !"NONE".equals(document.effect());
+                    BigDecimal debit = authoritative ? line.lineAmount() : BigDecimal.ZERO;
                     BigDecimal credit = BigDecimal.ZERO;
                     balance = balance.add(debit).subtract(credit);
                     lines.add(new LedgerImageResponse.LedgerLine(document.date(), document.documentNo(),
@@ -193,8 +194,9 @@ public class AccountingReportController {
     public ApiResponse<PartnerLedgerResponse> salesSlipLedger(
             @RequestParam String partnerCode,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
-        return ApiResponse.ok(partnerLedgerReadService.read(partnerCode, from, to));
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(required = false) String slipNo) {
+        return ApiResponse.ok(partnerLedgerReadService.read(partnerCode, from, to, slipNo));
     }
 
     /** 거래처별 원장 저장 이력 — 날짜 범위와 거래처 코드로 조회한다. */
