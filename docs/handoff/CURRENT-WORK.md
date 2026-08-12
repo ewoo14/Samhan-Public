@@ -20,8 +20,14 @@
 
 ```bash
 docker compose -f infrastructure/docker-compose.yml -f infrastructure/docker-compose.local-all.yml \
-  -f infrastructure/docker-compose.local-portfix.yml up -d --build --no-deps <svc>
+  up -d --build --no-deps <svc>
 ```
+
+🚩 **`-f docker-compose.local-portfix.yml` 은 집PC 전용이라 커밋되지 않습니다.**
+파일 머리에 *"🚫 커밋 대상 아님 — 이 PC 한정"* 이라고 적혀 있습니다.
+집PC 에서 `influxd` 가 `127.0.0.1:8086` 을 점유해 `slip-service` 호스트 포트 공개가 실패하는
+문제를 피하려고 `8186` 으로 돌린 것입니다(2026-08-11 실측).
+**회사PC 에서는 이 인자를 빼고 돌리십시오.** 같은 충돌이 나면 그 PC 에서 다시 만드십시오.
 
 ### 🔴 배포본이 main 보다 낡으면 서비스가 죽고, **없는 결함처럼 보입니다**
 
