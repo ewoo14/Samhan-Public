@@ -27,6 +27,9 @@ describe('AuditOverlay actorName 표시', () => {
     '   ',
     `\u200B${ACTOR_UUID}`,
     `${ACTOR_UUID}\u200B`,
+    `{123e4567e89b12d3a456426614174000}`,
+    `urn:uuid:123e4567e89b12d3a456426614174000`,
+    `\u200B123e4567e89b12d3a456426614174000\u200B`,
   ])('보이지 않는 문자로 감싼 빈 이름/UUID를 노출하지 않는다', (actorName) => {
     render(<AuditOverlay field="memo" currentValue="현재 값" history={[entry(actorName)]} />)
 
@@ -45,7 +48,7 @@ describe('AuditOverlay actorName 표시', () => {
     }
   })
 
-  it('actorId와 다른 UUID-shaped actorName은 과잉 은닉하지 않는다', () => {
+  it('actorId와 다른 UUID-shaped actorName도 화면에 노출하지 않는다', () => {
     const differentActorId = '550e8400-e29b-41d4-a716-446655440000'
     render(
       <AuditOverlay
@@ -55,7 +58,20 @@ describe('AuditOverlay actorName 표시', () => {
       />,
     )
 
-    expect(screen.getByTestId('audit-overlay-memo').textContent).toContain(ACTOR_UUID)
-    expect(screen.getByTestId('audit-overlay-memo').textContent).not.toContain('변경자 미상')
+    expect(screen.getByTestId('audit-overlay-memo').textContent).toContain('변경자 미상')
+  })
+
+  it('SYSTEM actor는 generic 감사 화면에서 시스템으로 통일한다', () => {
+    render(
+      <AuditOverlay
+        field="memo"
+        currentValue="현재 값"
+        history={[entry('system', '00000000-0000-0000-0000-000000000000')]}
+      />,
+    )
+
+    const text = screen.getByTestId('audit-overlay-memo').textContent
+    expect(text).toContain('시스템')
+    expect(text).not.toContain('system')
   })
 })
