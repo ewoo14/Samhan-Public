@@ -25,6 +25,10 @@ import org.springframework.data.repository.query.Param;
  */
 public interface StockInstanceRepository extends JpaRepository<StockInstance, UUID> {
 
+    long countByInboundSlipNoAndIsDeletedFalse(String inboundSlipNo);
+
+    long countByOutboundSlipNoAndIsDeletedFalse(String outboundSlipNo);
+
     /** 사용자 노출용 serial_key로 활성 인스턴스를 단건 조회한다. */
     Optional<StockInstance> findBySerialKey(String serialKey);
 
