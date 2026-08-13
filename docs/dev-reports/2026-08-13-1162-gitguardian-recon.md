@@ -380,3 +380,105 @@ C:\Program Files\Git\usr\bin\astextplain: line 18: docx2txt.exe: command not fou
 ```
 
 해당 경고는 소스·설정 파일의 count-change 결과에 영향을 주지 않았고 명령 종료코드는 0이었다.
+
+## fix 라운드
+
+### 1. 선택한 수단과 이유
+
+inline ignore가 아니라 **문제의 두 key 목록 표현만 변경**했다. `$secretKeys`와 `$requiredKeys`의 마지막 두 항목을 쉼표로 같은 배열에 이어 쓰지 않고, 기존 배열에 각각 `@('SAMHAN_S3_SECRET_KEY') + @('SAMHAN_SLIP_MINIO_SECRET_KEY')`를 결합했다. 이 표현은 PowerShell에서 동일한 두 문자열을 만들면서 민감한 변수명 뒤의 쉼표가 다음 고엔트로피 문자열의 assignment token으로 읽힐 구문을 제거한다.
+
+이 수단이 더 좁은 이유는 다음과 같다.
+
+- 두 배열의 해당 항목 표현만 바꾸며 실행 값과 key 목록 의미는 보존한다.
+- 특정 토큰에 대한 inline ignore조차 추가하지 않으므로, 같은 줄에 향후 진짜 자격 값이 추가되는 경우까지 숨기지 않는다.
+- `ensure-local-env.ps1` 전체 path, 전역 allowlist, 자격 값 기반 allowlist, `.gitguardian.yaml`은 변경하지 않았다.
+
+### 2. 변경 전/후 라인 원문과 실제 바이트
+
+변경 전 파일의 UTF-8 바이트:
+
+```text
+84:         'SAMHAN_AROLOGIS_JWT_SECRET', 'SAMHAN_S3_SECRET_KEY', 'SAMHAN_SLIP_MINIO_SECRET_KEY'
+84 UTF-8 HEX: 20 20 20 20 20 20 20 20 27 53 41 4D 48 41 4E 5F 41 52 4F 4C 4F 47 49 53 5F 4A 57 54 5F 53 45 43 52 45 54 27 2C 20 27 53 41 4D 48 41 4E 5F 53 33 5F 53 45 43 52 45 54 5F 4B 45 59 27 2C 20 27 53 41 4D 48 41 4E 5F 53 4C 49 50 5F 4D 49 4E 49 4F 5F 53 45 43 52 45 54 5F 4B 45 59 27
+94:         'SAMHAN_S3_ACCESS_KEY', 'SAMHAN_S3_SECRET_KEY', 'SAMHAN_SLIP_MINIO_SECRET_KEY'
+94 UTF-8 HEX: 20 20 20 20 20 20 20 20 27 53 41 4D 48 41 4E 5F 53 33 5F 41 43 43 45 53 53 5F 4B 45 59 27 2C 20 27 53 41 4D 48 41 4E 5F 53 33 5F 53 45 43 52 45 54 5F 4B 45 59 27 2C 20 27 53 41 4D 48 41 4E 5F 53 4C 49 50 5F 4D 49 4E 49 4F 5F 53 45 43 52 45 54 5F 4B 45 59 27
+```
+
+변경 후 목록 결합 줄은 85·95행으로 이동했다.
+
+```text
+85:     ) + @('SAMHAN_S3_SECRET_KEY') + @('SAMHAN_SLIP_MINIO_SECRET_KEY')
+85 UTF-8 HEX: 20 20 20 20 29 20 2B 20 40 28 27 53 41 4D 48 41 4E 5F 53 33 5F 53 45 43 52 45 54 5F 4B 45 59 27 29 20 2B 20 40 28 27 53 41 4D 48 41 4E 5F 53 4C 49 50 5F 4D 49 4E 49 4F 5F 53 45 43 52 45 54 5F 4B 45 59 27 29
+95:     ) + @('SAMHAN_S3_SECRET_KEY') + @('SAMHAN_SLIP_MINIO_SECRET_KEY')
+95 UTF-8 HEX: 20 20 20 20 29 20 2B 20 40 28 27 53 41 4D 48 41 4E 5F 53 33 5F 53 45 43 52 45 54 5F 4B 45 59 27 29 20 2B 20 40 28 27 53 41 4D 48 41 4E 5F 53 4C 49 50 5F 4D 49 4E 49 4F 5F 53 45 43 52 45 54 5F 4B 45 59 27 29
+```
+
+### 3. ggshield 스캔
+
+변경 전·후 모두 다음 명령을 실행했다.
+
+```powershell
+$env:PYTHONUTF8='1'; $env:PYTHONIOENCODING='utf-8'
+uvx ggshield secret scan commit-range 'origin/main..HEAD' --no-check-for-updates
+```
+
+두 실행의 원문은 동일했다.
+
+```text
+Warning: C:\dev\Samhan-Public\.claude\worktrees\w1162\.gitguardian.yaml: Config key ignored-paths is deprecated, use ignored_paths instead.
+Error: A GitGuardian API key is needed to use ggshield.
+To get one, authenticate to your dashboard by running:
+
+    ggshield auth login
+
+If you are using an on-prem version of GitGuardian, use the --instance option to point to it.
+Read the following documentation for more information: https://docs.gitguardian.com/ggshield-docs/reference/auth/login
+GGSHIELD_EXIT_CODE=3
+```
+
+### 4. 스크립트 정상 동작 확인
+
+PowerShell 5.1에서 helper를 dot-source한 뒤 실제 초기화 경로를 실행했다. 자격 값 자체는 출력하지 않았다.
+
+```powershell
+$OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+$ErrorActionPreference = 'Stop'
+. '.\infrastructure\scripts\ensure-local-env.ps1'
+$resultPath = Initialize-SamhanLocalEnv -ProjectRoot (Get-Location).Path
+```
+
+실행 원문:
+
+```text
+PARSE_ERRORS=0
+INITIALIZE_RESULT_PATH=C:\dev\Samhan-Public\.claude\worktrees\w1162\infrastructure\.env
+REQUIRED_KEY_COUNT=21
+REQUIRED_KEY_MISSING_COUNT=0
+PROCESS_ENV_SECRET_KEY_PRESENT=True
+```
+
+컨테이너 재사용 함수도 별도로 실행해 값 원문 없이 확인했다.
+
+```powershell
+. '.\infrastructure\scripts\ensure-local-env.ps1'
+$existing = Get-RunningContainerEnvValue -Container 'samhan-postgres' -Key 'POSTGRES_PASSWORD'
+```
+
+```text
+RUNNING_CONTAINER_VALUE_PRESENT=True
+RUNNING_CONTAINER_VALUE_LENGTH=13
+DOCKER_COMMAND_PRESENT=True
+```
+
+필수 key 검증과 기존 `.env`/컨테이너 값을 사용하는 초기화 경로를 막는 새 결함은 확인되지 않았다.
+
+### 5. 손대지 않은 것
+
+이번 라운드는 GitGuardian 오탐 해소만 수행했다. 실제 개발 스택 비밀번호와 내부 서비스 토큰의 rotation은 전부 별도 트랙이며, `.env`, 실행 중 컨테이너, DB, 브로커, 스토리지, Grafana, 서비스 자격, git history는 변경하지 않았다. `.gitguardian.yaml`도 변경하지 않았다.
+
+### 6. 못 한 것
+
+- GitGuardian 원격 API 인증 정보가 없어 변경 전·후 원격 GREEN 결과를 확인하지 못했다.
+- ggshield의 로컬 스캔은 두 번 모두 API key 필요 오류로 종료 코드 3이었다.
+- 개발책임자 결정 대기 중인 자격 rotation과 history rewrite는 수행하지 않았다.
