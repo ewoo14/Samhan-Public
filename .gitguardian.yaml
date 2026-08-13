@@ -1,4 +1,23 @@
 # GitGuardian 설정.
-# 자격 allowlist를 두지 않는다. 저장소에 다시 들어온 자격은
-# GitGuardian이 탐지하고, 로컬 개발 자격은 infrastructure/.env (gitignored)에서 주입한다.
+# 코드·설정에는 allowlist를 두지 않는다.
+# 예외는 적용 후 불변인 Flyway 마이그레이션과 그 짝 IT뿐이며, 파일 단위로 지목한다.
+# ignored-matches(값 기반)는 쓰지 않는다 — 값이 어디에 들어와도 안 잡히기 때문이다.
+# 로컬 개발 자격은 infrastructure/.env (gitignored)에서 주입한다.
 version: 2
+secret:
+  ignored-paths:
+    # 문서·기록
+    - docs/dev-reports/**
+    - docs/qa/**
+    - .claude/memory/**
+    - docs/devops/**
+    - docs/migration/**
+    - docs/operational-validation/**
+    - docs/security/**
+    - docs/superpowers/**
+    - migration/decisions/**
+    # 적용 후 불변인 Flyway 마이그레이션과 그 짝 IT
+    - services/auth-service/src/main/resources/db/migration/V48__seed_driver_staff_dispatch_dev_accounts.sql
+    - services/auth-service/src/main/resources/db/migration/V49__repair_v5_dev_account_hashes.sql
+    - services/auth-service/src/test/java/com/samhanair/logis/auth/it/AuthFlywayV48SeedIT.java
+    - services/auth-service/src/test/java/com/samhanair/logis/auth/it/AuthFlywayV49SeedIT.java
