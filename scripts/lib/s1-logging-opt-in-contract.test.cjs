@@ -1,14 +1,40 @@
 const assert = require('node:assert/strict')
 const { execFileSync } = require('node:child_process')
+const crypto = require('node:crypto')
 const fs = require('node:fs')
 const path = require('node:path')
 const test = require('node:test')
 
 const root = path.resolve(__dirname, '..', '..')
+const composeSourceFiles = [
+  'infrastructure/docker-compose.yml',
+  'infrastructure/docker-compose.local-all.yml',
+]
 const composeFiles = [
   '-f', 'infrastructure/docker-compose.yml',
   '-f', 'infrastructure/docker-compose.local-all.yml',
 ]
+
+function read(relativePath) {
+  return fs.readFileSync(path.join(root, relativePath), 'utf8')
+}
+
+function composeProbeEnv() {
+  const requiredVariables = new Set()
+  const requiredVariablePattern = /\$\{([A-Za-z_][A-Za-z0-9_]*)\:\?[^}]*\}/g
+
+  for (const relativePath of composeSourceFiles) {
+    for (const match of read(relativePath).matchAll(requiredVariablePattern)) {
+      requiredVariables.add(match[1])
+    }
+  }
+
+  const env = { ...process.env }
+  for (const variable of requiredVariables) {
+    env[variable] = crypto.randomBytes(24).toString('hex')
+  }
+  return env
+}
 
 function composeServices(extraArgs = []) {
   const output = execFileSync('docker', [
@@ -16,12 +42,8 @@ function composeServices(extraArgs = []) {
     ...extraArgs,
     ...composeFiles,
     'config', '--services',
-  ], { cwd: root, encoding: 'utf8' })
+  ], { cwd: root, encoding: 'utf8', env: composeProbeEnv() })
   return output.trim().split(/\r?\n/).filter(Boolean)
-}
-
-function read(relativePath) {
-  return fs.readFileSync(path.join(root, relativePath), 'utf8')
 }
 
 test('기본 local-all 합성은 logging-service 없이 기존 서비스 집합을 유지한다', () => {
