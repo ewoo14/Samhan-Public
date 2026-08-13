@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   createEstimate: vi.fn(),
   sendEstimate: vi.fn(),
   searchPartners: vi.fn(),
+  getPartnerDcConfig: vi.fn(),
   lookupProductByModelName: vi.fn(),
   searchProducts: vi.fn(),
   getPriceMemory: vi.fn(),
@@ -199,6 +200,7 @@ vi.mock('../api/estimateApi', () => ({
 
 vi.mock('../api/sales', () => ({
   searchPartners: mocks.searchPartners,
+  getPartnerDcConfig: mocks.getPartnerDcConfig,
 }))
 
 vi.mock('../api/slip', () => ({
@@ -401,6 +403,7 @@ beforeEach(() => {
   mocks.searchProducts.mockReset()
   mocks.getPriceMemory.mockResolvedValue(null)
   mocks.getPriceMemories.mockResolvedValue({ hits: [], failedProductIds: [] })
+  mocks.getPartnerDcConfig.mockResolvedValue(null)
   mocks.lookupProducts.mockImplementation(async (productIds: string[]) =>
     productIds.map((id) => ({ id, status: 'ACTIVE' })),
   )
@@ -2143,7 +2146,55 @@ describe('EstimateFormPage 견적 편집 full-form coedit 배선', () => {
   })
 })
 
-/** 하단 합계 바("라벨 <strong>값</strong>" 형태) 텍스트 — label 로 시작하는 div 를 찾아 반환. */
+it('RED-B: 검색 fallback 경로도 discountOption 정본으로 정액DC를 적용한다', async () => {
+  mocks.getPartnerDcConfig.mockResolvedValue({
+    partnerCode: 'P-A', companyName: 'Partner A', homeMultiDc: null,
+    commercialMultiDc: null, flexibleHoseTypeI: null, threeSixty: null,
+    fourWay: null, oneWay: '50000', stand: null, deluxe: null,
+    firstGrade: null, unitProcess: null, remark: null,
+  })
+  mocks.lookupProductByModelName.mockResolvedValue({
+    productId: 'product-ac023', modelName: 'AC023BN1DBC1', productName: 'AC023', productType: 'SINGLE',
+    modelCode: 'AC023BN1DBC1', discountOption: 'ONE_WAY', classificationAssigned: true,
+    sellingPrice: '316800',
+  })
+  renderPage('/sales/estimates/new')
+  fireEvent.click(screen.getByTestId('estimate-select-partner-a'))
+  const model = await screen.findByLabelText('라인 1 모델명')
+  fireEvent.change(model, { target: { value: 'AC023BN1DBC1' } })
+  fireEvent.blur(model)
+  await waitFor(() => expect(mocks.searchProducts).toHaveBeenCalledWith(
+    'AC023BN1DBC1', { size: 50, usageScope: 'ESTIMATE' },
+  ))
+  await waitFor(() => expect(estimateModel().value).toBe('AC023BN1DBC1'))
+  fireEvent.blur(estimateModel())
+  await waitFor(() => expect(estimateUnitPrice().value).toBe('266800'))
+  expect(mocks.getPartnerDcConfig).toHaveBeenCalledWith('P-A')
+})
+
+it('RED-C: 거래처 변경 재계산도 분류 정본 ONE_WAY를 적용한다', async () => {
+  mocks.getPartnerDcConfig.mockImplementation(async (partnerCode: string) => ({
+    partnerCode, companyName: 'Partner', homeMultiDc: null,
+    commercialMultiDc: null, flexibleHoseTypeI: null, threeSixty: null,
+    fourWay: null, oneWay: '50000', stand: null, deluxe: null,
+    firstGrade: null, unitProcess: null, remark: null,
+  }))
+  mocks.lookupProductByModelName.mockResolvedValue({
+    productId: 'product-ac023', productName: 'AC023', productType: 'SINGLE',
+    modelCode: 'UNCLASSIFIED-MODEL', discountOption: 'ONE_WAY', classificationAssigned: true,
+    sellingPrice: '316800',
+  })
+  renderPage('/sales/estimates/new')
+  fireEvent.click(screen.getByTestId('estimate-select-partner-a'))
+  fireEvent.change(estimateModel(), { target: { value: 'AC023BN1DBC1' } })
+  fireEvent.blur(estimateModel())
+
+  await waitFor(() => expect(mocks.getPriceMemory).toHaveBeenCalledWith(mocks.partnerA.id, 'product-ac023'))
+  fireEvent.click(screen.getByTestId('estimate-select-partner-b'))
+  await waitFor(() => expect(mocks.getPriceMemories).toHaveBeenCalledWith(mocks.partnerB.id, ['product-ac023']))
+  await waitFor(() => expect(estimateUnitPrice().value).toBe('266800'))
+})
+
 function totalsRowText(container: HTMLElement, label: string): string {
   const row = Array.from(container.querySelectorAll('strong'))
     .map((strong) => strong.parentElement)
