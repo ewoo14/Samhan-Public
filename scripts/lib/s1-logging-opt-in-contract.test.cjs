@@ -45,8 +45,8 @@ test('기본 런처는 기존 무필터 compose 호출을 유지하고 logging-s
   const powershell = read('scripts/launch-local-stack.ps1')
   const bash = read('scripts/launch-local-stack.sh')
 
-  assert.match(powershell, /docker compose @ComposeFiles @composeArgs/)
-  assert.match(bash, /docker compose -f infrastructure\/docker-compose\.yml -f infrastructure\/docker-compose\.local-all\.yml up -d/)
+  assert.match(powershell, /docker compose (?:--env-file \$localEnvFile )?@ComposeFiles @composeArgs/)
+  assert.match(bash, /docker compose (?:--env-file "\$LOCAL_ENV_FILE" )?-f infrastructure\/docker-compose\.yml -f infrastructure\/docker-compose\.local-all\.yml up -d/)
   assert.doesNotMatch(powershell, /:services:logging-service:bootJar/)
   assert.doesNotMatch(bash, /:services:logging-service:bootJar/)
 })
