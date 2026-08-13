@@ -271,3 +271,4 @@
 - [🚨 "우회 경로를 찾아라" 는 codex…](feedback_audit_framing_triggers_cyber_flag.md)
 - [🚨🚨 구글 의존성 제거 — 시트는 "1회성…](project_remove_google_sheets_dependency.md)
 
+- [🚨 창고 별칭 정본 — 삼성=초월=삼한 · 이화=상일물류=상일창고 (2026-08-13 개발책임자)](project_warehouse_name_aliases.md) — 삼성전자 배송상황조회 엑셀의 `고객명` 은 사람이 아니라 우리 창고명이라 이름 문자열로 조인하면 갈라지거나 통째로 누락된다. 🚨회사PC 실측: 그룹A 가 DB 에 세 행(`00003`·`11152`·`11155`), "이화창고" 는 DB 에 없음 — 정본 확인 대기
