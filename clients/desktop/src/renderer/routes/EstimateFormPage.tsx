@@ -50,6 +50,7 @@ import { useIsMobile } from '../hooks/useIsMobile'
 import { usePageTitle } from '../hooks/usePageTitle'
 import { usePermissions } from '../hooks/usePermissions'
 import { isAutoPriceSource, shouldAutoFillPrice } from '../utils/priceSourceRules'
+import { resolveEstimateCatalogPrice } from '../utils/estimatePrice'
 import {
   changeLineQuantity,
   editLineVat,
@@ -78,11 +79,12 @@ import {
 } from '../realtime/coeditLineIds'
 import { consumeEstimateRestoreFence } from '../utils/estimateRestoreFence'
 import { LineLookupReferenceModal } from './components/LineLookupReferenceModal'
-import { quantityAfterDeliveryPriceInput } from './estimateLineModel'
+import { resolvePriceInputQuantitySync } from './estimateLineModel'
 import {
   decodeEstimateSpecification,
 } from '../utils/estimateSpecificationProvenance'
 import { hydrateCurrentProductStatuses, isQuantityEditable } from '../utils/estimateLineStatus'
+import { toOrderPathId } from '../utils/orderNo'
 
 let __lineUidCounter = 0
 const nextLineUid = (): string => `est-line-${++__lineUidCounter}`
@@ -999,7 +1001,7 @@ export function EstimateFormPage() {
 
     void createDocCoeditProvider({
       documentId: editId,
-      basePath: `/slips/estimates/${editId}`,
+      basePath: `/slips/estimates/${toOrderPathId(editId)}`,
       headerTextFields: ESTIMATE_HEADER_TEXT_FIELDS,
     }).then((nextProvider) => {
       if (disposed) {
@@ -1153,6 +1155,8 @@ export function EstimateFormPage() {
         sellingPrice: Number(legacy.sellingPrice),
         modelCode: legacy.modelCode,
         productType: legacy.productType,
+        fixedDiscountRate: legacy.fixedDiscountRate,
+        fixedDiscountSource: legacy.fixedDiscountSource,
         status: legacy.status,
       }]
     } catch {
@@ -1255,7 +1259,11 @@ export function EstimateFormPage() {
   const updatePrice = (index: number, unitPrice: string) => {
     const current = linesRef.current[index]
     if (!current) return
-    const quantity = quantityAfterDeliveryPriceInput(current.goodsType, current.quantity, unitPrice)
+    const { quantity, shouldSyncQuantity } = resolvePriceInputQuantitySync(
+      current.goodsType,
+      current.quantity,
+      unitPrice,
+    )
     updateLine(index, {
       ...recalculateLineVat(asVatLine({ ...current, unitPrice, quantity }), 'PRICE'),
       unitPrice,
@@ -1269,6 +1277,13 @@ export function EstimateFormPage() {
       legacyPriceUntouched: false,
       vatDirty: false,
     }, true)
+    if (shouldSyncQuantity && estimateFormCoeditProvider) {
+      try {
+        estimateFormCoeditProvider.setItemValue(index, 'quantity', quantity)
+      } catch {
+        // provider가 해제되는 순간에는 로컬 라인을 권위로 유지한다.
+      }
+    }
   }
 
   const updateQuantity = (index: number, quantity: string) => {
@@ -1480,6 +1495,12 @@ export function EstimateFormPage() {
         productName: rawResult.productName,
         specification: 'specification' in rawResult ? rawResult.specification : null,
         sellingPrice: String(rawResult.sellingPrice ?? ''),
+        fixedDiscountRate: 'fixedDiscountRate' in rawResult
+          ? rawResult.fixedDiscountRate == null ? null : Number(rawResult.fixedDiscountRate)
+          : null,
+        fixedDiscountSource: 'fixedDiscountSource' in rawResult
+          ? rawResult.fixedDiscountSource ?? null
+          : null,
         productType: rawResult.productType,
         goodsType: rawResult.goodsType,
         status: rawResult.status ?? null,
@@ -1492,7 +1513,11 @@ export function EstimateFormPage() {
       // R4-F1: 전표(applyProductSelection)와 동일 semantics(공유 헬퍼) — 빈 단가뿐 아니라 이전
       // 품목의 자동채움(CATALOG/REMEMBERED) 단가도 새 품목 기준으로 재채움 + 가격기억 재조회.
       const shouldAutoFill = shouldAutoFillPrice(line.priceSource, line.unitPrice)
-      let nextUnitPrice = String(result.sellingPrice)
+      const catalogPrice = resolveEstimateCatalogPrice(
+        Number(result.sellingPrice),
+        result.fixedDiscountRate,
+      )
+      let nextUnitPrice = String(catalogPrice.unitPrice)
       let nextPriceSource: DraftLine['priceSource'] = 'CATALOG'
       let nextPriceMemoryUpdatedAt: string | null = null
       let resolvedPartnerId = selectedPartnerIdRef.current
@@ -1500,7 +1525,7 @@ export function EstimateFormPage() {
         // 품목 lookup 중 거래처가 바뀌면 새 거래처는 아직 productId 를 보지 못해 bulk 후보가 0건이다.
         // 현재 거래처가 응답 동안 다시 바뀌면 최신 partnerId 로 반복 resolve하고 busy 를 유지한다.
         while (true) {
-          nextUnitPrice = String(result.sellingPrice)
+          nextUnitPrice = String(catalogPrice.unitPrice)
           nextPriceSource = 'CATALOG'
           nextPriceMemoryUpdatedAt = null
           if (resolvedPartnerId) {
@@ -1574,7 +1599,7 @@ export function EstimateFormPage() {
         specificationSource: nextSpecificationSource,
         productType: result.productType ?? 'SINGLE',
         goodsType: result.goodsType ?? current.goodsType,
-        catalogUnitPrice: result.sellingPrice,
+        catalogUnitPrice: String(catalogPrice.unitPrice),
         unitPrice: applyPrice ? nextUnitPrice : current.unitPrice,
         priceSource: applyPrice ? nextPriceSource : current.priceSource,
         priceMemoryUpdatedAt: applyPrice ? nextPriceMemoryUpdatedAt : current.priceMemoryUpdatedAt,
@@ -2324,7 +2349,10 @@ export function EstimateFormPage() {
                   // doc-sync 유래 값 반영은 분류(priceSource) 를 건드리지 않는다 — 자동채움 provider
                   // write 가 pending REMEMBERED/CATALOG 분류를 USER 로 덮는 마커 소멸 차단(R4-F6).
                   // 분류 판정은 페이지 구독(coeditLinesToDraftLines + localAutoPriceWrites)이 단일 소스.
-                  onDocSyncValueChange={(value) => updateLine(i, { unitPrice: value })}
+                  onDocSyncValueChange={(value) => updateLine(i, {
+                    unitPrice: value,
+                    quantity: resolvePriceInputQuantitySync(line.goodsType, line.quantity, value).quantity,
+                  })}
                   readOnly={Boolean(isReadOnly)}
                   inputMode="decimal"
                   inputStyle={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}

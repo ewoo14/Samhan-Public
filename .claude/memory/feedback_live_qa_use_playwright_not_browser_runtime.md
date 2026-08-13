@@ -48,9 +48,32 @@ const b = await chromium.launch({ headless: true })
 
 ⟹ 게이트 ③(라이브QA 실서버 실행)이 **있지도 않은 이유로** 여섯 라운드 연속 미충족 처리됐다.
 
+## 🚨 2026-08-11 재발 — 이번엔 **구현자(LUNA)** 쪽. 브리핑에 안 넣었기 때문이다
+
+한 세션에서 **세 번** 같은 blocker 가 나왔다.
+
+```text
+#1166 fix2   "공유 DB write 금지 · 타 워크트리 컨테이너 · P-QA-40 seed 부재"  ← 이건 진짜 blocker
+#1169 fix2   "No browser is available"                                    ← 틀린 blocker
+#1170 fix3   "in-app browser 에 사용 가능한 브라우저가 없음"                 ← 틀린 blocker
+```
+
+PM 이 매번 확인했고 매번 브라우저는 있었다(`chromium-1217` · `node_modules/.bin/playwright` 정상).
+
+### 🔑 원인 — PM 이 이 절을 **SOL 브리핑에만** 넣고 있었다
+
+```text
+검증 브리핑(SOL)   "clients/desktop 안에서 Playwright 직접 실행" 을 매번 넣었다  → 문제 없음
+fix 브리핑(LUNA)   "라이브QA 하고 스크린샷" 만 적었다                            → 세 번 다 여기서 났다
+⟹ 라이브QA 를 **요구하는 모든** 브리핑에 넣어야 한다. fix 브리핑도 포함이다
+```
+
+🚩 함께 관찰된 좋은 점 — 세 구현자 모두 **허위 스크린샷을 만들지 않고 실패 원문/README 를 남겼다.**
+blocker 가 틀렸어도 그 처리는 옳다. PM 이 되묻는 것으로 회수된다.
+
 ## How to apply
 
-라이브QA 를 요구하는 모든 브리핑(SOL·LUNA)에 넣는다.
+라이브QA 를 요구하는 모든 브리핑(SOL·LUNA **둘 다**)에 넣는다.
 
 ```
 🚨 라이브QA 는 Playwright 로 하십시오. chromium 은 이미 설치돼 있습니다

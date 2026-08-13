@@ -530,6 +530,7 @@ export function AppLayout() {
   const showAccountingBankMatching = dynamicCanAccess('accounting.bank-matching',  'view')
   const showAccountingDepositMapping = dynamicCanAccess('accounting.deposit-mapping', 'view')
   const showAccountingCashReceipts = dynamicCanAccess('accounting.cash-receipts', 'view')
+  const showAccountingSalesCommissionSettlement = dynamicCanAccess('accounting.sales-commission-settlement', 'view')
   const showAccountingBankCardAdmin = dynamicCanAccess('accounting.bank-card-admin',  'view')
   const showAccountingAdminLedger = dynamicCanAccess('ecount.mig14.ledger', 'view')
   const showAccountingAdminMigOps = dynamicCanAccess('ecount.mig.ops-dashboard', 'view')
@@ -543,6 +544,7 @@ export function AppLayout() {
     || showAccountingSalesSlip || showAccountingPurchaseSlip
     || showAccountingPartnerLedger || showAccountingTaxInvoice
     || showAccountingTaxInvoiceBatch || showAccountingTaxInvoiceInbound
+    || showAccountingSalesCommissionSettlement
     || showAccountingDailyClose
     || showAccountingLedger || showAccountingBankMatching || showAccountingDepositMapping || showAccountingCashReceipts || showAccountingBankCardAdmin
     || showAccountingAdminLedger
@@ -748,12 +750,6 @@ export function AppLayout() {
             >
               주문서 승인
             </SidebarLink>
-            <SidebarLink
-              to="/sales/order-approvals"
-              show={showPartnerOrderList}
-            >
-              주문서 앱 접근권한 설정
-            </SidebarLink>
             {/* [C5 후속 C-4] 거래처 관리 — /admin/partners 라우트와 동일한 partners.list VIEW 기준. */}
             <SidebarLink
               to="/admin/partners"
@@ -929,6 +925,7 @@ export function AppLayout() {
               '/accounting/funds/status',
               '/sales/closing',
               '/accounting/period-close',
+              '/accounting/sales-commission-settlements',
               '/accounting/statement-batch',
               '/accounting/partner-ledger',
               '/accounting/hometax-export',
@@ -1170,6 +1167,13 @@ export function AppLayout() {
               >
                 월말 마감
               </SidebarLink>
+              <SidebarLink
+                to="/accounting/sales-commission-settlements"
+                show={showAccountingSalesCommissionSettlement}
+                data-testid="sidebar-accounting-sales-commission-settlements"
+              >
+                영업수수료 정산
+              </SidebarLink>
               {/* [PR-E2 FE-8] 거래명세서 일괄 — accounting.statement-batch 동적 RBAC. */}
               <SidebarLink
                 to="/accounting/statement-batch"
@@ -1343,6 +1347,26 @@ export function AppLayout() {
               data-testid="sidebar-messenger"
             >
               메신저
+            </SidebarLink>
+            {/*
+             * 🚫 채팅 사이드바 진입점 비노출 (2026-08-12 개발책임자 결정)
+             *
+             * 채팅은 본체 메뉴가 아니라 **별도 패키징 앱**으로 간다.
+             *   "채팅창은 메뉴로 만들게 아니라 따로 카톡처럼 창을 띄워야지"
+             *   "별도 패키징 앱으로 하고 접속 중인지 여부도 알 수 있게 하자"
+             *
+             * #894 S1 은 서버·통신 토대(REST·SSE·방/메시지/참여자·권한)만 머지됐고
+             * 그 위에 얹을 클라이언트는 S2 에서 별도 앱으로 만든다.
+             * 그때까지 사용자에게 폐기 예정 형태를 노출하지 않는다.
+             *
+             * 라우트(/chat · /chat/:roomCode)는 개발·QA 용으로 살려 둔다.
+             */}
+            <SidebarLink
+              to="/chat"
+              show={showMessengerSend}
+              data-testid="sidebar-chat"
+            >
+              채팅
             </SidebarLink>
             <SidebarLink
               to="/admin/chat-rooms"

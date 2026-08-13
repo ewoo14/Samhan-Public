@@ -1,6 +1,12 @@
 package com.samhanair.logis.product.it;
 
 import java.util.UUID;
+
+import com.samhanair.logis.product.domain.EstimateCategory;
+import com.samhanair.logis.product.service.ClassificationService;
+import com.samhanair.logis.product.service.ProductService;
+import com.samhanair.logis.product.quantitysync.QuantitySyncRuleTestCatalog;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -23,7 +29,14 @@ import org.testcontainers.containers.PostgreSQLContainer;
 @ExtendWith(AbstractPostgresIT.DockerAvailableCondition.class)
 public abstract class AbstractPostgresIT {
 
+    /** 통합테스트 컨테이너 자격은 매 실행 임시값이다 — 소스에 실 개발 스택 자격을 박지 않는다. */
     private static final String POSTGRES_PASSWORD = UUID.randomUUID().toString();
+
+    @Autowired
+    protected ClassificationService quantitySyncClassificationService;
+
+    @Autowired
+    protected ProductService quantitySyncProductService;
 
     @SuppressWarnings("resource")
     protected static final PostgreSQLContainer<?> POSTGRES =
@@ -31,6 +44,18 @@ public abstract class AbstractPostgresIT {
                     .withDatabaseName("product_db")
                     .withUsername("samhan")
                     .withPassword(POSTGRES_PASSWORD);
+
+    /** 통합 fixture가 target 역할을 관리자 분류 경로로 구성한다. */
+    protected final void classifyQuantitySyncTarget(String modelCode) {
+        classifyQuantitySyncTarget(modelCode, EstimateCategory.HOME_MULTI);
+    }
+
+    /** 지정한 견적 카테고리의 부자재 분류를 관리자 서비스 경로로 지정한다. */
+    protected final void classifyQuantitySyncTarget(String modelCode, EstimateCategory estimateCategory) {
+        QuantitySyncRuleTestCatalog.classifyAsMaterial(quantitySyncProductService, modelCode,
+                QuantitySyncRuleTestCatalog.ensureMaterialClassification(quantitySyncClassificationService,
+                        estimateCategory));
+    }
 
     static {
         try {
