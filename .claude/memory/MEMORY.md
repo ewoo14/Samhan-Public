@@ -67,6 +67,7 @@
 - [🚨🚨 "어느 쪽이 맞나" 를 올리기 전에…](feedback_conflict_is_mostly_one_sided_blank.md)
 - [무결성도메인 정책 선확인](feedback_integrity_domain_policy_preconfirm.md)
 - [개발책임자 결정은 PR에 누적 기록](feedback_post_devlead_decisions_to_pr.md)
+- [🚨 라운드는 커밋이 아니라 게시로 끝난다…](feedback_round_ends_only_when_posted.md)
 - [🚨🚨 리뷰 1:1 게시 엄수 — 커밋과 게…](feedback_review_post_one_to_one_enforcement.md)
 - [PM-Codex 진행 검증·10분 보고](feedback_pm_codex_progress_verification.md)
 - [🚨🚨 이슈 생성 금지 (2026-08-07…](feedback_issue_registration_delegated_to_pm.md)
