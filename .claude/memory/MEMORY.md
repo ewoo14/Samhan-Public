@@ -26,6 +26,7 @@
 - [🚨🚨 fix 브리핑에 "잃으면 안 되는 것…](feedback_fix_briefing_must_state_what_not_to_lose.md)
 - [🚨 fix 는 양방향 RED 로 — 한쪽만…](feedback_bidirectional_red_for_fix.md)
 - [🚨 QA 브리핑 맨 앞에 환경 확인 절 —…](feedback_qa_environment_verification_first.md)
+- [🚨 "로그인 화면에서 막혔다"=결함 아니라 renderer 미기동](feedback_live_qa_needs_renderer_running_first.md)
 - [🚨🚨 라운드 기본값은 SOL 이다 — OP…](feedback_sol_stage_starvation.md)
 - [🚨 하네스 설계 정본 — 결함 0 이 궁극…](feedback_harness_defect_zero_design.md)
 - [🚨 Codex 5-agent=mcp 직접(…](feedback_codex_rescue_unreliable_use_mcp.md)
