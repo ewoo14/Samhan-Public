@@ -117,6 +117,7 @@
 - [Monitor 자동 사용](feedback_monitor_no_permission.md)
 
 - [🚨 CI 실패 스텝이 `Set up job…](feedback_ci_setup_job_failure_is_github_outage.md)
+- [🚨 CI cancelled 는 매달린 실패일 수 있다 — 재실행 전 로그](feedback_cancelled_ci_job_can_be_a_disguised_failure.md)
 
 - [🚨 "배포본 나이를 재라" 는 백엔드 전용…](feedback_client_bundle_is_also_a_deployment.md)
 
