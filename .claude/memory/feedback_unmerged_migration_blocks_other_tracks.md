@@ -55,3 +55,28 @@ DELETE FROM flyway_schema_history WHERE version = '100';
 
 ## 관련
 [[feedback_parallel_backend_tracks_share_docker_stack]](이미지 판) · [[feedback_applied_migration_immutable]] · [[feedback_stale_deployment_looks_like_defect]] · PR #1010(#1009) · PR #1044(#1032)
+
+## 🆕 2026-08-15 — **되돌린 줄 알았는데 다시 적용돼 있었다** (#1210 → #1214·#1216 차단)
+
+낮에 V121 을 공유 DB 에서 되돌렸다(감사표 기준 UPDATE 61 · DELETE 61 · flyway history 1).
+그런데 밤에 다시 재보니 V121·V122 가 둘 다  로 들어가 있었다.
+
+
+
+🔑 **배포된 slip-service 는 main 기반이라 enum 에 · 가 없다.**
+그 값을 가진 행을 읽으면 매핑에 실패한다 ⟹  가 **500 INTERNAL_ERROR**.
+
+증상이 어떻게 보였나 — **완전히 다른 트랙의 UI 결함처럼 보였다.**
+
+
+### 왜 되돌리기가 유지되지 않았나
+
+되돌린 뒤에도 **그 브랜치의 라운드가 계속 돌았고**, 라이브QA 가 다시 마이그레이션을 태웠다.
+🚩 **되돌리기는 1회 조치이고, 브랜치가 살아 있는 한 재적용은 계속 일어난다.**
+
+### 적용
+
+
+
+관련: [[feedback_migration_number_three_counts]] · [[feedback_applied_migration_immutable]] ·
+[[feedback_parallel_backend_tracks_share_docker_stack]] · [[feedback_stale_deployment_looks_like_defect]]
