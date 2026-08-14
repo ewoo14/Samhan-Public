@@ -40,6 +40,7 @@
 - [🚨 불변식처럼 보이는 수단 지시 — PM…](feedback_pm_means_instruction_creates_defect.md)
 - [🚨 PM 슬라이스 effort 조절·엣지…](feedback_pm_regulate_slice_effort.md)
 - [🚨 PM 직접실행 최소화·Codex 토큰…](feedback_pm_delegate_to_codex_conserve_tokens.md)
+- [🚨 설계가 뒤집히면 도는 codex 스레드부터…](feedback_stop_superseded_codex_threads.md)
 - [🚨 병렬 라운드 중 `git add -A`…](feedback_git_add_all_swallows_concurrent_round.md)
 - [🚨 머지·종료된 워크트리는 바로 정리 (2…](feedback_cleanup_merged_worktrees_immediately.md)
 - [🚨 산출물 옮길 때 `git diff --…](feedback_pm_copy_untracked_files.md)
