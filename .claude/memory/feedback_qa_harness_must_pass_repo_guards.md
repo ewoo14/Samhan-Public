@@ -61,3 +61,33 @@ QA 하네스·검증 스크립트를 커밋하기 전에
 
 관련: [[feedback_qa_harness_commit_breaks_ci]] · [[feedback_live_qa_artifacts_vanish_silently]] ·
 [[feedback_design_system_playwright_mock_suite]] · [[feedback_ci_test_filter_false_green]]
+
+
+## 🚨 2026-08-14 네 번째 — **규칙을 써 놓고도 브리핑에 안 넣어서 또 났다**
+
+`#1210` 라이브QA 라운드에서 같은 가드가 또 걸렸다. 이번 원인은 구현자가 아니라 **PM 이다.**
+
+```text
+같은 날 #1211 · #1212 · #1180 에서 세 번 나서 이 메모리를 썼다
+그 뒤 #1180 구현자 브리핑에는 넣었다
+그런데 #1210 라이브QA 브리핑에는 빠뜨렸다  ⟹ 네 번째 발생
+```
+
+🔑 **규칙은 "PM 이 기억하는 것" 이 아니라 "브리핑에 들어가는 것" 이다.**
+메모리에 적어 두는 것만으로는 실행되지 않는다. 브리핑에 문장으로 들어가야 구현자가 한다.
+
+### How to apply — 브리핑 고정 항목으로 만들어라
+
+**캡처·하네스·검증 스크립트를 만들게 하는 모든 브리핑**에 아래를 그대로 넣는다.
+
+```text
+🚩 캡처를 _local/ 에 두라 — scripts/lib/qa-shots-dir 의 resolveQaShotsDir 를 쓴다
+   (형제 경로에 직접 쓰면 커밋된 증거가 다음 실행에 덮이고, 저장소 가드가 CI 를 막는다)
+🚩 하네스를 추가하기 전에 가드를 먼저 돌려라
+   cd clients/desktop && npx vitest run src/renderer/test-utils/harness-false-green-guard.test.ts
+🚩 포트·경로를 리터럴로 박지 마라 (Get-LocalStackPort 로 조회)
+🚩 프로세스 ID·임시 로그 같은 잡파일을 커밋하지 마라 — 증거가 아니다
+```
+
+🚩 실측 — `#1210` 은 `vite.pid` 까지 커밋됐다. **프로세스 ID 는 증거가 아니다.**
+   다음 실행에 무의미해지고, 확장자 census 가드에도 걸린다.
