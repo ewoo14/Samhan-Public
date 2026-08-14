@@ -94,6 +94,7 @@
 
 # 커밋/PR/문서 규약
 - [한국어 의무 — 커밋/PR/Issue/보고](feedback_korean_commits.md)
+- [🚨 QA 하네스 커밋 전 저장소 가드를 먼저…](feedback_qa_harness_must_pass_repo_guards.md)
 - [🚨🚨 내가 커밋한 QA 하네스가 CI 를…](feedback_qa_harness_commit_breaks_ci.md)
 - [🚨 QA 스샷=SendUserFile+PR…](feedback_pr_screenshot_sha_pinned_urls.md)
 - [스크린샷 항상 사용자 인라인 첨부](feedback_qa_screenshots_inline_to_user.md)
