@@ -137,3 +137,78 @@ PR #1210              매출전표 → 출고전표 명칭 변경이 딸려 들�
 - `docs/dev-reports/2026-07-13-773-s4-daily-closing-render.md`
 - `clients/desktop/src/renderer/routes/DailyClosingPage.tsx`
 - `services/accounting-service/.../MonthEndCloseService.java`
+
+---
+
+# 🔒 2차 정찰 후 확정 (2026-08-15)
+
+## 🚩 정찰이 뒤집은 전제
+
+```text
+회계반영일자   레거시 의미의 원천이 어디에도 없다
+               레거시  Excel 셀 값 · 사용자가 직접 수정 · 같은 전표 그룹에 전파
+               현재    accountingDate = confirmedAt.toLocalDate()  ← 이름만 같다
+               ⟹ 그대로 쓰면 탭이 "회계반영 여부" 가 아니라 "출고전표 확정 여부" 를 나눈다
+
+숫자 규칙      결정 문서의 전제가 틀렸다
+               "현재는 0/null 을 — 로 구분한다" 고 적었으나
+               currencyUtils 는 0 과 null 을 둘 다 "—" 로 낸다 (구분하지 않는다)
+```
+
+## 확정 8건
+
+| # | 항목 | 결정 | 근거 |
+|---|---|---|---|
+| 1 | 회계반영일자 정본 | accounting `posted_at` | 이름·의미가 "회계에 반영된 시점" 으로 레거시와 가장 가깝다. allocation 으로 원천 출고전표와 연결된다 |
+| 2 | 하루 조회 상태 범위 | CONFIRMED · DELIVERED · COMPLETED | 확정된 거래만. DRAFT·INSPECTING·PROCESSING·SENT·CANCELED 제외 |
+| 3 | `번호` 표시 | `seqNo` | 레거시가 `일자` 와 `번호` 를 따로 뒀다. `slipNo` 를 통째로 넣으면 일자가 두 번 나온다 (PM 결정) |
+| 4 | `DC` | `DC조건`(설명 문자열) · `DC액`(숫자) 로 이름을 가른다 | 합치면 `홈45%&상업46% / 360 -3만` 과 `301,025` 가 섞인다 (PM 결정) |
+| 5 | `거래처코드` | 본표에 실제 `partnerCode` · 사업자번호는 별도 열 | 실측 `P-2026-0017` vs `3211910527` — 지금은 제목만 거래처코드고 값은 bizNo 다 (PM 결정) |
+| 6 | 상세표 구성 | **레거시 17열 단일표 + 확장행** | 표는 하나 · 행을 펼치면 검증값(모델·카테고리·기준 납품가·기대율)이 나온다 |
+| 7 | 현대 검증값 위치 | 확장행 | 레거시 가독성을 지키면서 불일치 원인을 그 자리에서 추적한다 |
+| 8 | 숫자·소계 | **레거시 그대로** | 0 과 빈값 모두 `0` · 전표 소계에 단가·출고가도 단순 합산 · 전체 합계는 수량·단가·공급가·부가세·합계만 |
+
+## 🚨 실측으로 확인된 것
+
+```text
+2026-08-14 OUTBOUND 상태 분포
+  COMPLETED 2 · CONFIRMED 10 · DELIVERED 1 · DRAFT 1
+  INSPECTING 1 · PROCESSING 1 · SENT 2        합계 18
+  ⟹ 결정 2 로 13건이 대상이 된다
+  2026-08-15 에는 CANCELED 2건이 있어 상태 없이 조회하면 취소 전표까지 들어온다
+
+날짜 기준 차이
+  출고일 2026-08-13 · 확정일 2026-08-14 인 전표가 실제로 있다
+  2026-08-14 기준 조회가 출고일 10건 / 확정일 11건으로 갈린다
+  ⟹ 하루 조회 기준은 slipDate(출고일) 다. posted_at 은 탭 분류에만 쓴다
+
+거래처코드 불일치 실측
+  출고전표 2026/08/13-3 · 원주에어컨공업
+  실제 거래처코드 P-2026-0017 · 사업자번호 321-19-10527
+  현재 화면은 "거래처코드" 제목에 bizNo 숫자(3211910527)를 표시한다
+
+DC 두 의미 실측 (랜드유통 · 2026/08/07-8 · AC072CN6PBH1)
+  DC 설명 = "홈45%&상업46% / 360 -3만 / 4way -3만 / 1way -3만 / 스탠드 -3만 / 1등급 -3만"
+  DC 금액 = 301,025 = 990,000(출고가) − 688,975(실단가)
+```
+
+## 17열 원천 판정
+
+```text
+직접 확보 9   일자(slipDate) · 품목명 · 수량 · 단가(VAT포함) · 공급가액 · 부가세
+              거래처명 · 거래처코드 · 번호(seqNo)
+계산 4        합계 · 할인율 · 총계 · 확인
+타 서비스 3   창고명(inventory) · 출고가(product price_history) · DC조건(dc-config)
+원천 없음 1   회계반영일자  ⟹ 결정 1 로 posted_at 을 정본으로 삼는다
+```
+
+## 🚩 구현 전 남은 틈
+
+```text
+DcConfigResponse 에 unitProcessingEnabled 가 없다 — DC조건 문자열을 못 만든다
+구형 "Yes" 단위처리 값은 세부 단위를 복원할 수 없다 (import 시 enabled+roundTo+roundMode 로 변환)
+공유 DB DC 설정 210건 중 unit_processing_enabled=true 는 0건
+POSTED 매출전표가 1건뿐이라 posted_at 커버리지를 실측할 수 없다
+🚩 SlipLine 의 unitPriceWithVat·supplyAmount·vatAmount 는 과거 행에서 nullable 이다
+   결정 8(0 과 빈값을 모두 0)이 과거 행에서 어떻게 보이는지 확인해야 한다
+```
