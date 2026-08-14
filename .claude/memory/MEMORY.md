@@ -126,6 +126,7 @@
 - [🚨 낡은 배포본은 "없는 기능"처럼 보인다…](feedback_stale_deployment_looks_like_defect.md)
 - [🚨 머지 안 된 마이그레이션이 다른 트랙…](feedback_unmerged_migration_blocks_other_tracks.md)
 - [🚨🚨 백엔드 트랙은 직렬화 — 병렬 트랙이…](feedback_parallel_backend_tracks_share_docker_stack.md)
+- [🚨 compose 단위 기동이 eureka·gateway 를 끌고 재생성한다](feedback_compose_up_recreates_parent_containers.md)
 - [🚨 `git worktree add` 는…](feedback_git_worktree_cwd_use_dash_c.md)
 - [🚨 새 테스트마다 "이 단정이 Linux…](feedback_new_test_needs_linux_skip_guard.md)
 - [🚨 새 워크트리에는 gitignore 된…](feedback_worktree_missing_gitignored_inputs.md)
