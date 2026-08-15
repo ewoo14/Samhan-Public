@@ -18,7 +18,10 @@ describe('SalesExternalLink', () => {
     Object.assign(window, { samhanLegacy: { openExternal } })
     render(<SalesExternalLink show envKey="VITE_WEB_ORDER_URL" label="웹 주문서" url="https://orders.example" />)
 
-    fireEvent.click(screen.getByRole('button', { name: '웹 주문서 ↗' }))
+    const button = screen.getByRole('button', { name: '웹 주문서 ↗' })
+    expect(button.classList.contains('app-sidebar-link')).toBe(true)
+    expect(button.getAttribute('style')).toBeNull()
+    fireEvent.click(button)
 
     expect(openExternal).toHaveBeenCalledWith('https://orders.example')
   })

@@ -50,6 +50,24 @@
   align-items: center;
 }
 
+.listFilterGrid {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  gap: 8px 12px !important;
+  align-items: end;
+  width: 100%;
+}
+
+.listFilterGrid > * {
+  min-width: 0;
+}
+
+@media (max-width: 900px) {
+  .listFilterGrid {
+    grid-template-columns: repeat(2, minmax(140px, 1fr));
+  }
+}
+
 /* 설정 화면의 검색·저장·이력 등 기존 소형 액션 버튼 크기 계약을 보존한다. */
 .btnMini {
   appearance: none;

@@ -8,7 +8,7 @@
  * 해당 거래처의 DRAFT/ON_HOLD 주문만 칩으로 선택한다.
  */
 import { useEffect, useState } from 'react'
-import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Badge,
@@ -97,7 +97,6 @@ export function SalesPartnerOrderListPage() {
   const [statusFilter, setStatusFilter] = useState<PartnerOrderStatus | ''>(() => searchParams.get('status') as PartnerOrderStatus | '' || 'DRAFT')
   const [slipPublishStatusFilter, setSlipPublishStatusFilter] = useState<'' | 'FAILED' | 'PENDING_RETRY'>(() => searchParams.get('slipPublishStatus') as '' | 'FAILED' | 'PENDING_RETRY' || '')
   const [searchKeyword, setSearchKeyword] = useState(() => searchParams.get('keyword') ?? '')
-  const [includeDeleted, setIncludeDeleted] = useState(() => searchParams.get('includeDeleted') === 'true')
   const [page, setPage] = useState(0)
 
   /** Phase 2.6b D2: 병합 전환 모달 open/close. */
@@ -114,12 +113,10 @@ export function SalesPartnerOrderListPage() {
       if (value) next.set(key, value)
       else next.delete(key)
     }
-    if (includeDeleted) next.set('includeDeleted', 'true')
-    else next.delete('includeDeleted')
     if (page > 0) next.set('page', String(page))
     else next.delete('page')
     if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true })
-  }, [dateFrom, dateTo, partnerId, statusFilter, slipPublishStatusFilter, searchKeyword, includeDeleted, page, searchParams, setSearchParams])
+  }, [dateFrom, dateTo, partnerId, statusFilter, slipPublishStatusFilter, searchKeyword, page, searchParams, setSearchParams])
 
   const canCreateMerge = canAccess('sales.partner-order.convert', 'create')
   const canSearchPartners = canAccess('partners.search', 'view')
@@ -175,7 +172,7 @@ export function SalesPartnerOrderListPage() {
 
   useEffect(() => {
     setPage(0)
-  }, [dateFrom, dateTo, partnerId, statusFilter, slipPublishStatusFilter, searchKeyword, includeDeleted])
+  }, [dateFrom, dateTo, partnerId, statusFilter, slipPublishStatusFilter, searchKeyword])
 
   useCollectionRealtime(PartnerOrderBoardRealtimeClient, 'board', [['partner-orders']])
 
@@ -191,7 +188,7 @@ export function SalesPartnerOrderListPage() {
   const query = useQuery({
     queryKey: [
       'partner-orders', dateFrom, dateTo, partnerId, statusFilter,
-      slipPublishStatusFilter, searchKeyword, includeDeleted, page,
+      slipPublishStatusFilter, searchKeyword, page,
     ],
     queryFn: () => listPartnerOrders(page, 50, {
       dateFrom: dateFrom || undefined,
@@ -200,7 +197,6 @@ export function SalesPartnerOrderListPage() {
       status: statusFilter || undefined,
       slipPublishStatus: slipPublishStatusFilter || undefined,
       searchKeyword: searchKeyword.trim() || undefined,
-      ...(includeDeleted ? { includeDeleted: true } : {}),
     }),
     retry: 1,
   })
@@ -417,26 +413,6 @@ export function SalesPartnerOrderListPage() {
   return (
     <div style={{ color: 'var(--ink-primary)', background: 'var(--surface-card)' }}>
       <div className={styles['wrap']}>
-        {/* [3a 데스크탑 ↔ 웹 분리] 본 화면은 내부 영업/관리자가 거래처가 보낸 주문을 조회·승인하는
-            화면. 거래처(파트너)가 주문서를 직접 작성·발송하는 흐름은 판매 사이드바 외부 PWA 링크로 분리. */}
-        <div
-          data-testid="partner-order-audience-banner"
-          role="note"
-          style={{
-            background: '#EFF6FF',
-            border: '1px solid #BFDBFE',
-            color: '#1E3A8A',
-            borderRadius: 6,
-            padding: '8px 12px',
-            marginBottom: 12,
-            fontSize: 12,
-            lineHeight: 1.5,
-          }}
-        >
-          <strong>내부 영업·관리자용 화면입니다.</strong>{' '}
-          거래처(파트너)가 주문서를 직접 작성·발송하는 PWA 는 판매 사이드바의{' '}
-          <em>「웹 주문서 ↗」</em> 외부 웹앱을 사용합니다.
-        </div>
         {/* PR-H4c FE-A: list 화면 audit 안내 — 상세 변경 이력은 row 클릭 후 상세에서 확인 */}
         <AuditInfoBanner
           message="주문 row 를 클릭하면 상세 화면에서 변경 이력 (수정 횟수 / 복원) 을 확인할 수 있습니다. 본 목록은 주문 변경 시 자동 갱신됩니다."
@@ -485,7 +461,7 @@ export function SalesPartnerOrderListPage() {
             주문서 관리
             <span className={styles['badge']}>전체 {query.data?.totalElements ?? 0}건</span>
           </div>
-          <div className={styles['topActions']}>
+          <div className={styles['listFilterGrid']}>
             <Input
               type="date"
               value={dateFrom}
@@ -494,16 +470,8 @@ export function SalesPartnerOrderListPage() {
               title={isPreConfirmStatus ? '진행중·보류·확인중 상태는 발송일(createdAt) 기준으로 조회됩니다' : undefined}
               data-testid="partner-order-list-date-from"
               inputSize="sm"
+              style={{ width: 150 }}
             />
-            <label style={{ display: 'flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap', fontSize: 13 }}>
-              <input
-                type="checkbox"
-                checked={includeDeleted}
-                onChange={(e) => setIncludeDeleted(e.target.checked)}
-                data-testid="partner-order-list-include-deleted"
-              />
-              삭제 문서 포함
-            </label>
             <Input
               type="date"
               value={dateTo}
@@ -512,6 +480,7 @@ export function SalesPartnerOrderListPage() {
               title={isPreConfirmStatus ? '진행중·보류·확인중 상태는 발송일(createdAt) 기준으로 조회됩니다' : undefined}
               data-testid="partner-order-list-date-to"
               inputSize="sm"
+              style={{ width: 150 }}
             />
             <Input
               value={partnerId}
@@ -520,6 +489,7 @@ export function SalesPartnerOrderListPage() {
               aria-label="거래처 필터"
               data-testid="partner-order-list-partner-filter"
               inputSize="sm"
+              style={{ width: '100%' }}
             />
             <Select
               value={statusFilter}
@@ -527,6 +497,7 @@ export function SalesPartnerOrderListPage() {
               aria-label="상태 필터"
               data-testid="partner-order-list-status-filter"
               selectSize="sm"
+              style={{ width: '100%' }}
             >
               <option value="">전체 상태</option>
               {(Object.keys(PARTNER_ORDER_STATUS_LABEL) as PartnerOrderStatus[]).map((s) => (
@@ -541,6 +512,7 @@ export function SalesPartnerOrderListPage() {
               aria-label="전표 발행상태 필터"
               data-testid="partner-order-list-slip-publish-filter"
               selectSize="sm"
+              style={{ width: '100%' }}
             >
               <option value="">전표 발행상태 전체</option>
               <option value="FAILED">발행실패</option>
@@ -553,6 +525,7 @@ export function SalesPartnerOrderListPage() {
               aria-label="검색어"
               data-testid="partner-order-list-keyword-filter"
               inputSize="sm"
+              style={{ width: '100%' }}
             />
           </div>
         </div>

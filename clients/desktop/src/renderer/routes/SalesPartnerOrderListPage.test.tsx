@@ -133,38 +133,12 @@ describe('SalesPartnerOrderListPage 전표 발행 상태 배지', () => {
     })
   })
 
-  it('기본 목록은 삭제행을 제외하고 토글을 켰을 때만 삭제행을 조회한다', async () => {
+  it('삭제 문서 토글 없이 기본 목록만 조회한다', async () => {
     renderPage()
 
     await screen.findByTestId('partner-order-table')
-    const listCalls = () => mocks.listPartnerOrders.mock.calls.filter(([, , filters]) => filters?.status === 'DRAFT')
-    expect(listCalls().at(-1)?.[2]).not.toHaveProperty('includeDeleted', true)
-
-    fireEvent.click(screen.getByTestId('partner-order-list-include-deleted'))
-    await waitFor(() => expect(listCalls().at(-1)?.[2]).toHaveProperty('includeDeleted', true))
-  })
-
-  it('삭제 포함 목록은 다음 페이지로 이동하고 토글을 끄면 첫 활성 페이지로 돌아온다', async () => {
-    mocks.listPartnerOrders.mockImplementation(async (page, size, filters) => ({
-      content: [row({ orderNumber: `${filters?.includeDeleted ? 'deleted' : 'active'}-${page}` })],
-      totalElements: filters?.includeDeleted ? 101 : 1,
-      totalPages: filters?.includeDeleted ? 3 : 1,
-      number: page,
-      size,
-      first: page === 0,
-      last: page === (filters?.includeDeleted ? 2 : 0),
-    }))
-
-    renderPage()
-    const toggle = await screen.findByTestId('partner-order-list-include-deleted')
-    fireEvent.click(toggle)
-    fireEvent.click(await screen.findByTestId('partner-order-list-next-page'))
-
-    await waitFor(() => expect(mocks.listPartnerOrders).toHaveBeenLastCalledWith(1, 50, expect.objectContaining({ includeDeleted: true })))
-    fireEvent.click(await screen.findByTestId('partner-order-list-next-page'))
-    await waitFor(() => expect(mocks.listPartnerOrders).toHaveBeenLastCalledWith(2, 50, expect.objectContaining({ includeDeleted: true })))
-    fireEvent.click(toggle)
-    await waitFor(() => expect(mocks.listPartnerOrders).toHaveBeenLastCalledWith(0, 50, expect.not.objectContaining({ includeDeleted: true })))
+    expect(screen.queryByTestId('partner-order-list-include-deleted')).toBeNull()
+    expect(mocks.listPartnerOrders.mock.calls.every(([, , filters]) => !filters?.includeDeleted)).toBe(true)
   })
 
   it('FAILED_PERMANENT·PENDING_RETRY만 배지를 표시하고 정상 상태는 표시하지 않는다', async () => {

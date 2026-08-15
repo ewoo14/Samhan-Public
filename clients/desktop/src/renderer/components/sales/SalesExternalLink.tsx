@@ -48,14 +48,7 @@ export function SalesExternalLink({
         onClick={openExternal}
         title={`${label} — 거래처가 직접 사용하는 외부 웹앱 (새 브라우저 창)`}
         data-testid={`sidebar-sales-external-${envKey === 'VITE_WEB_ESTIMATE_URL' ? 'estimate' : 'order'}`}
-        style={{
-          padding: '6px 10px',
-          border: '1px solid #d0d7de',
-          borderRadius: 4,
-          background: '#f8fafc',
-          cursor: 'pointer',
-          fontSize: 12,
-        }}
+        className="app-sidebar-link"
       >
         {label} ↗
       </button>
