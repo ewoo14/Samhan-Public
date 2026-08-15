@@ -64,6 +64,15 @@ public class PartnerChatRoomMapping extends BaseEntity {
     @Column(name = "notion_created_at", updatable = false)
     private LocalDateTime notionCreatedAt;
 
+    /** 거래처코드 연결 상태 — 미연결 alias도 화면·데이터에서 보존한다. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "partner_link_status", nullable = false, length = 32)
+    private PartnerLinkStatus partnerLinkStatus;
+
+    /** 연결 또는 미연결 판정 근거. */
+    @Column(name = "partner_link_reason", length = 255)
+    private String partnerLinkReason;
+
     private PartnerChatRoomMapping(String partnerCode,
                                    String partnerBusinessNameSnapshot,
                                    String chatRoomName,
@@ -86,6 +95,7 @@ public class PartnerChatRoomMapping extends BaseEntity {
         this.chatRoomName = chatRoomName;
         this.source = source;
         this.notionCreatedAt = notionCreatedAt;
+        this.partnerLinkStatus = PartnerLinkStatus.UNLINKED;
     }
 
     /** Notion CSV import 경유 신규 매핑 (source=NOTION_IMPORT). */

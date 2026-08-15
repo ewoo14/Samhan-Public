@@ -31,6 +31,13 @@ import { apiClient, type ApiEnvelope } from './client'
 /** BE {@code MappingSource} enum 과 1:1. */
 export type ChatRoomMappingSource = 'NOTION_IMPORT' | 'MANUAL'
 
+/** BE {@code PartnerLinkStatus} 와 1:1. 목록에서 미연결 사유를 구분한다. */
+export type PartnerLinkStatus =
+  | 'LINKED'
+  | 'UNLINKED'
+  | 'UNLINKED_AMBIGUOUS'
+  | 'UNLINKED_UNMATCHED'
+
 /** 출처 → 한국어 표시 라벨 (운영자 시점 — 감사/마이그레이션 추적). */
 export const CHAT_ROOM_SOURCE_LABEL: Record<ChatRoomMappingSource, string> = {
   NOTION_IMPORT: 'DB 이관 시드',
@@ -48,6 +55,8 @@ export interface ChatRoomMapping {
   partnerCode: string
   partnerBusinessName: string
   chatRoomName: string
+  partnerLinkStatus?: PartnerLinkStatus
+  partnerLinkReason?: string | null
   source: ChatRoomMappingSource
   /** 원본 생성 시각 (ISO-8601, NOTION_IMPORT 만 비-null). */
   notionCreatedAt: string | null
