@@ -37,7 +37,6 @@ import { usePageTitle } from '../hooks/usePageTitle'
 import { usePermissions } from '../hooks/usePermissions'
 import { EstimateListRealtimeClient } from '../realtime/EstimateListRealtimeClient'
 import { useCollectionRealtime } from '../realtime/useCollectionRealtime'
-import { SalesSubNav } from '../components/sales/SalesSubNav'
 import styles from '../components/sales/sales.module.css'
 import {
   deletedBadgeAriaLabel,
@@ -570,10 +569,9 @@ export function EstimateListPage() {
 
   return (
     <div style={{ color: 'var(--ink-primary)', background: 'var(--surface-card)' }}>
-      <SalesSubNav />
       <div className={styles['wrap']}>
         {/* [3a 데스크탑 ↔ 웹 분리] 본 화면은 내부 영업/관리자용 견적 관리 UI 임을 명시.
-            거래처가 직접 작성하는 종합견적서 흐름은 별도 외부 웹앱 (sub-nav 우측 "웹 종합견적서 ↗") 으로 분리. */}
+            거래처가 직접 작성하는 종합견적서 흐름은 판매 사이드바의 외부 웹앱 링크로 분리. */}
       <div
           data-testid="estimate-audience-banner"
           role="note"
@@ -589,7 +587,7 @@ export function EstimateListPage() {
           }}
         >
           <strong>내부 영업·관리자용 화면입니다.</strong>{' '}
-          거래처가 직접 작성하는 종합견적서는 상단 우측{' '}
+          거래처가 직접 작성하는 종합견적서는 판매 사이드바의{' '}
           <em>「웹 종합견적서 ↗」</em> 외부 웹앱을 사용합니다.
         </div>
 

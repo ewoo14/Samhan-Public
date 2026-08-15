@@ -47,7 +47,6 @@ import { createDocCoeditProvider, type DocCoeditProvider } from '../realtime/cre
 import { usePageTitleStore } from '../stores/pageTitle'
 import { usePermissions } from '../hooks/usePermissions'
 import { useIsMobile } from '../hooks/useIsMobile'
-import { SalesSubNav } from '../components/sales/SalesSubNav'
 import { getReturnTo, type ReturnNavigationState } from '../utils/returnContract'
 import styles from '../components/sales/sales.module.css'
 
@@ -729,7 +728,6 @@ export function SalesPartnerOrderDetailPage() {
   if (!isValidId) {
     return (
       <>
-        <SalesSubNav />
         <Card padding={4} shadow="sm">
           <div className="empty-state">
             <h3>주문번호가 지정되지 않았습니다</h3>
@@ -745,7 +743,6 @@ export function SalesPartnerOrderDetailPage() {
 
   return (
     <>
-      <SalesSubNav />
       <div
         style={{
           display: 'flex',

@@ -35,7 +35,6 @@ import { restoreScrollAnchorWhenReady, saveScrollAnchor, type ReturnToLocation }
 import { AuditInfoBanner } from '../components/audit/AuditOverlaySection'
 import { usePageTitleStore } from '../stores/pageTitle'
 import { usePermissions } from '../hooks/usePermissions'
-import { SalesSubNav } from '../components/sales/SalesSubNav'
 import { MergeConvertDialog } from './components/MergeConvertDialog'
 import { useCollectionRealtime } from '../realtime/useCollectionRealtime'
 import { PartnerOrderBoardRealtimeClient } from '../realtime/PartnerOrderBoardRealtimeClient'
@@ -417,10 +416,9 @@ export function SalesPartnerOrderListPage() {
 
   return (
     <div style={{ color: 'var(--ink-primary)', background: 'var(--surface-card)' }}>
-      <SalesSubNav />
       <div className={styles['wrap']}>
         {/* [3a 데스크탑 ↔ 웹 분리] 본 화면은 내부 영업/관리자가 거래처가 보낸 주문을 조회·승인하는
-            화면. 거래처(파트너) 가 주문서를 직접 작성·발송하는 흐름은 외부 PWA (sub-nav 우측 "웹 주문서 ↗"). */}
+            화면. 거래처(파트너)가 주문서를 직접 작성·발송하는 흐름은 판매 사이드바 외부 PWA 링크로 분리. */}
         <div
           data-testid="partner-order-audience-banner"
           role="note"
@@ -436,7 +434,7 @@ export function SalesPartnerOrderListPage() {
           }}
         >
           <strong>내부 영업·관리자용 화면입니다.</strong>{' '}
-          거래처(파트너) 가 주문서를 직접 작성·발송하는 PWA 는 상단 우측{' '}
+          거래처(파트너)가 주문서를 직접 작성·발송하는 PWA 는 판매 사이드바의{' '}
           <em>「웹 주문서 ↗」</em> 외부 웹앱을 사용합니다.
         </div>
         {/* PR-H4c FE-A: list 화면 audit 안내 — 상세 변경 이력은 row 클릭 후 상세에서 확인 */}
