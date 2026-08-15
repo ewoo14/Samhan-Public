@@ -76,6 +76,7 @@ import { NotificationHistoryPage } from './NotificationHistoryPage'
 import { WarehousesPage } from './WarehousesPage'
 import { SlipListPage } from './SlipListPage'
 import { SlipFormPage } from './SlipFormPage'
+import { InboundXlsxPreviewPage } from './InboundXlsxPreviewPage'
 import { SlipDetailPage } from './SlipDetailPage'
 import { TransferListPage } from './TransferListPage'
 import { TransferFormPage } from './TransferFormPage'
@@ -638,6 +639,14 @@ const routes = [
         element: (
           <PermissionGuard pageCode="sales.slip.create" action="view">
             <SlipFormPage mode="INBOUND" />
+          </PermissionGuard>
+        ),
+      },
+      {
+        path: '/purchases/new/inbound-xlsx',
+        element: (
+          <PermissionGuard pageCode="inventory.dps" action="view">
+            <InboundXlsxPreviewPage />
           </PermissionGuard>
         ),
       },
