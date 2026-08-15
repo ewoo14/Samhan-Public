@@ -105,6 +105,19 @@ class JournalControllerIT extends AbstractPostgresIT {
     }
 
     @Test
+    void malformedOpaqueJournalIdentifier_returns400ApiResponse() throws Exception {
+        mockMvc.perform(get("/accounting/journals/not-a-valid-opaque-id")
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", "ACCOUNTANT"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT"))
+                .andExpect(jsonPath("$.message").value("유효하지 않은 분개 식별자입니다."))
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("not-a-valid-opaque-id"))));
+    }
+
+    @Test
     @DisplayName("POST /accounting/journals — ACCOUNTANT 201, SALES 403, MANAGER 403")
     void createJournalAuthMatrix() throws Exception {
         Map<String, Object> body = balancedJournalBody("100000");

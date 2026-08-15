@@ -82,6 +82,19 @@ class JournalCollabIT extends AbstractPostgresIT {
     @MockBean(classes = com.samhanair.logis.security.permission.DynamicPermissionClient.class)
     private com.samhanair.logis.security.permission.DynamicPermissionClient dynamicPermissionClient;
 
+    @Test
+    void malformedOpaqueJournalCollabIdentifier_returns400ApiResponse() throws Exception {
+        mvc.perform(get("/accounting/journals/{journalId}/collab/comments", "not-a-valid-opaque-id")
+                        .header(USER_ID_HEADER, ACTOR_ID)
+                        .param("limit", "20"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.success").value(false))
+                .andExpect(jsonPath("$.code").value("INVALID_INPUT"))
+                .andExpect(jsonPath("$.message").value("유효하지 않은 분개 식별자입니다."))
+                .andExpect(jsonPath("$.message").value(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("not-a-valid-opaque-id"))));
+    }
+
     /** 댓글 등록, 조회, 해결, 삭제가 실 DB 에 반영되는지 검증한다. */
     @Test
     void comment_roundtrip_add_list_resolve_softDelete() throws Exception {
