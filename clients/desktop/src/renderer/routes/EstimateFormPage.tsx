@@ -647,6 +647,8 @@ function EstimateMobileLineCard(props: {
           // 가 pending REMEMBERED/CATALOG 분류를 USER 로 덮어 마커가 소멸하는 것을 차단(R4-F6).
           // 분류 판정은 페이지 구독(coeditLinesToDraftLines + localAutoPriceWrites)이 단일 소스.
           onDocSyncValueChange={(value) => props.onUpdate({ unitPrice: value })}
+          formatValue={formatEditableAmountInput}
+          parseFormattedValue={parseEditableAmountForServer}
           inputSize="sm"
           readOnly={props.isReadOnly}
           type="text"

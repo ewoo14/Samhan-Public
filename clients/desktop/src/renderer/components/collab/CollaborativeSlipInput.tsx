@@ -9,6 +9,7 @@ import {
 } from '../../realtime/createCoeditProvider'
 import {
   adjustEditableAmountByArrow,
+  formatEditableAmountInput,
   type EditableAmountArrowDirection,
 } from '../../utils/editableAmountInput'
 
@@ -147,6 +148,9 @@ export function CollaborativeSlipInput({
   // 로딩 중(coeditPending)에만 잠금. provider=null 자체(로드 실패/비활성)는 평문 편집 허용 — onChange 가 modal state 갱신, Yjs 는 provider 있을 때만(영구잠금 회귀 방지, 리뷰 Opus 라운드2).
   const effectiveReadOnly = readOnly || !!coeditPending
   latestValueRef.current = value
+  // Keep state/Y.Doc values raw, but always render the formatted display value.
+  // Formatting only during onChange is overwritten by the next controlled render.
+  const displayValue = formatValue ? formatValue(value, null).displayValue : value
   // BLOCKING-1 부수 발견(#824 R1): onValueChange/onDocSyncValueChange 는 호출부(SlipDetailPage 등)에서
   // 매 렌더 새 인라인 화살표로 넘어와 참조가 매번 바뀐다. 이 값들을 아래 sync-effect 의 의존성
   // 배열에 두면(구코드) "커밋되지 않은 값 정규화"(예: 숫자 필드 clear → 0)가 Y.Doc 원문(빈 문자열)과
@@ -291,7 +295,7 @@ export function CollaborativeSlipInput({
         error={error}
         style={inputStyle}
         readOnly={effectiveReadOnly}
-        value={value}
+        value={displayValue}
         aria-label={ariaLabel}
         aria-describedby={ariaDescribedBy}
         data-testid={dataTestId}
