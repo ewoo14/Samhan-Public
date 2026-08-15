@@ -28,7 +28,6 @@ import {
   Card,
   Input,
   JournalLineRow,
-  MoneyInput,
   Spinner,
   type Account,
   type JournalLineDraft,
@@ -43,6 +42,7 @@ import {
 } from '../api/accounting'
 import { isPartnerLookupUnavailableError } from '../api/apiError'
 import { PartnerLookupErrorBanner } from '../components/common/PartnerLookupErrorBanner'
+import { EditableAmountInput } from '../components/common/EditableAmountInput'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { usePageTitle } from '../hooks/usePageTitle'
 import { buildRiskyPartnerLinesWarning, findRiskyPartnerLines } from './JournalFormPage.model'
@@ -96,6 +96,25 @@ const fmt = (n: number): string =>
   n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',')
 
 const JOURNAL_LINE_GRID_TEMPLATE = '40px 160px 260px 110px 110px minmax(180px, 1fr)'
+
+function JournalAmountInput({
+  value,
+  onChange,
+  ariaLabel,
+}: {
+  value: number
+  onChange: (value: number) => void
+  ariaLabel: string
+}) {
+  return (
+    <EditableAmountInput
+      value={value === 0 ? '' : String(value)}
+      onValueChange={(next) => onChange(Number(next) || 0)}
+      inputMode="numeric"
+      aria-label={ariaLabel}
+    />
+  )
+}
 
 interface MobileJournalLineCardProps {
   index: number
@@ -193,7 +212,7 @@ function MobileJournalLineCard({
 
       <div className="mobile-line-field">
         <label className="mobile-line-field-label">차변</label>
-        <MoneyInput
+        <JournalAmountInput
           value={line.debit}
           onChange={(n) => onChange({ debit: n })}
           ariaLabel={`라인 ${index} 차변`}
@@ -202,7 +221,7 @@ function MobileJournalLineCard({
 
       <div className="mobile-line-field">
         <label className="mobile-line-field-label">대변</label>
-        <MoneyInput
+        <JournalAmountInput
           value={line.credit}
           onChange={(n) => onChange({ credit: n })}
           ariaLabel={`라인 ${index} 대변`}

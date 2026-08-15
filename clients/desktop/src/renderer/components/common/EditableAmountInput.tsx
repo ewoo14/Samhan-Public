@@ -17,7 +17,7 @@ export function EditableAmountInput({
   value,
   onValueChange,
   inputMode = 'decimal',
-  enableAmountKeyboardStep = false,
+  enableAmountKeyboardStep = true,
   amountStep = 1,
   ...props
 }: EditableAmountInputProps) {

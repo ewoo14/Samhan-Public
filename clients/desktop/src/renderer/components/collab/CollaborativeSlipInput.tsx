@@ -120,7 +120,7 @@ export function CollaborativeSlipInput({
   parseValue,
   formatValue,
   parseFormattedValue,
-  enableAmountKeyboardStep,
+  enableAmountKeyboardStep = Boolean(formatValue),
   type,
   min,
   maxLength,

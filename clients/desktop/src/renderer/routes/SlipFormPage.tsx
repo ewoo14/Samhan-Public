@@ -22,7 +22,7 @@
  *
  * 본 컴포넌트는 `mode` prop 으로 OUTBOUND / INBOUND 양쪽 화면에서 재사용.
  */
-import { useMemo, useRef, useState, type ReactNode } from 'react'
+import { useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -116,7 +116,11 @@ import {
 import { isSelectableProductStatus, searchProducts as searchProductsApi } from '../api/productApi'
 import { searchPartners as searchPartnersApi } from '../api/partnerApi'
 import { useIsMobile } from '../hooks/useIsMobile'
-import { formatEditableAmountInput, parseEditableAmountForServer } from '../utils/editableAmountInput'
+import {
+  adjustEditableAmountByArrow,
+  formatEditableAmountInput,
+  parseEditableAmountForServer,
+} from '../utils/editableAmountInput'
 import { usePageTitle } from '../hooks/usePageTitle'
 import { InventoryLookupModal } from './components/InventoryLookupModal'
 
@@ -430,6 +434,14 @@ function SlipMobileLineCard(props: {
           inputMode="numeric"
           className="mobile-line-text-input mobile-line-number-input"
           value={props.priceLookupPending ? '' : formatEditableAmountInput(props.line.unitPrice, null).displayValue}
+          onKeyDown={(e) => {
+            if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return
+            e.preventDefault()
+            props.onUnitPriceChange(adjustEditableAmountByArrow(
+              props.line.unitPrice,
+              e.key === 'ArrowUp' ? 'up' : 'down',
+            ))
+          }}
           onChange={(e) => {
             const formatted = formatEditableAmountInput(e.target.value, e.target.selectionStart)
             props.onUnitPriceChange(parseEditableAmountForServer(formatted.displayValue))
@@ -650,7 +662,20 @@ function SortableLineRow(props: {
 
   // setNodeRef/transform 을 wrapper 에 부착 → LineRow + footer(옵션 picker) 동시 이동.
   return (
-    <div ref={setNodeRef} style={style}>
+    <div
+      ref={setNodeRef}
+      style={style}
+      onKeyDownCapture={(event: KeyboardEvent<HTMLDivElement>) => {
+        if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return
+        const target = event.target as HTMLInputElement
+        if (!target.getAttribute('aria-label')?.includes('단가')) return
+        event.preventDefault()
+        props.onUnitPriceChange(adjustEditableAmountByArrow(
+          props.line.unitPrice,
+          event.key === 'ArrowUp' ? 'up' : 'down',
+        ))
+      }}
+    >
       <LineRow
         isDragging={isDragging}
         vatInclusive
