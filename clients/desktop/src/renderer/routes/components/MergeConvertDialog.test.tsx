@@ -119,10 +119,13 @@ vi.mock('../../components/sales/sales.module.css', () => ({ default: new Proxy({
 
 import { MergeConvertDialog } from './MergeConvertDialog'
 
-function renderDialog(client = new QueryClient({ defaultOptions: { queries: { retry: false } } })) {
+function renderDialog(
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+  selectedOrders: PartnerOrderSummary[] = [],
+) {
   return render(
     <QueryClientProvider client={client}>
-      <MergeConvertDialog onClose={vi.fn()} onSuccess={vi.fn()} selectedOrders={[]} />
+      <MergeConvertDialog onClose={vi.fn()} onSuccess={vi.fn()} selectedOrders={selectedOrders} />
     </QueryClientProvider>,
   )
 }
@@ -130,6 +133,19 @@ function renderDialog(client = new QueryClient({ defaultOptions: { queries: { re
 afterEach(() => {
   cleanup()
   vi.clearAllMocks()
+})
+
+it('restores list-selected orders after resolving their partner', async () => {
+  mocks.searchPartners.mockResolvedValue([PARTNER_A])
+  mocks.listPartnerOrders.mockResolvedValue({ content: [ORDER_A, ORDER_C], totalElements: 2 })
+  mocks.listWarehouses.mockResolvedValue([])
+
+  renderDialog(undefined, [ORDER_A, ORDER_C])
+
+  expect((await screen.findByTestId('merge-convert-partner-input-value')).textContent).toContain(PARTNER_A.name)
+  await waitFor(() => {
+    expect(screen.getByTestId('merge-convert-mock-selected-order-count').textContent).toContain('2')
+  })
 })
 
 describe('MergeConvertDialog 거래처 우선 주문 칩', () => {
@@ -399,4 +415,3 @@ describe('MergeConvertDialog 거래처 우선 주문 칩', () => {
     expect(await screen.findByTestId('merge-convert-conflict-shippingAddress-radio-2026-07-23-C')).toBeTruthy()
   })
 })
-

@@ -84,6 +84,8 @@ const PRE_CONFIRM_STATUSES: ReadonlySet<PartnerOrderStatus> = new Set([
   'CONFIRMING',
 ])
 
+const MERGE_SELECTABLE_STATUSES: ReadonlySet<PartnerOrderStatus> = new Set(['DRAFT', 'ON_HOLD'])
+
 export function SalesPartnerOrderListPage() {
   const navigate = useNavigate()
   const location = useLocation()
@@ -101,6 +103,8 @@ export function SalesPartnerOrderListPage() {
 
   /** Phase 2.6b D2: 병합 전환 모달 open/close. */
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false)
+  const [selectedMergeOrders, setSelectedMergeOrders] = useState<PartnerOrderSummary[]>([])
+  const [mergeSelectionError, setMergeSelectionError] = useState<string | null>(null)
   /** Phase 2.6b D2: 병합 전환 성공 토스트 메시지 — null 이면 비표시. */
   const [convertSuccessMessage, setConvertSuccessMessage] = useState<string | null>(null)
   const [restoreError, setRestoreError] = useState<string | null>(null)
@@ -239,7 +243,51 @@ export function SalesPartnerOrderListPage() {
     )
   }
 
+  const isMergeSelectable = (order: PartnerOrderSummary) =>
+    order.isDeleted !== true && MERGE_SELECTABLE_STATUSES.has(order.status)
+
+  const handleMergeOrderSelection = (order: PartnerOrderSummary, checked: boolean) => {
+    if (!isMergeSelectable(order)) return
+    setMergeSelectionError(null)
+    if (!checked) {
+      setSelectedMergeOrders((current) => current.filter((item) => item.orderNumber !== order.orderNumber))
+      return
+    }
+    setSelectedMergeOrders((current) => {
+      const selectedPartnerCode = current[0]?.partnerCode
+      if (selectedPartnerCode && selectedPartnerCode !== order.partnerCode) {
+        setMergeSelectionError('서로 다른 거래처 주문은 한 전표로 병합할 수 없습니다. 먼저 기존 선택을 해제하세요.')
+        return current
+      }
+      if (current.some((item) => item.orderNumber === order.orderNumber)) return current
+      return [...current, order]
+    })
+  }
+
   const columns: DataTableColumn<PartnerOrderSummary>[] = [
+    {
+      key: 'mergeSelection',
+      header: '선택',
+      align: 'center',
+      mobilePriority: 'primary',
+      render: (o) => {
+        const selectable = isMergeSelectable(o)
+        const selected = selectedMergeOrders.some((item) => item.orderNumber === o.orderNumber)
+        return (
+          <span onClick={(event) => event.stopPropagation()}>
+            <input
+              type="checkbox"
+              data-testid={`partner-order-select-${o.orderNumber}`}
+              aria-label={`${o.orderNumber} 병합 선택`}
+              checked={selected}
+              disabled={!selectable}
+              title={selectable ? '출고전표 병합 대상으로 선택' : 'DRAFT 또는 ON_HOLD 주문만 선택할 수 있습니다'}
+              onChange={(event) => handleMergeOrderSelection(o, event.target.checked)}
+            />
+          </span>
+        )
+      },
+    },
     {
       key: 'orderNumber',
       header: '주문 번호',
@@ -563,6 +611,14 @@ export function SalesPartnerOrderListPage() {
             <span data-testid="merge-convert-selection-guide">
               거래처를 먼저 선택하면 같은 거래처 주문만 병합 후보로 표시됩니다.
             </span>
+            <span data-testid="merge-convert-selection-count">
+              목록에서 {selectedMergeOrders.length}건 선택됨
+            </span>
+            {mergeSelectionError ? (
+              <span role="alert" data-testid="merge-convert-selection-error">
+                {mergeSelectionError}
+              </span>
+            ) : null}
             <Button
               type="button"
               variant="primary"
@@ -643,6 +699,7 @@ export function SalesPartnerOrderListPage() {
       {/* Phase 2.6b D2: 병합 전환 모달 */}
       {mergeDialogOpen ? (
         <MergeConvertDialog
+          selectedOrders={selectedMergeOrders}
           onClose={handleMergeDialogClose}
           onSuccess={(slipNo, convertedOrderNos) => void handleMergeDialogSuccess(slipNo, convertedOrderNos)}
         />

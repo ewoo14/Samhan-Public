@@ -231,13 +231,37 @@ function MergeOrderChipSelector({
 // ---------------------------------------------------------------------------
 
 export function MergeConvertDialog({
-  selectedOrders: _legacySelectedOrders,
+  selectedOrders: initialSelectedOrders = [],
   onClose,
   onSuccess,
 }: MergeConvertDialogProps) {
   const [selectedPartner, setSelectedPartner] = useState<PartnerOption | null>(null)
-  const [selectedOrders, setSelectedOrders] = useState<PartnerOrderSummary[]>([])
+  const [selectedOrders, setSelectedOrders] = useState<PartnerOrderSummary[]>(initialSelectedOrders)
   const [partnerSearchError, setPartnerSearchError] = useState<string | null>(null)
+
+  // 목록에서 미리 고른 주문은 거래처 코드로 다시 거래처 UUID를 확인한 뒤 모달에 유지한다.
+  // 목록 row에는 UUID를 노출하지 않으므로 partnerIdExact를 임의로 조립하지 않는다.
+  useEffect(() => {
+    const partnerCode = initialSelectedOrders[0]?.partnerCode
+    if (!partnerCode || initialSelectedOrders.length === 0) return
+    let active = true
+    void searchPartners(partnerCode, { activeOnly: true, throwOnError: true })
+      .then((partners) => {
+        if (!active) return
+        const partner = partners.find((item) => item.partnerCode === partnerCode)
+        if (partner) {
+          setSelectedPartner(partner)
+          return
+        }
+        setPartnerSearchError('선택한 주문의 거래처를 확인할 수 없습니다. 거래처 검색 권한과 상태를 확인해 주세요.')
+      })
+      .catch(() => {
+        if (active) setPartnerSearchError('선택한 주문의 거래처를 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.')
+      })
+    return () => {
+      active = false
+    }
+  }, [initialSelectedOrders])
 
   const searchPartnerOptions = useCallback(async (query: string) => {
     setPartnerSearchError(null)
@@ -272,6 +296,12 @@ export function MergeConvertDialog({
     ),
     [candidateOrdersQuery.data?.content],
   )
+
+  useEffect(() => {
+    if (candidateOrders.length === 0 || selectedOrders.length === 0) return
+    const candidateKeys = new Set(candidateOrders.map((order) => order.orderNumber))
+    setSelectedOrders((current) => current.filter((order) => candidateKeys.has(order.orderNumber)))
+  }, [candidateOrders, selectedOrders.length])
 
   const ineligibleOrders = useMemo(
     () => (candidateOrdersQuery.data?.content ?? []).filter((order) =>
