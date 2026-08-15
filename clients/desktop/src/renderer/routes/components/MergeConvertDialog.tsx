@@ -542,7 +542,7 @@ export function MergeConvertDialog({
           // 재고 부족 — 가이드 §2.6 한국어 메시지 (BE 메시지 포함)
           if (beMessage?.includes('재고 부족')) {
             setErrorMessage(
-              `재고 부족으로 병합 발행할 수 없습니다.\n${beMessage}\n수량을 줄이거나 담당자에게 재고 보충을 요청해 주세요.`,
+              `재고 부족으로 병합전환할 수 없습니다.\n${beMessage}\n수량을 줄이거나 담당자에게 재고 보충을 요청해 주세요.`,
             )
             return
           }
@@ -553,10 +553,10 @@ export function MergeConvertDialog({
           setErrorMessage('병합 전환 권한이 없습니다. 관리자에게 문의해 주세요.')
           return
         }
-        setErrorMessage(safeBeMessage ?? '병합 발행에 실패했습니다. 잠시 후 다시 시도해 주세요.')
+        setErrorMessage(safeBeMessage ?? '병합전환에 실패했습니다. 잠시 후 다시 시도해 주세요.')
         return
       }
-      setErrorMessage('병합 발행에 실패했습니다. 잠시 후 다시 시도해 주세요.')
+      setErrorMessage('병합전환에 실패했습니다. 잠시 후 다시 시도해 주세요.')
     },
   })
 
@@ -610,7 +610,7 @@ export function MergeConvertDialog({
           role="note"
           data-testid="merge-convert-irreversible-warning"
         >
-          <strong>주의:</strong> 병합 발행 후에는 출고전표가 즉시 생성되며 재고가 예약됩니다.{' '}
+          <strong>주의:</strong> 병합전환 후에는 출고전표가 즉시 생성되며 재고가 예약됩니다.{' '}
           이 작업은 되돌릴 수 없습니다.
           {convertItemCount > 0
             ? ` (${selectedOrders.length}개 주문, ${convertItemCount}개 품목 전환 예정)`
@@ -729,7 +729,7 @@ export function MergeConvertDialog({
           <section data-testid="merge-convert-preview" style={{ marginBottom: 20 }}>
             <h3 style={{ margin: '0 0 8px' }}>승인 전 병합 미리보기</h3>
             <p data-testid="merge-convert-preview-header" style={{ margin: '0 0 8px' }}>
-              헤더는 첫 번째 주문 기준: {mergedPreview.header?.orderNumber} · 거래처 {mergedPreview.header?.partnerName ?? mergedPreview.header?.partnerCode} · 배송지 {mergedPreview.header?.deliveryAddress ?? '-'} · 납기 {mergedPreview.header?.dueDate ?? '-'} · 메모 {mergedPreview.header?.memo ?? '-'}
+              헤더는 첫 번째 주문 기준: {mergedPreview.header?.orderNumber} · 거래처 {selectedPartner?.name ?? mergedPreview.header?.partnerName ?? mergedPreview.header?.partnerCode} · 배송지 {mergedPreview.header?.deliveryAddress ?? '-'} · 납기 {mergedPreview.header?.dueDate ?? '-'} · 메모 {mergedPreview.header?.memo ?? '-'}
             </p>
             <p data-testid="merge-convert-discarded-header-notice" role="note">
               두 번째 이후 주문의 배송지·납기·메모·거래처 등 품목 외 필드는 사용하지 않습니다.

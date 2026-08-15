@@ -57,10 +57,12 @@ test('주문 개별·병합 전환 정본 흐름을 쓰기 없이 확인한다',
   }))
   await expect(page.getByTestId('individual-convert-action')).toHaveText('개별전환')
   await expect(page.getByTestId('merge-convert-action')).toHaveText('병합전환')
-  await capture(page, '05-r2-convert-choice-modal.png', '사용자는 선택 후 출고전표 전환 버튼을 눌러 개별전환·병합전환 중 하나를 고른다.')
+  await capture(page, '08-r3-convert-choice-modal.png', '사용자는 선택 후 출고전표 전환 버튼을 눌러 개별전환·병합전환 중 하나를 고른다.')
 
   await page.getByTestId('merge-convert-action').click()
   await expect(page.getByTestId('merge-convert-preview')).toBeVisible({ timeout: 60_000 })
+  await expect(page.getByTestId('merge-convert-irreversible-warning')).toContainText('병합전환')
+  await expect(page.getByTestId('merge-convert-irreversible-warning')).not.toContainText('병합 발행')
   await page.waitForTimeout(200)
   console.log('[MERGE_MODAL_STYLE]', await page.getByTestId('merge-convert-preview').evaluate((node) => {
     const dialog = node.closest('[role="dialog"]') ?? node
@@ -68,9 +70,10 @@ test('주문 개별·병합 전환 정본 흐름을 쓰기 없이 확인한다',
     return { opacity: style.opacity, zIndex: style.zIndex, animation: style.animationName, transition: style.transition }
   }))
   await expect(page.getByTestId('merge-convert-preview-header')).toContainText('첫 번째 주문 기준')
+  await expect(page.getByTestId('merge-convert-preview-header')).toContainText('주식회사 중앙유통')
   await expect(page.getByTestId('merge-convert-discarded-header-notice')).toBeVisible()
   await expect(page.getByTestId('merge-convert-submit')).toHaveAccessibleName('승인')
-  await capture(page, '06-r2-merge-preview-before-approval.png', '사용자는 병합전환을 선택한 뒤 승인 버튼을 누르기 전에 첫 주문 헤더와 병합 품목을 검토한다.')
+  await capture(page, '09-r3-merge-preview-before-approval.png', '사용자는 병합전환을 선택한 뒤 승인 버튼을 누르기 전에 첫 주문 헤더와 병합 품목을 검토한다.')
 
   await page.getByTestId('merge-convert-cancel').click()
   const status = page.getByTestId('partner-order-list-status-filter')
@@ -84,7 +87,6 @@ test('주문 개별·병합 전환 정본 흐름을 쓰기 없이 확인한다',
   await status.selectOption('DRAFT')
   await expect(page.locator('[data-testid^="partner-order-row-"]').first()).toContainText('접수')
   await expect(page.locator('[data-testid^="partner-order-row-"]').first()).not.toContainText('진행중')
-  await capture(page, '07-r2-status-filter-and-chip.png', '사용자는 상태 필터에서 전체·접수·완료를 선택하고 목록 행의 접수 상태 칩을 확인한다.')
 
   expect(posts.filter((url) => url.includes('convert-to-slip'))).toEqual([])
   console.log(`[QA] POST observed: ${posts.length === 0 ? 'none' : posts.join(', ')}`)
