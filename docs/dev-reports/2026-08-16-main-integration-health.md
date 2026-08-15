@@ -83,3 +83,24 @@ RENDERER_ROUTE=…/index.html#/purchases/new/inbound-xlsx
 PAGE_TESTID=VISIBLE
 종료 후 ALIVE=NO · ELECTRON_WITH_CWD_COUNT=0
 ```
+
+---
+
+## 04:10 PM 조치 — 8개 재배포 완료
+
+```text
+auth · dashboard · inventory · notification · partner-auth · partner · product · slip
+전부 healthy · actuator 200/UP
+```
+
+`#1226` marker 재확인 — **8/8 반영** (`handleNoResource` 1건씩).
+
+무인증 미존재 경로에서 **401 이 유지**되는 것도 확인했다 (404 로 새지 않는다).
+
+```text
+gateway  /api/users/…404-probe          401
+gateway  /api/v1/dc-config/…404-probe   401
+직포트   user · slip · product           401 401 401
+```
+
+🚩 인증 있는 경로의 500 → 404 전환은 JWT 가 필요해 PM 이 직접 재지 않았다(로그인이 `last_login_at` 을 쓴다). 다음 검증 라운드에서 확인한다.
