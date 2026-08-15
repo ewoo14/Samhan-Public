@@ -44,6 +44,7 @@ import {
 import { usePageTitleStore } from '../stores/pageTitle'
 import { usePermissions } from '../hooks/usePermissions'
 import { COMPONENT_FEATURE_OPTIONS, COMPONENT_SHAPE_OPTIONS } from '../utils/bundleOptionDomain'
+import { EditableAmountInput } from '../components/common/EditableAmountInput'
 import {
   buildCreateProductRequest,
   buildUpdateProductRequest,
@@ -818,41 +819,41 @@ export function ProductFormPage() {
       <section style={sectionStyle}>
         <h4 style={sectionTitleStyle}>가격</h4>
         <div className="mobile-form-grid" style={gridStyle}>
-          <Input
+          <EditableAmountInput
             label="판매가"
-            type="number"
             min="0"
             value={values.sellingPrice}
-            onChange={(event) => patchValues({ sellingPrice: event.target.value })}
+            onValueChange={(value) => patchValues({ sellingPrice: value })}
+            enableAmountKeyboardStep
             disabled={mode === 'edit'}
             error={errors.sellingPrice}
             data-testid="product-form-selling-price"
           />
-          <Input
+          <EditableAmountInput
             label="매입가"
-            type="number"
             min="0"
             value={values.purchasePrice}
-            onChange={(event) => patchValues({ purchasePrice: event.target.value })}
+            onValueChange={(value) => patchValues({ purchasePrice: value })}
+            enableAmountKeyboardStep
             disabled={mode === 'edit'}
             error={errors.purchasePrice}
             data-testid="product-form-purchase-price"
           />
-          <Input
+          <EditableAmountInput
             label="출고가"
-            type="number"
             min="0"
             value={values.releasePrice}
-            onChange={(event) => patchValues({ releasePrice: event.target.value })}
+            onValueChange={(value) => patchValues({ releasePrice: value })}
+            enableAmountKeyboardStep
             error={errors.releasePrice}
             data-testid="product-form-release-price"
           />
-          <Input
+          <EditableAmountInput
             label="배송가"
-            type="number"
             min="0"
             value={values.deliveryPrice}
-            onChange={(event) => patchValues({ deliveryPrice: event.target.value })}
+            onValueChange={(value) => patchValues({ deliveryPrice: value })}
+            enableAmountKeyboardStep
             error={errors.deliveryPrice}
             data-testid="product-form-delivery-price"
           />
@@ -995,7 +996,14 @@ function BundleComponentsEditor({ modelCode, canEdit }: { modelCode: string; can
             <option value="FOLLOW_SET">세트 따라감</option><option value="FIXED">고정</option>
           </Select>
           <Input label="비중" type="number" min="1" max="9" value={item.allocationWeight == null ? '' : String(item.allocationWeight)} disabled={!canEdit || item.allocationMode !== 'AUTO'} onChange={(event) => updateDraft(index, { allocationWeight: event.target.value ? Number(event.target.value) : null })} />
-          <Input label="고정금액" type="number" min="0" value={item.fixedAllocationAmount == null ? '' : String(item.fixedAllocationAmount)} disabled={!canEdit || item.allocationMode !== 'FIXED'} onChange={(event) => updateDraft(index, { fixedAllocationAmount: event.target.value || null })} />
+          <EditableAmountInput
+            label="고정금액"
+            min="0"
+            value={item.fixedAllocationAmount == null ? '' : String(item.fixedAllocationAmount)}
+            disabled={!canEdit || item.allocationMode !== 'FIXED'}
+            onValueChange={(value) => updateDraft(index, { fixedAllocationAmount: value || null })}
+            enableAmountKeyboardStep
+          />
           <Input label="반올림 단위" type="number" min="1" defaultValue="1000" disabled={!canEdit} />
           <label style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', opacity: 0 }}>
             <input
