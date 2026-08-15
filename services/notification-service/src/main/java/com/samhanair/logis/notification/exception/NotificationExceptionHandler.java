@@ -15,6 +15,7 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 import org.springframework.web.multipart.support.MissingServletRequestPartException;
 
 /**
@@ -104,6 +105,12 @@ public class NotificationExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleAccessDenied(AccessDeniedException ex) {
         return ResponseEntity.status(ErrorCode.FORBIDDEN.getHttpStatus())
                 .body(ApiResponse.fail(ErrorCode.FORBIDDEN, ExceptionMessageSanitizer.sanitize(ex.getMessage())));
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleNoResource(NoResourceFoundException ex) {
+        return ResponseEntity.status(ErrorCode.NOT_FOUND.getHttpStatus())
+                .body(ApiResponse.fail(ErrorCode.NOT_FOUND, ErrorCode.NOT_FOUND.getDefaultMessage()));
     }
 
     @ExceptionHandler(Exception.class)

@@ -15,6 +15,7 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 import org.springframework.web.multipart.support.MissingServletRequestPartException;
 
 /**
@@ -115,6 +116,12 @@ public class PartnerExceptionHandler {
         log.error("Unhandled data integrity violation in partner-service", ex);
         return ResponseEntity.status(ErrorCode.INTERNAL_ERROR.getHttpStatus())
                 .body(ApiResponse.fail(ErrorCode.INTERNAL_ERROR, "서버 내부 오류가 발생했습니다."));
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleNoResource(NoResourceFoundException ex) {
+        return ResponseEntity.status(ErrorCode.NOT_FOUND.getHttpStatus())
+                .body(ApiResponse.fail(ErrorCode.NOT_FOUND, ErrorCode.NOT_FOUND.getDefaultMessage()));
     }
 
     @ExceptionHandler(Exception.class)
