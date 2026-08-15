@@ -349,10 +349,11 @@ public class SlipController {
     public ApiResponse<SlipDetailResponse> create(
             @Valid @RequestBody CreateSlipRequest request,
             @RequestHeader(value = CALLER_HEADER, required = false) String callerHeader,
-            @RequestHeader(value = CALLER_NAME_HEADER, required = false) String callerName) {
+            @RequestHeader(value = CALLER_NAME_HEADER, required = false) String callerName,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
         // SP-D3 동적 권한 EDIT 가드 — slipType 기반 pageCode 분기
         checkCreatePermission(callerHeader, request.slipType());
-        return ApiResponse.ok(slipService.create(request, callerOrSystem(callerHeader), callerName));
+        return ApiResponse.ok(slipService.create(request, callerOrSystem(callerHeader), callerName, idempotencyKey));
     }
 
     /**

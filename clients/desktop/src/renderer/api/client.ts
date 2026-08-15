@@ -60,6 +60,12 @@ export const apiClient: AxiosInstance = axios.create({
 
 apiClient.interceptors.request.use(
   async (config: InternalAxiosRequestConfig) => {
+    // FormData는 브라우저 adapter가 boundary를 포함한 multipart Content-Type을
+    // 직접 설정해야 한다. 공통 JSON 기본 헤더가 남아 있으면 서버가 파일을
+    // multipart로 해석하지 못하므로 헤더를 비워 adapter의 자동 설정을 위임한다.
+    if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
+      config.headers.delete('Content-Type')
+    }
     // dev-only mock 모드 — VITE_MOCK_MODE=1 시 백엔드 호출을 fixture 로 대체 (PR #18 자동 캡처용).
     if (isMockMode()) {
       const mock = getMockResponse(config)

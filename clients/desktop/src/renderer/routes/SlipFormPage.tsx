@@ -2143,6 +2143,11 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
       <div className="sfp-page-header">
         <h2 className="sfp-page-title">{titleLabel}</h2>
         <div className="sfp-page-actions">
+          {!isOutbound && (
+            <Button variant="secondary" onClick={() => navigate('/purchases/new/inbound-xlsx')}>
+              가입고 XLSX 미리보기
+            </Button>
+          )}
           <Button variant="ghost" onClick={() => navigate(listPath)}>
             목록으로
           </Button>

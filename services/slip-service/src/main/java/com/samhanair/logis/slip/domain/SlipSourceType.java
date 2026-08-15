@@ -26,7 +26,8 @@ public enum SlipSourceType {
     ESTIMATE("견적 자동 발행"),
     PARTNER_ORDER("협력사 주문 발행"),
     MANUAL("수기 작성"),
-    MIGRATED_ECOUNT("legacy 마이그레이션");
+    MIGRATED_ECOUNT("legacy 마이그레이션"),
+    INBOUND_XLSX("가입고 XLSX 자동 생성");
 
     private final String displayName;
 }
