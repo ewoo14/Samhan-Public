@@ -333,7 +333,7 @@ export function SalesPartnerOrderDetailPage() {
     onError: (error) => {
       if (axios.isAxiosError(error)) {
         if (error.response?.status === 409) {
-          setHoldErrorMessage('진행중 상태인 주문서만 보류할 수 있습니다.')
+          setHoldErrorMessage('접수 상태인 주문서만 보류할 수 있습니다.')
           return
         }
         if (error.response?.status === 403) {
