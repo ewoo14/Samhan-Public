@@ -24,7 +24,7 @@ class PartnerCodeWidthUpgradeIT {
     private static final PostgreSQLContainer<?> UPGRADE_POSTGRES =
             new PostgreSQLContainer<>("postgres:16-alpine")
                     .withDatabaseName("accounting_upgrade_db")
-                    .withUsername("samhan")
+            .withUsername(UUID.randomUUID().toString())
                     .withPassword(POSTGRES_PASSWORD);
 
     private static final String CODE = "U".repeat(50);

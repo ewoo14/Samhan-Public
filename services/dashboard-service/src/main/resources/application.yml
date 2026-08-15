@@ -99,7 +99,7 @@ app:
     minio:
       enabled: ${SAMHAN_NOTICE_MINIO_ENABLED:false}
       endpoint: ${SAMHAN_NOTICE_MINIO_ENDPOINT:${MINIO_ENDPOINT:http://localhost:9000}}
-      access-key: ${SAMHAN_NOTICE_MINIO_ACCESS_KEY:${MINIO_ROOT_USER}}
+      access-key: ${SAMHAN_NOTICE_MINIO_ACCESS_KEY:${SAMHAN_S3_ACCESS_KEY}}
       secret-key: ${SAMHAN_NOTICE_MINIO_SECRET_KEY:${MINIO_ROOT_PASSWORD:}}
       bucket: ${SAMHAN_NOTICE_MINIO_BUCKET:samhan-attachments}
       presigned-expiry-seconds: ${SAMHAN_NOTICE_MINIO_PRESIGNED_EXPIRY:300}

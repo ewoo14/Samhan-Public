@@ -140,6 +140,24 @@ jobs:
           docker version
           docker ps
 
+      - name: CI 임시 자격 생성 (실 개발 스택 자격 미사용)
+        shell: bash
+        run: |
+          set -euo pipefail
+          ci_secret() { openssl rand -hex 32; }
+          {
+            echo "SAMHAN_GATEWAY_ATTESTATION=$(ci_secret)"
+            echo "SAMHAN_INTERNAL_TOKEN=$(ci_secret)"
+            echo "INTERNAL_AUTH_TOKEN=$(ci_secret)"
+            echo "SAMHAN_JWT_SECRET=$(ci_secret)"
+            echo "JWT_SECRET=$(ci_secret)"
+            echo "SAMHAN_AROLOGIS_JWT_SECRET=$(ci_secret)"
+            echo "DB_USER=ci_${GITHUB_RUN_ID}"
+            echo "DB_PASSWORD=$(ci_secret)"
+            echo "SAMHAN_S3_ACCESS_KEY=ci_${GITHUB_RUN_ID}"
+            echo "SAMHAN_S3_SECRET_KEY=$(ci_secret)"
+          } >> "$GITHUB_ENV"
+
       # 5차 fix: --no-daemon 제거 — assemble→test 사이 JVM 워밍업 재활용 (52s 절약).
       - name: assemble (전 모듈)
         run: ./gradlew assemble
@@ -647,6 +665,9 @@ jobs:
 
       - name: 자격 소비자 discovery 계약 테스트
         run: node --test scripts/lib/qa-credentials.test.cjs
+
+      - name: 자격·환경 초기화 계약 테스트
+        run: node --test scripts/credential-hardening.contract.test.cjs
 
       # Playwright spec hard gate 는 후속 슬라이스 — 본 PR 에서는 shell guard 단독
       # (SP-08-7 notion-zero-guard 패턴 일관). spec testDir 외부 testMatch 이슈 (No tests found)

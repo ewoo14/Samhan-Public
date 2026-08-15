@@ -117,7 +117,7 @@ services:
       # Compose 합성은 환경 자격의 존재 여부와 무관하게 가능해야 한다.
       # 값이 비어 있으면 api-gateway의 런타임 필터가 attestation을 주입하지 않아
       # downstream 서비스가 fail-closed(401)로 차단한다. 자격 기본값은 두지 않는다.
-      SAMHAN_GATEWAY_ATTESTATION: ${SAMHAN_GATEWAY_ATTESTATION:-}
+      SAMHAN_GATEWAY_ATTESTATION: ${SAMHAN_GATEWAY_ATTESTATION:?SAMHAN_GATEWAY_ATTESTATION_required}
       JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=70.0 -XX:InitialRAMPercentage=30.0 -Duser.timezone=Asia/Seoul"
     ports:
       - "127.0.0.1:8080:8080"
@@ -147,7 +147,7 @@ services:
     environment:
       <<: *spring-env
       SERVER_PORT: "8081"
-      SAMHAN_GATEWAY_ATTESTATION: ${SAMHAN_GATEWAY_ATTESTATION:-}
+      SAMHAN_GATEWAY_ATTESTATION: ${SAMHAN_GATEWAY_ATTESTATION:?SAMHAN_GATEWAY_ATTESTATION_required}
       DB_NAME: auth_db
       SAMHAN_JWT_SECRET: "${SAMHAN_JWT_SECRET:?SAMHAN_JWT_SECRET_required}"
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
@@ -181,7 +181,7 @@ services:
     environment:
       <<: *spring-env
       SERVER_PORT: "8082"
-      SAMHAN_GATEWAY_ATTESTATION: ${SAMHAN_GATEWAY_ATTESTATION:-}
+      SAMHAN_GATEWAY_ATTESTATION: ${SAMHAN_GATEWAY_ATTESTATION:?SAMHAN_GATEWAY_ATTESTATION_required}
       ES_URI: http://elasticsearch:9200
       JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=70.0 -XX:InitialRAMPercentage=30.0 -Duser.timezone=Asia/Seoul"
     ports:
@@ -215,7 +215,7 @@ services:
     environment:
       <<: *spring-env
       SERVER_PORT: "8083"
-      SAMHAN_GATEWAY_ATTESTATION: ${SAMHAN_GATEWAY_ATTESTATION:-}
+      SAMHAN_GATEWAY_ATTESTATION: ${SAMHAN_GATEWAY_ATTESTATION:?SAMHAN_GATEWAY_ATTESTATION_required}
       DB_NAME: user_db
       SAMHAN_AUTH_SERVICE_URL: http://auth-service:8081
     ports:
@@ -243,7 +243,7 @@ services:
     environment:
       <<: *spring-env
       SERVER_PORT: "8084"
-      SAMHAN_GATEWAY_ATTESTATION: ${SAMHAN_GATEWAY_ATTESTATION:-}
+      SAMHAN_GATEWAY_ATTESTATION: ${SAMHAN_GATEWAY_ATTESTATION:?SAMHAN_GATEWAY_ATTESTATION_required}
       DB_NAME: product_db
       SAMHAN_AUTH_SERVICE_URL: http://auth-service:8081
       SAMHAN_SEED_TEST_DATA: ${SAMHAN_SEED_TEST_DATA:-false}
@@ -272,7 +272,7 @@ services:
     environment:
       <<: *spring-env
       SERVER_PORT: "8085"
-      SAMHAN_GATEWAY_ATTESTATION: ${SAMHAN_GATEWAY_ATTESTATION:-}
+      SAMHAN_GATEWAY_ATTESTATION: ${SAMHAN_GATEWAY_ATTESTATION:?SAMHAN_GATEWAY_ATTESTATION_required}
       DB_NAME: inventory_db
       SAMHAN_AUTH_SERVICE_URL: http://auth-service:8081
       SAMHAN_SEED_TEST_DATA: ${SAMHAN_SEED_TEST_DATA:-false}
@@ -301,7 +301,7 @@ services:
     environment:
       <<: *spring-env
       SERVER_PORT: "8086"
-      SAMHAN_GATEWAY_ATTESTATION: ${SAMHAN_GATEWAY_ATTESTATION:-}
+      SAMHAN_GATEWAY_ATTESTATION: ${SAMHAN_GATEWAY_ATTESTATION:?SAMHAN_GATEWAY_ATTESTATION_required}
       DB_NAME: slip_db
       WAREHOUSE_MAPPING_MODE: DEV_SUBSTITUTE
       WAREHOUSE_UUID_ECOUNT_00003: 11111111-1111-1111-1111-000000000001
@@ -368,7 +368,7 @@ services:
     environment:
       <<: *spring-env
       SERVER_PORT: "8087"
-      SAMHAN_GATEWAY_ATTESTATION: ${SAMHAN_GATEWAY_ATTESTATION:-}
+      SAMHAN_GATEWAY_ATTESTATION: ${SAMHAN_GATEWAY_ATTESTATION:?SAMHAN_GATEWAY_ATTESTATION_required}
       DB_NAME: accounting_db
       SAMHAN_USER_SERVICE_URL: http://user-service:8083
       SAMHAN_PRODUCT_SERVICE_URL: http://product-service:8084
@@ -401,7 +401,7 @@ services:
     environment:
       <<: *spring-env
       SERVER_PORT: "8088"
-      SAMHAN_GATEWAY_ATTESTATION: ${SAMHAN_GATEWAY_ATTESTATION:-}
+      SAMHAN_GATEWAY_ATTESTATION: ${SAMHAN_GATEWAY_ATTESTATION:?SAMHAN_GATEWAY_ATTESTATION_required}
       SAMHAN_PARTNER_ORDER_DB_HOST: postgres
       SAMHAN_PARTNER_ORDER_DB_PORT: "5432"
       SAMHAN_PARTNER_ORDER_DB_NAME: partner_order_db
@@ -446,7 +446,7 @@ services:
       SAMHAN_DC_CONFIG_DB_USER: samhan
       SAMHAN_DC_CONFIG_DB_PASSWORD: "${DB_PASSWORD:?DB_PASSWORD_required}"
       SAMHAN_AUTH_SERVICE_URL: http://auth-service:8081
-      SAMHAN_GATEWAY_ATTESTATION: ${SAMHAN_GATEWAY_ATTESTATION:-}
+      SAMHAN_GATEWAY_ATTESTATION: ${SAMHAN_GATEWAY_ATTESTATION:?SAMHAN_GATEWAY_ATTESTATION_required}
     ports:
       - "127.0.0.1:8089:8089"
     depends_on: *service-depends
@@ -476,7 +476,7 @@ services:
       # 게이트웨이/auth-service 와 동일 시크릿 필수 — 누락 시 파트너 JWT 가 yml fallback 으로
       # 서명되어 게이트웨이 검증 401(파트너 셀프서비스 E2E 불가 — #757 파트너 QA 에서 실측).
       SAMHAN_JWT_SECRET: "${SAMHAN_JWT_SECRET:?SAMHAN_JWT_SECRET_required}"
-      SAMHAN_GATEWAY_ATTESTATION: ${SAMHAN_GATEWAY_ATTESTATION:-}
+      SAMHAN_GATEWAY_ATTESTATION: ${SAMHAN_GATEWAY_ATTESTATION:?SAMHAN_GATEWAY_ATTESTATION_required}
     ports:
       - "127.0.0.1:8091:8091"
     depends_on: *service-depends
@@ -509,7 +509,7 @@ services:
       SAMHAN_GROUPWARE_DB_PASSWORD: "${DB_PASSWORD:?DB_PASSWORD_required}"
       SAMHAN_AUTH_SERVICE_URL: http://auth-service:8081
       SAMHAN_USER_SERVICE_URL: http://user-service:8083
-      SAMHAN_GATEWAY_ATTESTATION: ${SAMHAN_GATEWAY_ATTESTATION:-}
+      SAMHAN_GATEWAY_ATTESTATION: ${SAMHAN_GATEWAY_ATTESTATION:?SAMHAN_GATEWAY_ATTESTATION_required}
     ports:
       - "127.0.0.1:8092:8092"
     depends_on: *service-depends
@@ -535,7 +535,7 @@ services:
     environment:
       <<: *spring-env
       SERVER_PORT: "8093"
-      SAMHAN_GATEWAY_ATTESTATION: ${SAMHAN_GATEWAY_ATTESTATION:-}
+      SAMHAN_GATEWAY_ATTESTATION: ${SAMHAN_GATEWAY_ATTESTATION:?SAMHAN_GATEWAY_ATTESTATION_required}
       SAMHAN_NOTIFICATION_DB_HOST: postgres
       SAMHAN_NOTIFICATION_DB_PORT: "5432"
       SAMHAN_NOTIFICATION_DB_NAME: notification_db
@@ -580,7 +580,7 @@ services:
       SAMHAN_AUTH_SERVICE_URL: http://auth-service:8081
       SAMHAN_ACCOUNTING_SERVICE_URL: http://accounting-service:8087
       # gateway가 주입한 attestation과 동일한 환경값으로 보호 요청을 검증한다.
-      SAMHAN_GATEWAY_ATTESTATION: ${SAMHAN_GATEWAY_ATTESTATION:-}
+      SAMHAN_GATEWAY_ATTESTATION: ${SAMHAN_GATEWAY_ATTESTATION:?SAMHAN_GATEWAY_ATTESTATION_required}
     ports:
       - "127.0.0.1:8094:8094"
     depends_on: *service-depends
@@ -606,7 +606,7 @@ services:
     environment:
       <<: *spring-env
       SERVER_PORT: "8095"
-      SAMHAN_GATEWAY_ATTESTATION: ${SAMHAN_GATEWAY_ATTESTATION:-}
+      SAMHAN_GATEWAY_ATTESTATION: ${SAMHAN_GATEWAY_ATTESTATION:?SAMHAN_GATEWAY_ATTESTATION_required}
       SAMHAN_PARTNER_DB_HOST: postgres
       SAMHAN_PARTNER_DB_PORT: "5432"
       SAMHAN_PARTNER_DB_NAME: partner_db
@@ -653,7 +653,7 @@ services:
       SAMHAN_AROLOGIS_JWT_SECRET: "${SAMHAN_AROLOGIS_JWT_SECRET:?SAMHAN_AROLOGIS_JWT_SECRET_required}"
       # Compose 합성은 환경 자격의 존재 여부와 무관하게 가능해야 한다.
       # 값이 비어 있으면 arologis-service의 런타임 필터가 요청을 fail-closed(401)로 차단한다.
-      SAMHAN_GATEWAY_ATTESTATION: ${SAMHAN_GATEWAY_ATTESTATION:-}
+      SAMHAN_GATEWAY_ATTESTATION: ${SAMHAN_GATEWAY_ATTESTATION:?SAMHAN_GATEWAY_ATTESTATION_required}
       SAMHAN_PARTNER_SERVICE_URL: http://partner-service:8095
       SAMHAN_USER_SERVICE_URL: http://user-service:8083
       SAMHAN_SLIP_SERVICE_URL: http://slip-service:8086

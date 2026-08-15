@@ -28,7 +28,7 @@ class PriceChangeScheduleMigrationIT {
     private static final String POSTGRES_PASSWORD = UUID.randomUUID().toString();
     private static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine")
             .withDatabaseName("price_schedule_upgrade_db")
-            .withUsername("samhan")
+            .withUsername(UUID.randomUUID().toString())
             .withPassword(POSTGRES_PASSWORD);
 
     @BeforeAll

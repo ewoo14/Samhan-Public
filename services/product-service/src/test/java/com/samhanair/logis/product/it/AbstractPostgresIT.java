@@ -42,7 +42,7 @@ public abstract class AbstractPostgresIT {
     protected static final PostgreSQLContainer<?> POSTGRES =
             new PostgreSQLContainer<>("postgres:16-alpine")
                     .withDatabaseName("product_db")
-                    .withUsername("samhan")
+                    .withUsername(UUID.randomUUID().toString())
                     .withPassword(POSTGRES_PASSWORD);
 
     /** 통합 fixture가 target 역할을 관리자 분류 경로로 구성한다. */

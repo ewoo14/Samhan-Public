@@ -44,11 +44,11 @@ class Issue1096ProductCleanupMigrationIT {
     private static final String POSTGRES_PASSWORD = UUID.randomUUID().toString();
     private static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine")
             .withDatabaseName("issue_1096_product_cleanup_db")
-            .withUsername("samhan")
+            .withUsername(UUID.randomUUID().toString())
             .withPassword(POSTGRES_PASSWORD);
     private static final PostgreSQLContainer<?> MIXED_POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine")
             .withDatabaseName("issue_1096_product_cleanup_mixed_db")
-            .withUsername("samhan")
+            .withUsername(UUID.randomUUID().toString())
             .withPassword(POSTGRES_PASSWORD);
 
     @BeforeAll

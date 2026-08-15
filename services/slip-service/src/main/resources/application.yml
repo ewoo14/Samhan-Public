@@ -19,7 +19,7 @@ spring:
       max-request-size: 7MB
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:slip_db}
-    username: ${DB_USER:samhan}
+    username: ${DB_USER}
     password: ${DB_PASSWORD}
     hikari:
       # 보상 감사(CompensationAuditWriter)는 REQUIRES_NEW 로 외부 트랜잭션과 별도 커넥션을 점유한다.
@@ -135,7 +135,7 @@ app:
     minio:
       enabled: ${SAMHAN_SLIP_MINIO_ENABLED:false}
       endpoint: ${SAMHAN_SLIP_MINIO_ENDPOINT:http://localhost:9000}
-      access-key: ${SAMHAN_SLIP_MINIO_ACCESS_KEY:${MINIO_ROOT_USER}}
+      access-key: ${SAMHAN_SLIP_MINIO_ACCESS_KEY:${SAMHAN_S3_ACCESS_KEY}}
       secret-key: ${SAMHAN_SLIP_MINIO_SECRET_KEY:${MINIO_ROOT_PASSWORD}}
       bucket: ${SAMHAN_SLIP_MINIO_BUCKET:slip-attachments}
       presigned-expiry-seconds: 3600
@@ -153,7 +153,7 @@ app:
   # Phase 11 AWS S3 cutover: SAMHAN_S3_ENDPOINT 빈 값 + SAMHAN_AWS_REGION=ap-northeast-2 설정으로 전환.
   s3:
     endpoint: ${SAMHAN_S3_ENDPOINT:http://localhost:9000}
-    access-key: ${SAMHAN_S3_ACCESS_KEY:${MINIO_ROOT_USER}}
+    access-key: ${SAMHAN_S3_ACCESS_KEY}
     secret-key: ${SAMHAN_S3_SECRET_KEY:${MINIO_ROOT_PASSWORD}}
     bucket: ${SAMHAN_S3_BUCKET:samhan-attachments}
     presigned-expiry-seconds: ${SAMHAN_S3_PRESIGNED_EXPIRY:300}

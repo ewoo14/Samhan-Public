@@ -52,13 +52,13 @@ ensure_local_env() {
     POSTGRES_USER POSTGRES_PASSWORD POSTGRES_DB DB_USER DB_PASSWORD
     RABBITMQ_DEFAULT_USER RABBITMQ_DEFAULT_PASS RABBIT_USER RABBIT_PASSWORD
     MINIO_ROOT_USER MINIO_ROOT_PASSWORD GF_SECURITY_ADMIN_USER GF_SECURITY_ADMIN_PASSWORD
-    SAMHAN_INTERNAL_TOKEN INTERNAL_AUTH_TOKEN SAMHAN_JWT_SECRET JWT_SECRET SAMHAN_AROLOGIS_JWT_SECRET
+    SAMHAN_INTERNAL_TOKEN INTERNAL_AUTH_TOKEN SAMHAN_JWT_SECRET JWT_SECRET SAMHAN_AROLOGIS_JWT_SECRET SAMHAN_GATEWAY_ATTESTATION
     SAMHAN_S3_ACCESS_KEY SAMHAN_S3_SECRET_KEY SAMHAN_SLIP_MINIO_SECRET_KEY
   )
   local secret_keys=(
     POSTGRES_PASSWORD DB_PASSWORD RABBITMQ_DEFAULT_PASS RABBIT_PASSWORD MINIO_ROOT_PASSWORD
     GF_SECURITY_ADMIN_PASSWORD SAMHAN_INTERNAL_TOKEN INTERNAL_AUTH_TOKEN SAMHAN_JWT_SECRET
-    JWT_SECRET SAMHAN_AROLOGIS_JWT_SECRET SAMHAN_S3_SECRET_KEY SAMHAN_SLIP_MINIO_SECRET_KEY
+    JWT_SECRET SAMHAN_AROLOGIS_JWT_SECRET SAMHAN_GATEWAY_ATTESTATION SAMHAN_S3_SECRET_KEY SAMHAN_SLIP_MINIO_SECRET_KEY
   )
 
   [[ -f "$example_file" ]] || { echo "로컬 환경 템플릿을 찾을 수 없습니다: $example_file" >&2; return 1; }
@@ -92,19 +92,22 @@ ensure_local_env() {
     is_placeholder "$minio_password" && minio_password="$(new_local_secret)"
     is_placeholder "$grafana_password" && grafana_password="$(new_local_secret)"
 
-    local internal_token jwt_secret
+    local internal_token jwt_secret gateway_attestation local_user local_s3_access_key
     internal_token="$(new_local_secret)"
     jwt_secret="$(new_local_secret)"
-    replace_env_value "$env_file" POSTGRES_USER samhan
+    gateway_attestation="$(new_local_secret)"
+    local_user="$(env_value "$env_file" POSTGRES_USER)"
+    local_s3_access_key="$(env_value "$env_file" SAMHAN_S3_ACCESS_KEY)"
+    replace_env_value "$env_file" POSTGRES_USER "$local_user"
     replace_env_value "$env_file" POSTGRES_PASSWORD "$postgres_password"
     replace_env_value "$env_file" POSTGRES_DB postgres
-    replace_env_value "$env_file" DB_USER samhan
+    replace_env_value "$env_file" DB_USER "$local_user"
     replace_env_value "$env_file" DB_PASSWORD "$postgres_password"
-    replace_env_value "$env_file" RABBITMQ_DEFAULT_USER samhan
+    replace_env_value "$env_file" RABBITMQ_DEFAULT_USER "$local_user"
     replace_env_value "$env_file" RABBITMQ_DEFAULT_PASS "$rabbit_password"
-    replace_env_value "$env_file" RABBIT_USER samhan
+    replace_env_value "$env_file" RABBIT_USER "$local_user"
     replace_env_value "$env_file" RABBIT_PASSWORD "$rabbit_password"
-    replace_env_value "$env_file" MINIO_ROOT_USER samhan
+    replace_env_value "$env_file" MINIO_ROOT_USER "$local_user"
     replace_env_value "$env_file" MINIO_ROOT_PASSWORD "$minio_password"
     replace_env_value "$env_file" GF_SECURITY_ADMIN_USER admin
     replace_env_value "$env_file" GF_SECURITY_ADMIN_PASSWORD "$grafana_password"
@@ -113,7 +116,8 @@ ensure_local_env() {
     replace_env_value "$env_file" SAMHAN_JWT_SECRET "$jwt_secret"
     replace_env_value "$env_file" JWT_SECRET "$jwt_secret"
     replace_env_value "$env_file" SAMHAN_AROLOGIS_JWT_SECRET "$jwt_secret"
-    replace_env_value "$env_file" SAMHAN_S3_ACCESS_KEY samhan
+    replace_env_value "$env_file" SAMHAN_GATEWAY_ATTESTATION "$gateway_attestation"
+    replace_env_value "$env_file" SAMHAN_S3_ACCESS_KEY "$local_s3_access_key"
     replace_env_value "$env_file" SAMHAN_S3_SECRET_KEY "$minio_password"
     replace_env_value "$env_file" SAMHAN_SLIP_MINIO_SECRET_KEY "$minio_password"
   fi

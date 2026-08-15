@@ -24,7 +24,7 @@ public abstract class AbstractPostgresIT {
     protected static final PostgreSQLContainer<?> POSTGRES =
             new PostgreSQLContainer<>("postgres:16-alpine")
                     .withDatabaseName("partner_auth_db")
-                    .withUsername("test-user")
+                    .withUsername(UUID.randomUUID().toString())
                     .withPassword(POSTGRES_PASSWORD);
 
     static {

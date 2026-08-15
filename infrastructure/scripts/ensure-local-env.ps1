@@ -81,7 +81,7 @@ function Initialize-SamhanLocalEnv {
         'POSTGRES_PASSWORD', 'DB_PASSWORD', 'RABBITMQ_DEFAULT_PASS', 'RABBIT_PASSWORD',
         'MINIO_ROOT_PASSWORD', 'GF_SECURITY_ADMIN_PASSWORD',
         'SAMHAN_INTERNAL_TOKEN', 'INTERNAL_AUTH_TOKEN', 'SAMHAN_JWT_SECRET', 'JWT_SECRET',
-        'SAMHAN_AROLOGIS_JWT_SECRET'
+        'SAMHAN_AROLOGIS_JWT_SECRET', 'SAMHAN_GATEWAY_ATTESTATION'
     ) + @('SAMHAN_S3_SECRET_KEY') + @('SAMHAN_SLIP_MINIO_SECRET_KEY')
     $requiredKeys = @(
         'POSTGRES_USER', 'POSTGRES_PASSWORD', 'POSTGRES_DB',
@@ -91,7 +91,7 @@ function Initialize-SamhanLocalEnv {
         'GF_SECURITY_ADMIN_USER', 'GF_SECURITY_ADMIN_PASSWORD',
         'SAMHAN_INTERNAL_TOKEN', 'INTERNAL_AUTH_TOKEN',
         'SAMHAN_JWT_SECRET', 'JWT_SECRET', 'SAMHAN_AROLOGIS_JWT_SECRET',
-        'SAMHAN_S3_ACCESS_KEY'
+        'SAMHAN_GATEWAY_ATTESTATION', 'SAMHAN_S3_ACCESS_KEY'
     ) + @('SAMHAN_S3_SECRET_KEY') + @('SAMHAN_SLIP_MINIO_SECRET_KEY')
 
     $envFileExists = Test-Path -LiteralPath $envFile
@@ -130,17 +130,20 @@ function Initialize-SamhanLocalEnv {
 
         $internalToken = New-LocalSecretValue
         $jwtSecret = New-LocalSecretValue
+        $gatewayAttestation = New-LocalSecretValue
+        $localUser = [string]$values['POSTGRES_USER']
+        $localS3AccessKey = [string]$values['SAMHAN_S3_ACCESS_KEY']
         $generated = @{
-            POSTGRES_USER = 'samhan'
+            POSTGRES_USER = $localUser
             POSTGRES_PASSWORD = $postgresPassword
             POSTGRES_DB = 'postgres'
-            DB_USER = 'samhan'
+            DB_USER = $localUser
             DB_PASSWORD = $postgresPassword
-            RABBITMQ_DEFAULT_USER = 'samhan'
+            RABBITMQ_DEFAULT_USER = $localUser
             RABBITMQ_DEFAULT_PASS = $rabbitPassword
-            RABBIT_USER = 'samhan'
+            RABBIT_USER = $localUser
             RABBIT_PASSWORD = $rabbitPassword
-            MINIO_ROOT_USER = 'samhan'
+            MINIO_ROOT_USER = $localUser
             MINIO_ROOT_PASSWORD = $minioPassword
             GF_SECURITY_ADMIN_USER = 'admin'
             GF_SECURITY_ADMIN_PASSWORD = $grafanaPassword
@@ -149,7 +152,8 @@ function Initialize-SamhanLocalEnv {
             SAMHAN_JWT_SECRET = $jwtSecret
             JWT_SECRET = $jwtSecret
             SAMHAN_AROLOGIS_JWT_SECRET = $jwtSecret
-            SAMHAN_S3_ACCESS_KEY = 'samhan'
+            SAMHAN_GATEWAY_ATTESTATION = $gatewayAttestation
+            SAMHAN_S3_ACCESS_KEY = $localS3AccessKey
             SAMHAN_S3_SECRET_KEY = $minioPassword
             SAMHAN_SLIP_MINIO_SECRET_KEY = $minioPassword
         }
