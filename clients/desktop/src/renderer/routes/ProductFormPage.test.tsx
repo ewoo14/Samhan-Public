@@ -219,6 +219,26 @@ afterEach(() => {
 })
 
 describe('ProductFormPage', () => {
+  it('#1222 금액 입력은 실제 품목 등록 화면에서 콤마 표시·ArrowUp·raw 상태를 유지한다', async () => {
+    renderPage('/products/new')
+    const sellingPrice = await screen.findByTestId('product-form-selling-price') as HTMLInputElement
+
+    fireEvent.change(sellingPrice, { target: { value: '123456', selectionStart: 6 } })
+    expect(sellingPrice.value).toBe('123,456')
+    fireEvent.keyDown(sellingPrice, { key: 'ArrowUp' })
+    expect(sellingPrice.value).toBe('123,457')
+
+    for (const testId of ['product-form-purchase-price', 'product-form-release-price', 'product-form-delivery-price']) {
+      const input = screen.getByTestId(testId) as HTMLInputElement
+      fireEvent.change(input, { target: { value: '123456', selectionStart: 6 } })
+      expect(input.value).toBe('123,456')
+    }
+
+    const modelName = screen.getByTestId('product-form-model-name') as HTMLInputElement
+    fireEvent.change(modelName, { target: { value: '123456' } })
+    expect(modelName.value).toBe('123456')
+  })
+
   it('편집 상세의 기본 정보 영역에 만든 사람과 고친 사람을 표시한다', async () => {
     const seed = seedFor('AUDIT-SURFACE-1143')
     mocks.searchProductSummaries.mockResolvedValue([seed.summary])

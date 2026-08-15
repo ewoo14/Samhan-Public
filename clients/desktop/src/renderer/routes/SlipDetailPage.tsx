@@ -159,6 +159,7 @@ import {
 } from '../utils/lineVat'
 import { vatFromSupply } from '../utils/vatRounding'
 import { willLineBeSaved } from '../utils/slipLineDraft'
+import { formatEditableAmountInput, parseEditableAmountForServer } from '../utils/editableAmountInput'
 import {
   appendBlankRowIfLastChanged,
   ensureTrailingBlankRow,
@@ -3541,14 +3542,18 @@ export function SlipDetailPage({ mode, slipId }: SlipDetailPageProps) {
                   />
                 </td>
                 <td>
+                  <div className="slip-line-edit-cell">
                   <CollaborativeSlipInput
                     provider={lineProvider} coeditPending={slipFormCoeditPending}
                     fieldPath={detailCoeditFieldPath(index, line, 'unitPrice')}
                     testIdPath={detailCoeditTestIdPath(index, 'unitPrice')}
-                    type="number"
+                    type="text" inputMode="decimal"
                     min={0}
-                    value={String(line.unitPrice)}
+                    value={formatEditableAmountInput(String(line.unitPrice), null).displayValue}
                     parseValue={parseEditableDetailAmountInput}
+                    formatValue={formatEditableAmountInput}
+                    parseFormattedValue={parseEditableAmountForServer}
+                    enableAmountKeyboardStep
                     onValueChange={(value) => {
                       // 함수형 patch 로 바뀌어 updateSalesLine 내부의 object-patch 전용
                       // 강조해제 분기를 타지 않는다 — 여기서 직접 처리한다(단가값 자체는
@@ -3568,28 +3573,34 @@ export function SlipDetailPage({ mode, slipId }: SlipDetailPageProps) {
                     </span>
                   ) : null}
                   {changed ? <EditPriceChangeIndicator id={changedStatusId} /> : null}
+                  </div>
                 </td>
                 <td>
                   <CollaborativeSlipInput
                     provider={lineProvider} coeditPending={slipFormCoeditPending}
                     fieldPath={detailCoeditFieldPath(index, line, 'supplyAmount')}
                     testIdPath={detailCoeditTestIdPath(index, 'supplyAmount')}
-                    type="number" min={0}
-                    value={String(line.supplyAmount ?? '0')}
+                    type="text" inputMode="decimal" min={0}
+                    value={formatEditableAmountInput(String(line.supplyAmount ?? '0'), null).displayValue}
                     parseValue={parseEditableDetailAmountInput}
+                    formatValue={formatEditableAmountInput}
+                    parseFormattedValue={parseEditableAmountForServer}
                     onValueChange={(value) => updateDetailVat(index, updateSalesLine, 'SUPPLY', value)}
                     readOnly={Boolean(line.isBundleComponent)}
                     aria-label={`공급가액 ${index + 1}`}
                   />
                 </td>
                 <td>
+                  <div className="slip-line-edit-cell">
                   <CollaborativeSlipInput
                     provider={lineProvider} coeditPending={slipFormCoeditPending}
                     fieldPath={detailCoeditFieldPath(index, line, 'vatAmount')}
                     testIdPath={detailCoeditTestIdPath(index, 'vatAmount')}
-                    type="number" min={0}
-                    value={String(line.vatAmount ?? '0')}
+                    type="text" inputMode="decimal" min={0}
+                    value={formatEditableAmountInput(String(line.vatAmount ?? '0'), null).displayValue}
                     parseValue={parseEditableDetailAmountInput}
+                    formatValue={formatEditableAmountInput}
+                    parseFormattedValue={parseEditableAmountForServer}
                     onValueChange={(value) => updateDetailVat(index, updateSalesLine, 'VAT', value)}
                     readOnly={Boolean(line.isBundleComponent)}
                     aria-label={`부가세 ${index + 1}`}
@@ -3597,14 +3608,15 @@ export function SlipDetailPage({ mode, slipId }: SlipDetailPageProps) {
                   {line.vatAmount != null && line.vatWarning
                     ? <span role="note" style={{ color: '#9A6700', fontSize: 10 }}>⚠ 10%와 다름</span>
                     : null}
+                  </div>
                 </td>
                 <td>
                   <CollaborativeSlipInput
                     provider={lineProvider} coeditPending={slipFormCoeditPending}
                     fieldPath={detailCoeditFieldPath(index, line, 'lineTotalWithVat')}
                     testIdPath={detailCoeditTestIdPath(index, 'lineTotalWithVat')}
-                    type="number" min={0}
-                    value={String(line.lineTotalWithVat ?? '0')}
+                    type="text" inputMode="decimal" min={0}
+                    value={formatEditableAmountInput(String(line.lineTotalWithVat ?? '0'), null).displayValue}
                     // 합계는 공급가액+부가세 파생값이다. 협업 입력은 원격 인식과
                     // 문서 구독을 유지하되, 사용자 입력과 협업 문서의 합계 직접 편집은 받지 않는다.
                     onValueChange={() => undefined}
@@ -3867,14 +3879,18 @@ export function SlipDetailPage({ mode, slipId }: SlipDetailPageProps) {
                   />
                 </td>
                 <td>
+                  <div className="slip-line-edit-cell">
                   <CollaborativeSlipInput
                     provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
                     fieldPath={detailCoeditFieldPath(index, line, 'unitPrice')}
                     testIdPath={detailCoeditTestIdPath(index, 'unitPrice')}
-                    type="number"
+                    type="text" inputMode="decimal"
                     min={0}
-                    value={String(line.unitPrice)}
+                    value={formatEditableAmountInput(String(line.unitPrice), null).displayValue}
                     parseValue={parseEditableDetailAmountInput}
+                    formatValue={formatEditableAmountInput}
+                    parseFormattedValue={parseEditableAmountForServer}
+                    enableAmountKeyboardStep
                     onValueChange={(value) => {
                       // 매출 행과 동일 — 함수형 patch 전환으로 우회된 강조해제를 여기서 직접 처리.
                       clearRepriceHighlight(line.lineId)
@@ -3892,28 +3908,34 @@ export function SlipDetailPage({ mode, slipId }: SlipDetailPageProps) {
                     </span>
                   ) : null}
                   {changed ? <EditPriceChangeIndicator id={changedStatusId} /> : null}
+                  </div>
                 </td>
                 <td>
                   <CollaborativeSlipInput
                     provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
                     fieldPath={detailCoeditFieldPath(index, line, 'supplyAmount')}
                     testIdPath={detailCoeditTestIdPath(index, 'supplyAmount')}
-                    type="number" min={0}
-                    value={String(line.supplyAmount ?? '0')}
+                    type="text" inputMode="decimal" min={0}
+                    value={formatEditableAmountInput(String(line.supplyAmount ?? '0'), null).displayValue}
                     parseValue={parseEditableDetailAmountInput}
+                    formatValue={formatEditableAmountInput}
+                    parseFormattedValue={parseEditableAmountForServer}
                     onValueChange={(value) => updateDetailVat(index, updatePurchaseLine, 'SUPPLY', value)}
                     readOnly={Boolean(line.isBundleComponent)}
                     aria-label={`공급가액 ${index + 1}`}
                   />
                 </td>
                 <td>
+                  <div className="slip-line-edit-cell">
                   <CollaborativeSlipInput
                     provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
                     fieldPath={detailCoeditFieldPath(index, line, 'vatAmount')}
                     testIdPath={detailCoeditTestIdPath(index, 'vatAmount')}
-                    type="number" min={0}
-                    value={String(line.vatAmount ?? '0')}
+                    type="text" inputMode="decimal" min={0}
+                    value={formatEditableAmountInput(String(line.vatAmount ?? '0'), null).displayValue}
                     parseValue={parseEditableDetailAmountInput}
+                    formatValue={formatEditableAmountInput}
+                    parseFormattedValue={parseEditableAmountForServer}
                     onValueChange={(value) => updateDetailVat(index, updatePurchaseLine, 'VAT', value)}
                     readOnly={Boolean(line.isBundleComponent)}
                     aria-label={`부가세 ${index + 1}`}
@@ -3921,14 +3943,15 @@ export function SlipDetailPage({ mode, slipId }: SlipDetailPageProps) {
                   {line.vatAmount != null && line.vatWarning
                     ? <span role="note" style={{ color: '#9A6700', fontSize: 10 }}>⚠ 10%와 다름</span>
                     : null}
+                  </div>
                 </td>
                 <td>
                   <CollaborativeSlipInput
                     provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
                     fieldPath={detailCoeditFieldPath(index, line, 'lineTotalWithVat')}
                     testIdPath={detailCoeditTestIdPath(index, 'lineTotalWithVat')}
-                    type="number" min={0}
-                    value={String(line.lineTotalWithVat ?? '0')}
+                    type="text" inputMode="decimal" min={0}
+                    value={formatEditableAmountInput(String(line.lineTotalWithVat ?? '0'), null).displayValue}
                     // 합계는 공급가액+부가세 파생값이다. 협업 입력은 원격 인식과
                     // 문서 구독을 유지하되, 사용자 입력과 협업 문서의 합계 직접 편집은 받지 않는다.
                     onValueChange={() => undefined}

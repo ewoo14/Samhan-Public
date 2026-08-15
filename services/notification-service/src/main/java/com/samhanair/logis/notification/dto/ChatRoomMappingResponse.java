@@ -2,6 +2,7 @@ package com.samhanair.logis.notification.dto;
 
 import com.samhanair.logis.notification.domain.MappingSource;
 import com.samhanair.logis.notification.domain.PartnerChatRoomMapping;
+import com.samhanair.logis.notification.domain.PartnerLinkStatus;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -19,7 +20,9 @@ public record ChatRoomMappingResponse(
         String chatRoomName,
         MappingSource source,
         LocalDateTime notionCreatedAt,
-        LocalDateTime createdAt
+        LocalDateTime createdAt,
+        PartnerLinkStatus partnerLinkStatus,
+        String partnerLinkReason
 ) {
 
     public static ChatRoomMappingResponse from(PartnerChatRoomMapping m) {
@@ -30,6 +33,6 @@ public record ChatRoomMappingResponse(
                 m.getChatRoomName(),
                 m.getSource(),
                 m.getNotionCreatedAt(),
-                m.getCreatedAt());
+                m.getCreatedAt(), m.getPartnerLinkStatus(), m.getPartnerLinkReason());
     }
 }

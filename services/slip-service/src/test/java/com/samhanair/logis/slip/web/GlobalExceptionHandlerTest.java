@@ -14,9 +14,11 @@ import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.dao.QueryTimeoutException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpMethod;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /**
  * slip-service 전역 예외 핸들러 단위 테스트 (§7 협업 Round C P2 #2).
@@ -127,6 +129,34 @@ class GlobalExceptionHandlerTest {
                 .doesNotContain("to")
                 .doesNotContain("not-a-date")
                 .doesNotContain("LocalDate");
+    }
+
+    @Test
+    void handleNoResource_returnsNotFoundWithoutInternalDetails() {
+        ResponseEntity<ApiResponse<Void>> response = handler.handleNoResource(
+                new NoResourceFoundException(HttpMethod.GET, "/slips/query/daily-closing"));
+
+        assertThat(response.getStatusCode()).isEqualTo(ErrorCode.NOT_FOUND.getHttpStatus());
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getCode()).isEqualTo(ErrorCode.NOT_FOUND.name());
+        assertThat(response.getBody().getMessage())
+                .isEqualTo(ErrorCode.NOT_FOUND.getDefaultMessage())
+                .doesNotContain("NoResourceFoundException")
+                .doesNotContain("/slips/query/daily-closing");
+    }
+
+    @Test
+    void handleUnknown_keepsInternalServerErrorWithoutRawExceptionMessage() {
+        ResponseEntity<ApiResponse<Void>> response = handler.handleUnknown(
+                new IllegalStateException("secret database path: C:\\internal\\slips"));
+
+        assertThat(response.getStatusCode()).isEqualTo(ErrorCode.INTERNAL_ERROR.getHttpStatus());
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getCode()).isEqualTo(ErrorCode.INTERNAL_ERROR.name());
+        assertThat(response.getBody().getMessage())
+                .isEqualTo("서버 내부 오류가 발생했습니다.")
+                .doesNotContain("secret database path")
+                .doesNotContain("C:\\internal\\slips");
     }
 
     @Test

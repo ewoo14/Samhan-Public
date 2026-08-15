@@ -49,6 +49,7 @@ import { usePermissions } from '../hooks/usePermissions'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { SalesSubNav } from '../components/sales/SalesSubNav'
 import { getReturnTo, type ReturnNavigationState } from '../utils/returnContract'
+import { formatEditableAmountInput, parseEditableAmountForServer } from '../utils/editableAmountInput'
 import styles from '../components/sales/sales.module.css'
 
 const BUNDLE_CONVERSION_MESSAGE = '세트 품목은 출고전표 라인으로 저장할 수 없습니다. 구성품으로 전개해 주세요.'
@@ -1637,11 +1638,13 @@ export function SalesPartnerOrderDetailPage() {
                       coeditPending={orderFormCoeditPending}
                       fieldPath={`items.${index}.deliveryPrice`}
                       aria-label="납품가"
-                      type="number"
+                      type="text"
                       min={0}
                       inputMode="decimal"
                       inputStyle={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
-                      value={String(line.deliveryPrice)}
+                      value={formatEditableAmountInput(String(line.deliveryPrice), null).displayValue}
+                      formatValue={formatEditableAmountInput}
+                      parseFormattedValue={parseEditableAmountForServer}
                       onValueChange={(value) => updateLine(index, { deliveryPrice: Number(value) })}
                     />
                   </td>

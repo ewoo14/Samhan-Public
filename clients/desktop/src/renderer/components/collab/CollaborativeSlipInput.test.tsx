@@ -5,6 +5,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import * as Y from 'yjs'
 import { CollaborativeSlipInput } from './CollaborativeSlipInput'
 import type { DocCoeditProvider, RemoteFieldEdit } from '../../realtime/createCoeditProvider'
+import { formatEditableAmountInput, parseEditableAmountForServer } from '../../utils/editableAmountInput'
 
 afterEach(() => {
   cleanup()
@@ -109,6 +110,49 @@ function providerStub(): TestDocCoeditProvider {
 }
 
 describe('CollaborativeSlipInput', () => {
+  it('enables ArrowUp/ArrowDown for formatted amount inputs by default', () => {
+    function Harness() {
+      const [value, setValue] = React.useState('7654321')
+      return (
+        <CollaborativeSlipInput
+          provider={null}
+          fieldPath="items.0.unitPrice"
+          value={value}
+          onValueChange={setValue}
+          formatValue={formatEditableAmountInput}
+          parseFormattedValue={parseEditableAmountForServer}
+          aria-label="단가"
+        />
+      )
+    }
+
+    render(<Harness />)
+    const input = screen.getByLabelText('단가')
+    expect((input as HTMLInputElement).value).toBe('7,654,321')
+    fireEvent.keyDown(input, { key: 'ArrowUp' })
+    expect((input as HTMLInputElement).value).toBe('7,654,322')
+    fireEvent.keyDown(input, { key: 'ArrowDown' })
+    expect((input as HTMLInputElement).value).toBe('7,654,321')
+  })
+
+  it('does not enable arrow stepping for unformatted non-money inputs', () => {
+    const onValueChange = vi.fn()
+    render(
+      <CollaborativeSlipInput
+        provider={null}
+        fieldPath="items.0.modelName"
+        value="MODEL-123456"
+        onValueChange={onValueChange}
+        aria-label="모델명"
+      />,
+    )
+
+    const input = screen.getByLabelText('모델명')
+    fireEvent.keyDown(input, { key: 'ArrowUp' })
+    expect((input as HTMLInputElement).value).toBe('MODEL-123456')
+    expect(onValueChange).not.toHaveBeenCalled()
+  })
+
   it('forwards aria-describedby to the actual input', () => {
     render(
       <>
