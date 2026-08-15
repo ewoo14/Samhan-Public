@@ -287,3 +287,4 @@
 - [🚨 재고이동은 **금액 개념이 없다** — 수량만 변동·재고수불부에만 반영 (2026-08-13 개발책임자)](project_stock_transfer_no_amount.md) — *"어짜피 창고 간 재고이동이라서 재고만 서로 변동되고, 해당 내용이 재고수불부에만 반영이 되면 되거든."* 🔑전표와 다르다 — **이동은 회계 이벤트가 아니다**(회사 전체 재고 총액이 안 변하므로 금액을 붙이면 없는 손익이 생긴다). 현재 구현 일치 확인: `StockTransferLine` 은 `productId`·`requested/shipped/receivedQuantity`·`lotId` 뿐이고 `TransferFormPage.tsx:7` 이 *"이동전표는 단가/금액 개념이 없으므로"* 로 명시. ⚠️**재고실사에는 `차이금액` 열이 있다** — 실사는 장부↔실물 차이를 금액 평가하는 것이라 성격이 다르고, 메뉴가 인접해 스크린샷만으로 혼동하기 쉽다. 🚩미확인=**이동 확정이 재고수불부에 출고행+입고행을 함께 만드는가**(한쪽만이면 총 재고 불일치) · 확정 상태 표본 유무부터 셀 것
 - [🚨 열이 좁아 글씨가 잘리면 안 된다 — 스크롤은 허용](feedback_no_truncated_text_in_columns.md)
 - [🚨🚨 "권한 없음" deny 가 실제로는 auth 401 일 수 있다](feedback_permission_denied_may_be_401_from_auth.md)
+- [🚨🚨 공유 서비스 재배포가 다른 트랙 라이브QA 를 깨뜨린다](feedback_shared_service_redeploy_breaks_other_track_qa.md)
