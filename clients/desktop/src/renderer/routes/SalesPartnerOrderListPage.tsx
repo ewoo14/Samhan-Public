@@ -36,6 +36,8 @@ import { AuditInfoBanner } from '../components/audit/AuditOverlaySection'
 import { usePageTitleStore } from '../stores/pageTitle'
 import { usePermissions } from '../hooks/usePermissions'
 import { MergeConvertDialog } from './components/MergeConvertDialog'
+import { IndividualConvertDialog } from './components/IndividualConvertDialog'
+import type { IndividualConversionResult } from './components/individualConversion'
 import { useCollectionRealtime } from '../realtime/useCollectionRealtime'
 import { PartnerOrderBoardRealtimeClient } from '../realtime/PartnerOrderBoardRealtimeClient'
 import {
@@ -46,6 +48,12 @@ import {
 } from '../realtime/deletedRowDisplay'
 import { serverErrorMessage } from './dispatch-board/dispatchErrorMessage'
 import styles from '../components/sales/sales.module.css'
+
+const ORDER_STATUS_FILTER_OPTIONS: Array<{ value: PartnerOrderStatus | ''; label: string }> = [
+  { value: '', label: '전체' },
+  { value: 'DRAFT', label: '접수' },
+  { value: 'CONVERTED', label: '완료' },
+]
 
 const krw = (n: number) => new Intl.NumberFormat('ko-KR').format(n)
 // v2 §정정 8 — 'YYYY/MM/DD' 통일.
@@ -103,6 +111,7 @@ export function SalesPartnerOrderListPage() {
 
   /** Phase 2.6b D2: 병합 전환 모달 open/close. */
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false)
+  const [individualDialogOpen, setIndividualDialogOpen] = useState(false)
   const [selectedMergeOrders, setSelectedMergeOrders] = useState<PartnerOrderSummary[]>([])
   const [mergeSelectionError, setMergeSelectionError] = useState<string | null>(null)
   /** Phase 2.6b D2: 병합 전환 성공 토스트 메시지 — null 이면 비표시. */
@@ -124,7 +133,6 @@ export function SalesPartnerOrderListPage() {
 
   const canCreateMerge = canAccess('sales.partner-order.convert', 'create')
   const canSearchPartners = canAccess('partners.search', 'view')
-  const canMergeConvert = canCreateMerge && canSearchPartners
   const canRestoreDeletedOrder = canAccess('sales.partner-order.list', 'restore')
 
   /**
@@ -254,14 +262,32 @@ export function SalesPartnerOrderListPage() {
       return
     }
     setSelectedMergeOrders((current) => {
-      const selectedPartnerCode = current[0]?.partnerCode
-      if (selectedPartnerCode && selectedPartnerCode !== order.partnerCode) {
-        setMergeSelectionError('서로 다른 거래처 주문은 한 전표로 병합할 수 없습니다. 먼저 기존 선택을 해제하세요.')
-        return current
-      }
       if (current.some((item) => item.orderNumber === order.orderNumber)) return current
       return [...current, order]
     })
+  }
+
+  const handleMergeChoice = () => {
+    if (!canSearchPartners) {
+      setMergeSelectionError('병합전환에는 거래처 검색 권한이 필요합니다.')
+      return
+    }
+    const partnerCodes = new Set(selectedMergeOrders.map((order) => order.partnerCode))
+    if (partnerCodes.size > 1) {
+      setMergeSelectionError('병합전환은 같은 거래처 주문만 가능합니다. 개별전환은 다른 거래처 주문도 함께 처리할 수 있습니다.')
+      return
+    }
+    setMergeSelectionError(null)
+    setIndividualDialogOpen(false)
+    setMergeDialogOpen(true)
+  }
+
+  const handleIndividualCompleted = async (results: IndividualConversionResult[]) => {
+    const successCount = results.filter((result) => result.status === 'success').length
+    const failureCount = results.length - successCount
+    setConvertSuccessMessage(`개별 전환 완료: 성공 ${successCount}건 / 실패 ${failureCount}건`)
+    await queryClient.invalidateQueries({ queryKey: ['partner-orders'] })
+    await queryClient.invalidateQueries({ queryKey: ['partner-order-merge-candidates'] })
   }
 
   const columns: DataTableColumn<PartnerOrderSummary>[] = [
@@ -547,10 +573,9 @@ export function SalesPartnerOrderListPage() {
               selectSize="sm"
               style={{ width: '100%' }}
             >
-              <option value="">전체 상태</option>
-              {(Object.keys(PARTNER_ORDER_STATUS_LABEL) as PartnerOrderStatus[]).map((s) => (
-                <option key={s} value={s}>
-                  {PARTNER_ORDER_STATUS_LABEL[s]}
+              {ORDER_STATUS_FILTER_OPTIONS.map((option) => (
+                <option key={option.value || 'all'} value={option.value}>
+                  {option.label}
                 </option>
               ))}
             </Select>
@@ -600,16 +625,16 @@ export function SalesPartnerOrderListPage() {
           </button>
         ) : null}
 
-        {/* #825 슬7: 목록에서 혼합 선택을 시작하지 않고, 모달에서 거래처를 먼저 선택한다. */}
+        {/* 목록 선택 후 개별/병합 경로를 고른다. */}
         {canCreateMerge ? (
           <div
             data-testid="merge-convert-action-bar"
             role="region"
-            aria-label="선택 주문 병합 전환"
+            aria-label="선택 주문 출고전표 전환"
             className={styles['mergeConvertActionBar']}
           >
             <span data-testid="merge-convert-selection-guide">
-              거래처를 먼저 선택하면 같은 거래처 주문만 병합 후보로 표시됩니다.
+              선택한 주문은 개별전환으로 각각 전표가 되며, 병합전환은 같은 거래처만 가능합니다.
             </span>
             <span data-testid="merge-convert-selection-count">
               목록에서 {selectedMergeOrders.length}건 선택됨
@@ -622,15 +647,13 @@ export function SalesPartnerOrderListPage() {
             <Button
               type="button"
               variant="primary"
-              data-testid="merge-convert-open"
-              title={canMergeConvert
-                ? '거래처를 선택하고 병합할 주문을 고릅니다'
-                : '거래처 검색 권한이 필요합니다'}
-              disabled={!canMergeConvert}
-              aria-disabled={!canMergeConvert}
-              onClick={() => setMergeDialogOpen(true)}
+              data-testid="order-convert-open"
+              title={canCreateMerge ? '선택한 주문을 출고전표로 전환합니다' : '출고전표 전환 권한이 필요합니다'}
+              disabled={!canCreateMerge || selectedMergeOrders.length === 0}
+              aria-disabled={!canCreateMerge || selectedMergeOrders.length === 0}
+              onClick={() => setIndividualDialogOpen(true)}
             >
-              출고전표로 병합 전환
+              출고전표 전환
             </Button>
             {!canSearchPartners ? (
               <span role="alert" data-testid="merge-convert-permission-hint">
@@ -702,6 +725,15 @@ export function SalesPartnerOrderListPage() {
           selectedOrders={selectedMergeOrders}
           onClose={handleMergeDialogClose}
           onSuccess={(slipNo, convertedOrderNos) => void handleMergeDialogSuccess(slipNo, convertedOrderNos)}
+        />
+      ) : null}
+      {individualDialogOpen ? (
+        <IndividualConvertDialog
+          selectedOrders={selectedMergeOrders}
+          onClose={() => setIndividualDialogOpen(false)}
+          onMerge={handleMergeChoice}
+          onCompleted={(results) => void handleIndividualCompleted(results)}
+          mergeError={mergeSelectionError}
         />
       ) : null}
     </div>

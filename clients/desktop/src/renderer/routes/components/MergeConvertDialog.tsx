@@ -60,6 +60,7 @@ import { searchPartners } from '../../api/partnerApi'
 import { listWarehouses } from '../../api/inventory'
 import { toOrderPathId } from '../../utils/orderNo'
 import styles from '../../components/sales/sales.module.css'
+import { buildMergedPreview } from './mergePreview'
 
 // ---------------------------------------------------------------------------
 // 타입 정의
@@ -284,7 +285,9 @@ export function MergeConvertDialog({
       selectedPartner?.id ?? null,
     ],
     queryFn: () => listAllMergeCandidateOrders(selectedPartner!.partnerCode!, selectedPartner!.id!),
-    enabled: Boolean(selectedPartner?.partnerCode && selectedPartner?.id),
+    // 목록에서 넘긴 주문은 이미 선택이 끝났으므로 후보 재조회로 선택을
+    // 지우거나 0건으로 덮어쓰지 않는다. 거래처 조회는 헤더 검증에만 쓴다.
+    enabled: Boolean(selectedPartner?.partnerCode && selectedPartner?.id) && initialSelectedOrders.length === 0,
     retry: 1,
     staleTime: 0,
     refetchOnMount: 'always',
@@ -346,6 +349,7 @@ export function MergeConvertDialog({
   const orderDetails = orderDetailsQueries
     .map((q) => q.data)
     .filter((detail): detail is NonNullable<typeof detail> => Boolean(detail))
+  const mergedPreview = useMemo(() => buildMergedPreview(orderDetails), [orderDetails])
 
   // 라인별 전환수량 맵 — 키: `${orderNumber}-${lineId}`. 주문 추가/삭제 시 인덱스가
   // 재배열되어도 사용자가 조정한 다른 주문의 입력을 재사용하지 않는다.
@@ -436,17 +440,6 @@ export function MergeConvertDialog({
     }
   }
 
-  // 충돌 필드 미확정 여부 — 4-AND canSubmit 조건 (가이드 §2.7, Designer P1-2)
-  const hasUnresolvedConflict = conflictFields.some((key) => {
-    const selected = shippingFields[key]
-    if (selected === undefined) return true                       // 미선택
-    if (selected === '__custom__') {
-      // 직접입력 라디오 선택 시 실제 텍스트가 있어야 확정
-      return !customInputs[key]?.trim()
-    }
-    return false
-  })
-
   // 충돌 없는 필드는 첫 번째 주문 값으로 자동 채움
   const resolvedShippingInfo: MergeConvertShippingInfo = (() => {
     const keys: ShippingFieldKey[] = [
@@ -489,8 +482,9 @@ export function MergeConvertDialog({
     !isLoadingDetails &&
     !hasDetailError &&
     hasSomeQty &&
-    !!selectedWarehouse &&
-    !hasUnresolvedConflict
+    !!selectedWarehouse
+    // 품목 외 헤더는 항상 첫 주문 기준으로 확정한다. 후속 주문의 값은
+    // 충돌 선택을 요구하지 않고 아래 미리보기에서 폐기 사실을 알린다.
 
   // 병합 전환 mutation
   const mergeMutation = useMutation({
@@ -498,7 +492,7 @@ export function MergeConvertDialog({
       if (!selectedWarehouse) throw new Error('창고를 선택해 주세요.')
       // 주문별 items 빌드
       const orders = orderDetails
-        .map((detail, oi) => {
+        .map((detail) => {
           if (!detail) return null
           const items = detail.lines
             .filter((line) => {
@@ -623,33 +617,39 @@ export function MergeConvertDialog({
             : null}
         </div>
 
-        {/* [B] 거래처 우선 선택 — S7-1: 주문 후보보다 먼저 단일 거래처를 확정한다. */}
+        {/* [B] 목록 선택 주문은 고정하고, 구형 직접 진입만 거래처 우선 선택을 허용한다. */}
         <div
           data-testid="merge-convert-partner-selection"
           style={{ marginBottom: 'var(--space-4, 16px)' }}
         >
-          <PartnerAutocomplete
-            value={selectedPartner}
-            onChange={handlePartnerChange}
-            searchPartners={searchPartnerOptions}
-            label="거래처 선택"
-            ariaLabel="병합 거래처 검색"
-            inputTestId="merge-convert-partner-search"
-            placeholder="거래처명·코드·사업자번호 입력…"
-            required
-            disabled={mergeMutation.isPending}
-          />
+          {initialSelectedOrders.length > 0 ? (
+            <div data-testid="merge-convert-fixed-partner">
+              선택 주문 거래처: {initialSelectedOrders[0]?.partnerName ?? initialSelectedOrders[0]?.partnerCode}
+            </div>
+          ) : (
+            <PartnerAutocomplete
+              value={selectedPartner}
+              onChange={handlePartnerChange}
+              searchPartners={searchPartnerOptions}
+              label="거래처 선택"
+              ariaLabel="병합 거래처 검색"
+              inputTestId="merge-convert-partner-search"
+              placeholder="거래처명·코드·사업자번호 입력…"
+              required
+              disabled={mergeMutation.isPending}
+            />
+          )}
           {partnerSearchError ? (
             <div role="alert" data-testid="merge-convert-partner-search-error">
               {partnerSearchError}
             </div>
           ) : null}
-          {selectedPartner ? (
+          {selectedPartner || initialSelectedOrders.length > 0 ? (
             <p
               data-testid="merge-convert-selected-partner"
               style={{ margin: '6px 0 0', fontSize: 12, color: 'var(--color-neutral-600)' }}
             >
-              선택 거래처: {selectedPartner.name} ({selectedPartner.partnerCode})
+              선택 거래처: {selectedPartner?.name ?? initialSelectedOrders[0]?.partnerName ?? '-'} ({selectedPartner?.partnerCode ?? initialSelectedOrders[0]?.partnerCode ?? '-'})
             </p>
           ) : (
             <p
@@ -662,7 +662,7 @@ export function MergeConvertDialog({
         </div>
 
         {/* [C] 선택 거래처 주문 칩 — 거래처 변경 시 key remount로 이전 선택을 폐기한다. */}
-        {selectedPartner ? (
+        {selectedPartner && initialSelectedOrders.length === 0 ? (
           <div
             key={selectedPartner.partnerCode}
             data-testid="merge-convert-order-selection"
@@ -725,6 +725,31 @@ export function MergeConvertDialog({
           </div>
         ) : null}
 
+        {!isLoadingDetails && !hasDetailError && initialSelectedOrders.length >= 2 ? (
+          <section data-testid="merge-convert-preview" style={{ marginBottom: 20 }}>
+            <h3 style={{ margin: '0 0 8px' }}>승인 전 병합 미리보기</h3>
+            <p data-testid="merge-convert-preview-header" style={{ margin: '0 0 8px' }}>
+              헤더는 첫 번째 주문 기준: {mergedPreview.header?.orderNumber} · 거래처 {mergedPreview.header?.partnerName ?? mergedPreview.header?.partnerCode} · 배송지 {mergedPreview.header?.deliveryAddress ?? '-'} · 납기 {mergedPreview.header?.dueDate ?? '-'} · 메모 {mergedPreview.header?.memo ?? '-'}
+            </p>
+            <p data-testid="merge-convert-discarded-header-notice" role="note">
+              두 번째 이후 주문의 배송지·납기·메모·거래처 등 품목 외 필드는 사용하지 않습니다.
+            </p>
+            <table>
+              <thead><tr><th>모델</th><th>단가</th><th>수량</th><th>출처</th></tr></thead>
+              <tbody>
+                {mergedPreview.lines.map((line, index) => (
+                  <tr key={`${line.modelCode}-${line.deliveryPrice}-${index}`} data-testid={`merge-convert-preview-line-${index}`}>
+                    <td>{line.modelCode}</td>
+                    <td>{krw(line.deliveryPrice)}원</td>
+                    <td>{line.quantity}</td>
+                    <td>{line.sourceOrderNumbers.join(', ')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
+        ) : null}
+
         {/* [D] 출고 창고 선택 (필수) — 가이드 §2.2 */}
         <div
           ref={warehouseWrapRef}
@@ -748,7 +773,7 @@ export function MergeConvertDialog({
         </div>
 
         {/* [C] 헤더 충돌 필드 — 라디오+직접입력 혼합 패턴 (가이드 §2.3, Designer P1-2) */}
-        {conflictFields.length > 0 ? (
+        {false && conflictFields.length > 0 ? (
           <div
             data-testid="merge-convert-conflict-section"
             style={{

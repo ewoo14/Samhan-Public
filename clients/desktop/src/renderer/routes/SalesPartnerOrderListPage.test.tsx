@@ -102,6 +102,23 @@ vi.mock('./components/MergeConvertDialog', () => ({
     </div>
   ),
 }))
+vi.mock('./components/IndividualConvertDialog', () => ({
+  IndividualConvertDialog: ({
+    selectedOrders,
+    onMerge,
+    mergeError,
+  }: {
+    selectedOrders: PartnerOrderSummary[]
+    onMerge: () => void
+    mergeError?: string | null
+  }) => (
+    <div data-testid="test-individual-dialog">
+      {selectedOrders.length}개 개별 전환
+      {mergeError ? <span data-testid="test-individual-merge-error">{mergeError}</span> : null}
+      <button type="button" data-testid="test-merge-choice" onClick={onMerge}>병합전환</button>
+    </div>
+  ),
+}))
 vi.mock('../stores/pageTitle', () => ({ usePageTitleStore: () => vi.fn() }))
 vi.mock('../components/sales/sales.module.css', () => ({ default: new Proxy({}, { get: (_target, key) => String(key) }) }))
 
@@ -285,7 +302,7 @@ describe('SalesPartnerOrderListPage 병합 권한 게이팅', () => {
     renderPage()
 
     expect(await screen.findByTestId('merge-convert-action-bar')).toBeTruthy()
-    expect((screen.getByTestId('merge-convert-open') as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByTestId('order-convert-open') as HTMLButtonElement).disabled).toBe(true)
     expect(screen.getByTestId('merge-convert-permission-hint').textContent).toContain(
       '거래처 검색 권한이 필요합니다',
     )
@@ -313,8 +330,9 @@ describe('SalesPartnerOrderListPage 병합 성공 캐시 무효화', () => {
     const invalidateQueries = vi.spyOn(client, 'invalidateQueries')
 
     renderPage(client)
-    await screen.findByTestId('merge-convert-open')
-    fireEvent.click(screen.getByTestId('merge-convert-open'))
+    fireEvent.click(await screen.findByTestId('partner-order-select-2026/05/31-2'))
+    fireEvent.click(screen.getByTestId('order-convert-open'))
+    fireEvent.click(screen.getByTestId('test-merge-choice'))
     fireEvent.click(screen.getByTestId('test-merge-success'))
 
     await waitFor(() => {
@@ -367,8 +385,9 @@ describe('SalesPartnerOrderListPage merge selection', () => {
         row({ orderNumber: '2026/05/31-select-2', partnerCode: 'P-A', partnerName: 'A', status: 'ON_HOLD' }),
         row({ orderNumber: '2026/05/31-select-3', partnerCode: 'P-B', partnerName: 'B', status: 'DRAFT' }),
         row({ orderNumber: '2026/05/31-select-4', partnerCode: 'P-A', partnerName: 'A', status: 'CONFIRMING' }),
+        row({ orderNumber: '2026/05/31-select-5', partnerCode: 'P-A', partnerName: 'A', status: 'CONVERTED', linkedSlipNo: 'SLIP-OLD' }),
       ],
-      totalElements: 4,
+      totalElements: 5,
       totalPages: 1,
       number: 0,
       size: 50,
@@ -384,23 +403,28 @@ describe('SalesPartnerOrderListPage merge selection', () => {
     fireEvent.click(await screen.findByTestId('partner-order-select-2026/05/31-select-1'))
     fireEvent.click(screen.getByTestId('partner-order-select-2026/05/31-select-2'))
     expect(screen.getByTestId('merge-convert-selection-count').textContent).toContain('2')
-    fireEvent.click(screen.getByTestId('merge-convert-open'))
+    fireEvent.click(screen.getByTestId('order-convert-open'))
+    fireEvent.click(screen.getByTestId('test-merge-choice'))
     expect(screen.getByTestId('test-merge-selected-count').textContent).toBe('2')
   })
 
-  it('blocks a different-partner selection with an explicit warning', async () => {
+  it('allows mixed partners for individual conversion but blocks the merge action', async () => {
     renderPage()
     fireEvent.click(await screen.findByTestId('partner-order-select-2026/05/31-select-1'))
     const differentPartner = screen.getByTestId('partner-order-select-2026/05/31-select-3') as HTMLInputElement
     fireEvent.click(differentPartner)
-    expect(differentPartner.checked).toBe(false)
-    expect(screen.getByTestId('merge-convert-selection-error').textContent).toContain('서로 다른 거래처')
+    expect(differentPartner.checked).toBe(true)
+    fireEvent.click(screen.getByTestId('order-convert-open'))
+    fireEvent.click(screen.getByTestId('test-merge-choice'))
+    expect(screen.getByTestId('test-individual-merge-error').textContent).toContain('같은 거래처')
   })
 
   it('disables statuses outside DRAFT and ON_HOLD', async () => {
     renderPage()
     const confirming = await screen.findByTestId('partner-order-select-2026/05/31-select-4') as HTMLInputElement
     expect(confirming.disabled).toBe(true)
+    const converted = screen.getByTestId('partner-order-select-2026/05/31-select-5') as HTMLInputElement
+    expect(converted.disabled).toBe(true)
   })
 
   it('does not invoke row navigation when the checkbox is clicked', async () => {
@@ -410,10 +434,39 @@ describe('SalesPartnerOrderListPage merge selection', () => {
     expect(mocks.dataTableRowClick).not.toHaveBeenCalled()
   })
 
-  it('keeps the existing no-selection modal flow', async () => {
+  it('requires at least one selected order before opening conversion choices', async () => {
     renderPage()
-    fireEvent.click(await screen.findByTestId('merge-convert-open'))
-    expect(screen.getByTestId('test-merge-dialog')).toBeTruthy()
-    expect(screen.getByTestId('test-merge-selected-count').textContent).toBe('0')
+    expect((await screen.findByTestId('order-convert-open') as HTMLButtonElement).disabled).toBe(true)
+  })
+})
+
+describe('SalesPartnerOrderListPage individual conversion', () => {
+  beforeEach(() => {
+    mocks.listPartnerOrders.mockReset()
+    mocks.listPartnerOrders.mockResolvedValue({
+      content: [
+        row({ orderNumber: '2026/05/31-individual-a', partnerCode: 'P-A', status: 'DRAFT' }),
+        row({ orderNumber: '2026/05/31-individual-b', partnerCode: 'P-B', status: 'ON_HOLD' }),
+      ],
+      totalElements: 2,
+      totalPages: 1,
+      number: 0,
+      size: 50,
+      first: true,
+      last: true,
+    })
+    mocks.canAccess.mockReset()
+    mocks.canAccess.mockReturnValue(true)
+  })
+
+  it('allows different-partner selections for the primary individual conversion flow', async () => {
+    renderPage()
+    fireEvent.click(await screen.findByTestId('partner-order-select-2026/05/31-individual-a'))
+    fireEvent.click(screen.getByTestId('partner-order-select-2026/05/31-individual-b'))
+
+    expect(screen.queryByTestId('merge-convert-selection-error')).toBeNull()
+    expect(screen.getByTestId('merge-convert-selection-count').textContent).toContain('2')
+    fireEvent.click(screen.getByTestId('order-convert-open'))
+    expect(screen.getByTestId('test-individual-dialog').textContent).toContain('2')
   })
 })
