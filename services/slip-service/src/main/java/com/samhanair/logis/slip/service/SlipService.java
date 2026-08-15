@@ -21,6 +21,7 @@ import com.samhanair.logis.slip.service.cutoff.OutboundCutoffGuard;
 import com.samhanair.logis.slip.service.closing.SlipClosedDateGuard;
 import com.samhanair.logis.slip.domain.SlipLine;
 import com.samhanair.logis.slip.domain.SlipStatus;
+import com.samhanair.logis.slip.domain.SlipSourceType;
 import com.samhanair.logis.slip.domain.SlipType;
 import com.samhanair.logis.slip.editrequest.domain.SlipEditRequest;
 import com.samhanair.logis.slip.editrequest.service.SlipEditRequestService;
@@ -46,9 +47,13 @@ import jakarta.persistence.OptimisticLockException;
 import jakarta.persistence.criteria.Predicate;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -259,6 +264,20 @@ public class SlipService {
      * @throws BusinessException(INVALID_INPUT) 출고전표 sourceWarehouseId null, 입고전표 destinationWarehouseId null 또는 입력 불량
      */
     public SlipDetailResponse create(CreateSlipRequest req, String requesterId, String requesterName) {
+        return create(req, requesterId, requesterName, null);
+    }
+
+    /** 가입고 XLSX 재시도 시 동일 파일·창고·청크 DRAFT를 재사용한다. */
+    public SlipDetailResponse create(CreateSlipRequest req, String requesterId, String requesterName,
+                                     String idempotencyKey) {
+        String normalizedIdempotencyKey = normalizeOptionalKey(
+                idempotencyKey != null ? idempotencyKey : req.idempotencyKey());
+        if (normalizedIdempotencyKey != null) {
+            Optional<Slip> existing = slipRepository.findByIdempotencyKeyAndIsDeletedFalse(normalizedIdempotencyKey);
+            if (existing.isPresent()) {
+                return SlipDetailResponse.from(existing.get());
+            }
+        }
         // 1. 라인 productId 일괄 검증 + lookup map 빌드 (snapshot 보강)
         List<UUID> productIds = req.lines().stream()
                 .map(CreateSlipRequest.SlipLineRequest::productId)
@@ -298,7 +317,10 @@ public class SlipService {
         //    로 구성품 라인 N개 전개(견적 경로와 동일 단일 엔진), 아니면 1 라인.
         // OUTBOUND/INBOUND 모두 partnerId를 partner-service의 업무 식별자 partnerCode로 snapshot한다.
         // lookup 실패는 기존 전표 생성 계약대로 빈 코드만 남기고 저장을 막지 않는다.
-        String resolvedPartnerCode = partnerInternalClient.resolvePartnerCode(req.partnerId()).orElse(null);
+        String resolvedPartnerCode = req.slipType() == SlipType.INBOUND
+                && req.partnerCode() != null && !req.partnerCode().isBlank()
+                ? req.partnerCode().trim()
+                : partnerInternalClient.resolvePartnerCode(req.partnerId()).orElse(null);
         // 단가는 화면이 DC/최근단가/사용자 협의가를 반영해 확정한 값을 정본으로 사용한다.
         // 서버에서 다시 dc-config-service를 호출하면 화면의 할인 완료 단가를 정가로 오인해
         // 전역DC를 재적용하므로(예: 970,200 -> 494,802) 계산하지 않는다.
@@ -368,6 +390,11 @@ public class SlipService {
         if (slip.getSlipType() == SlipType.OUTBOUND) {
             slip.markSourceWarehouseCodePending();
         }
+        if (req.slipType() == SlipType.INBOUND
+                && req.sourceType() == SlipSourceType.INBOUND_XLSX) {
+            slip.assignPublishSource(SlipSourceType.INBOUND_XLSX, inboundXlsxSourceId(normalizedIdempotencyKey),
+                    normalizedIdempotencyKey);
+        }
 
         Slip saved = slipRepository.save(slip);
         if (saved.getSlipType() == SlipType.OUTBOUND) {
@@ -380,6 +407,35 @@ public class SlipService {
                 parseActorId(requesterId), resolveActorName(requesterName, requesterId), null);
         priceMemoryService.rememberBatchAfterCommit(priceMemoryCommands, "slip.create");
         return SlipDetailResponse.from(saved);
+    }
+
+    /**
+     * 가입고 XLSX의 복합 멱등키를 {@code slips.source_id(VARCHAR(64))}에 저장 가능한
+     * 안정적인 opaque 식별자로 변환한다. 원문 키는 별도 {@code idempotency_key(VARCHAR(128))}
+     * 에 보존하므로 재시도 조회 계약은 바뀌지 않는다.
+     *
+     * <p>SHA-256 32바이트를 URL-safe Base64 무패딩으로 인코딩하면 43자이며,
+     * {@code inbound-xlsx:} 접두사를 포함해 56자다. 따라서 현재 source_id 한도 64자보다
+     * 8자 여유가 있고, 파일명·창고코드·청크번호가 길어져도 저장 길이는 변하지 않는다.
+     */
+    private static String inboundXlsxSourceId(String idempotencyKey) {
+        if (idempotencyKey == null) {
+            return null;
+        }
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                    .digest(idempotencyKey.getBytes(StandardCharsets.UTF_8));
+            return "inbound-xlsx:" + Base64.getUrlEncoder().withoutPadding().encodeToString(digest);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 digest is unavailable", e);
+        }
+    }
+
+    private static String normalizeOptionalKey(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.trim();
     }
 
     /**

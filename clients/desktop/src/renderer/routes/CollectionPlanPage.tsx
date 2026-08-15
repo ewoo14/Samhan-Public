@@ -30,6 +30,7 @@ import { searchPartners } from '../api/partnerApi'
 import { PartnerLookupErrorBanner } from '../components/common/PartnerLookupErrorBanner'
 import { usePageTitle } from '../hooks/usePageTitle'
 import { usePermissions } from '../hooks/usePermissions'
+import { EditableAmountInput } from '../components/common/EditableAmountInput'
 
 const PLAN_STATUS_OPTIONS: PlanStatus[] = ['PLANNED', 'COLLECTED', 'OVERDUE']
 const PLAN_BASIS_OPTIONS: PlanBasis[] = ['RECEIVABLE_BALANCE', 'NOTE_MATURITY', 'MANUAL']
@@ -340,7 +341,7 @@ export function CollectionPlanPage() {
           </label>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
             금액
-            <Input type="number" min="0.01" step="0.01" value={form.plannedAmount} onChange={(event) => setForm((prev) => ({ ...prev, plannedAmount: event.target.value }))} />
+            <EditableAmountInput min="0.01" step="0.01" value={form.plannedAmount} onValueChange={(value) => setForm((prev) => ({ ...prev, plannedAmount: value }))} />
           </label>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
             근거

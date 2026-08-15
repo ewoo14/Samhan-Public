@@ -27,6 +27,7 @@ import { searchPartners } from '../api/partnerApi'
 import { PartnerLookupErrorBanner } from '../components/common/PartnerLookupErrorBanner'
 import { usePageTitle } from '../hooks/usePageTitle'
 import { usePermissions } from '../hooks/usePermissions'
+import { EditableAmountInput } from '../components/common/EditableAmountInput'
 
 const NOTE_STATUS_OPTIONS: NoteStatus[] = ['BOARDING', 'COLLECTING', 'SETTLED', 'DISHONORED']
 const NOTE_TYPE_OPTIONS: NoteType[] = ['PROMISSORY', 'BILL_OF_EXCHANGE']
@@ -311,7 +312,7 @@ export function NotesReceivablePage() {
           </label>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
             금액
-            <Input type="number" min="0.01" step="0.01" value={form.amount} onChange={(event) => setForm((prev) => ({ ...prev, amount: event.target.value }))} />
+            <EditableAmountInput min="0.01" step="0.01" value={form.amount} onValueChange={(value) => setForm((prev) => ({ ...prev, amount: value }))} />
           </label>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
             종류

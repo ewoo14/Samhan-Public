@@ -7,6 +7,11 @@ import {
   type RemoteFieldCursor,
   type RemoteFieldEdit,
 } from '../../realtime/createCoeditProvider'
+import {
+  adjustEditableAmountByArrow,
+  formatEditableAmountInput,
+  type EditableAmountArrowDirection,
+} from '../../utils/editableAmountInput'
 
 // header 키는 dot 을 포함할 수 있으므로(동적필드 field_a.b 등) 첫 dot 이후 전체를 키로; items 는 index.cell 2-세그먼트 유지.
 function headerKey(fieldPath: string): string {
@@ -76,6 +81,12 @@ export interface CollaborativeSlipInputProps {
    * 호출부 전부) raw 값을 그대로 통과시켜 기존 동작과 100% 동일하다.
    */
   parseValue?: (raw: string) => string | null
+  /** 표시용 포맷터. 반환값은 화면 표시값과 포맷 후 커서 위치다. */
+  formatValue?: (raw: string, selectionStart: number | null) => { displayValue: string; selectionStart: number }
+  /** 표시값을 서버/Y.Doc 계약값으로 되돌린다. */
+  parseFormattedValue?: (displayValue: string) => string
+  /** formatted 금액 입력에서 HTML number와 같은 ArrowUp/ArrowDown 한 단계 증감. */
+  enableAmountKeyboardStep?: boolean
   type?: string
   min?: number
   maxLength?: number
@@ -107,6 +118,9 @@ export function CollaborativeSlipInput({
   onValueChange,
   onDocSyncValueChange,
   parseValue,
+  formatValue,
+  parseFormattedValue,
+  enableAmountKeyboardStep = Boolean(formatValue),
   type,
   min,
   maxLength,
@@ -134,6 +148,9 @@ export function CollaborativeSlipInput({
   // 로딩 중(coeditPending)에만 잠금. provider=null 자체(로드 실패/비활성)는 평문 편집 허용 — onChange 가 modal state 갱신, Yjs 는 provider 있을 때만(영구잠금 회귀 방지, 리뷰 Opus 라운드2).
   const effectiveReadOnly = readOnly || !!coeditPending
   latestValueRef.current = value
+  // Keep state/Y.Doc values raw, but always render the formatted display value.
+  // Formatting only during onChange is overwritten by the next controlled render.
+  const displayValue = formatValue ? formatValue(value, null).displayValue : value
   // BLOCKING-1 부수 발견(#824 R1): onValueChange/onDocSyncValueChange 는 호출부(SlipDetailPage 등)에서
   // 매 렌더 새 인라인 화살표로 넘어와 참조가 매번 바뀐다. 이 값들을 아래 sync-effect 의 의존성
   // 배열에 두면(구코드) "커밋되지 않은 값 정규화"(예: 숫자 필드 clear → 0)가 Y.Doc 원문(빈 문자열)과
@@ -278,7 +295,7 @@ export function CollaborativeSlipInput({
         error={error}
         style={inputStyle}
         readOnly={effectiveReadOnly}
-        value={value}
+        value={displayValue}
         aria-label={ariaLabel}
         aria-describedby={ariaDescribedBy}
         data-testid={dataTestId}
@@ -286,6 +303,19 @@ export function CollaborativeSlipInput({
         onClick={updateCursor}
         onKeyUp={updateCursor}
         onSelect={updateCursor}
+        onKeyDown={(event) => {
+          if (!enableAmountKeyboardStep || (event.key !== 'ArrowUp' && event.key !== 'ArrowDown')) return
+          event.preventDefault()
+          const direction: EditableAmountArrowDirection = event.key === 'ArrowUp' ? 'up' : 'down'
+          const nextValue = adjustEditableAmountByArrow(value, direction)
+          const serverValue = parseFormattedValue ? parseFormattedValue(nextValue) : nextValue
+          onValueChange(serverValue)
+          if (provider) {
+            setProviderValue(provider, fieldPath, serverValue)
+            provider.setLocalLastEdit(fieldPath)
+          }
+          updateCursor()
+        }}
         onBlur={() => {
           updateCursor()
           // read-only(잠금/coeditPending) 상태에선 lookup 등 onBlur 부작용 미발생(리뷰 LOW).
@@ -298,11 +328,20 @@ export function CollaborativeSlipInput({
           // Y.Doc 미기록. controlled input 이라 다음 렌더에서 이전 value prop 으로 되돌아간다.
           const nextValue = parseValue ? parseValue(raw) : raw
           if (nextValue === null) return
-          onValueChange(nextValue)
+          const formatted = formatValue
+            ? formatValue(nextValue, event.target.selectionStart)
+            : { displayValue: nextValue, selectionStart: event.target.selectionStart ?? nextValue.length }
+          const serverValue = parseFormattedValue ? parseFormattedValue(formatted.displayValue) : formatted.displayValue
+          onValueChange(serverValue)
           if (provider) {
-            setProviderValue(provider, fieldPath, nextValue)
+            setProviderValue(provider, fieldPath, serverValue)
             provider.setLocalLastEdit(fieldPath)
           }
+          const restoreSelection = () => {
+            inputRef.current?.setSelectionRange(formatted.selectionStart, formatted.selectionStart)
+          }
+          if (typeof requestAnimationFrame === 'function') requestAnimationFrame(restoreSelection)
+          else setTimeout(restoreSelection, 0)
           updateCursor()
         }}
       />

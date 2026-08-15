@@ -213,7 +213,8 @@ test.describe('§7 입출고전표 협업 패널', () => {
     await inlineForm.getByLabel('단가(VAT포함) 1').fill('120000')
 
     await expect(inlineForm.getByLabel('수량 1')).toHaveValue('3')
-    await expect(inlineForm.getByLabel('단가(VAT포함) 1')).toHaveValue('120000')
+    await expect(inlineForm.getByLabel('단가(VAT포함) 1')).toHaveValue('120,000')
+    await expect(inlineForm.getByLabel('단가(VAT포함) 1')).toHaveAttribute('type', 'text')
     // 진입 시 auto-focus 로 열린 거래처 combobox 는 수량/단가로 포커스가 옮겨가며 blur→닫힌다 →
     // coedit-bound 표시값(=DRAFT 전표 거래처)으로 복원(자유입력 hold 아님).
     await expect(inlineForm.getByLabel('거래처', { exact: true })).toHaveValue('한일냉동기술')

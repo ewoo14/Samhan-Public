@@ -15,6 +15,7 @@ import { usePermissions } from '../hooks/usePermissions'
 import { usePageTitleStore } from '../stores/pageTitle'
 import styles from '../components/sales/sales.module.css'
 import { SINGLE_PANEL_OPTIONS } from '../utils/bundleOptionDomain'
+import { EditableAmountInput } from '../components/common/EditableAmountInput'
 
 type FormState = Record<keyof EstimateConfig, string>
 
@@ -311,8 +312,18 @@ export function EstimatePricingConfigPage() {
                       {renderCheckbox('singleWithBase', '실외기 받침대 포함')}
                       {renderSelect('singleDefaultPanel', '판넬변경', SINGLE_PANEL_OPTIONS)}
                       {renderSelect('singlePanelShape', '360판넬', SINGLE_PANEL_SHAPE_OPTIONS)}
-                      {renderNumber('singleDiscount', '할인')}
-                      {renderNumber('singleOneWayDiscount', '1WAY할인')}
+                      <EditableAmountInput
+                        label="할인"
+                        value={form.singleDiscount}
+                        onValueChange={(value) => setField('singleDiscount', value)}
+                        enableAmountKeyboardStep
+                      />
+                      <EditableAmountInput
+                        label="1WAY할인"
+                        value={form.singleOneWayDiscount}
+                        onValueChange={(value) => setField('singleOneWayDiscount', value)}
+                        enableAmountKeyboardStep
+                      />
                       {renderSelect('singleMaterialInclusion', '자재 포함 여부', SINGLE_MATERIAL_OPTIONS)}
                     </div>
                   </div>

@@ -3,6 +3,7 @@ package com.samhanair.logis.slip.web.dto;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.samhanair.logis.slip.domain.DeliveryTag;
 import com.samhanair.logis.slip.domain.SlipType;
+import com.samhanair.logis.slip.domain.SlipSourceType;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotEmpty;
@@ -55,6 +56,7 @@ public record CreateSlipRequest(
         @JsonDeserialize(using = OpaqueUuidDeserializer.class)
         UUID destinationWarehouseId,
         UUID partnerId,
+        @Size(max = 50) String partnerCode,
         @Size(max = 100) String partnerName,
         DeliveryTag deliveryTag,
         @Size(max = 1000) String memo,
@@ -89,8 +91,53 @@ public record CreateSlipRequest(
          * 당착(지방 당일 하차) = slipDate 와 동일 값 전달. 지방/야적 태그에만 유효.
          */
         LocalDate unloadDate,
+        SlipSourceType sourceType,
+        @Size(max = 255) String idempotencyKey,
         @NotEmpty @Size(max = 100, message = "전표 라인은 최대 100건까지 저장할 수 있습니다")
         @Valid List<SlipLineRequest> lines) {
+
+    /**
+     * 기존 POST /slips 호출자와 서비스 테스트를 위한 호환 생성자.
+     * {@code partnerCode}는 가입고 XLSX 경로에서만 선택적으로 전달되며,
+     * 기존 호출자는 거래처 UUID 조회 경로를 그대로 사용한다.
+     */
+    public CreateSlipRequest(
+            SlipType slipType,
+            LocalDate slipDate,
+            UUID sourceWarehouseId,
+            UUID destinationWarehouseId,
+            UUID partnerId,
+            String partnerName,
+            DeliveryTag deliveryTag,
+            String memo,
+            String driverName,
+            String driverPhone,
+            String ioType,
+            String timeDate,
+            String customerTel,
+            String customerAddress,
+            String customerRepresentative,
+            String shippingAddress,
+            String inspectionAddress,
+            String receiverPhone,
+            String paymentDueLabel,
+            String discountInfo,
+            String collectTerm,
+            String agreeTerm,
+            String deliveryAddress,
+            String supervisionAddress,
+            String projectName,
+            String recipientPhone,
+            LocalDate paymentDueDate,
+            LocalDate unloadDate,
+            List<SlipLineRequest> lines) {
+        this(slipType, slipDate, sourceWarehouseId, destinationWarehouseId, partnerId,
+                null, partnerName, deliveryTag, memo, driverName, driverPhone, ioType, timeDate,
+                customerTel, customerAddress, customerRepresentative, shippingAddress,
+                inspectionAddress, receiverPhone, paymentDueLabel, discountInfo, collectTerm,
+                agreeTerm, deliveryAddress, supervisionAddress, projectName, recipientPhone,
+                paymentDueDate, unloadDate, null, null, lines);
+    }
 
     /**
      * 전표 라인 — productId / 수량 / 단가 / 메모 + 표시용 snapshot 명칭.

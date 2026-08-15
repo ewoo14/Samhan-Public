@@ -128,15 +128,44 @@ html[data-theme="dark"], body[data-theme="dark"] {
   box-shadow: inset 4px 0 0 var(--action-brand);
 }
 
+/*
+ * #1222: 전표 상세의 금액 입력 옆 보조 표시가 행을 밀지 않도록 한다.
+ * note의 폭은 콘텐츠와 현재 폰트에서 브라우저가 계산하며, 입력은 남은 폭을 사용한다.
+ */
+.slip-line-edit-cell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.slip-line-edit-cell > span:first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.slip-line-edit-cell > .price-source-note,
+.slip-line-edit-cell > .price-change-indicator,
+.slip-line-edit-cell > [role='note'] {
+  flex: 0 0 auto;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* S4: 전표 라인 입력칸은 단가 출처 칩과 행 합계 칸 때문에 행별 높이가 달라지지 않게 한다.
  * LineRow는 design-system 소유라 수정하지 않고, 이 화면의 소비자 범위에서만 열/간격을 정리한다. */
 .sfp-line-table {
   --col-sum: 0px;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .sfp-line-table [class*='lineRow'],
 .sfp-line-table [class*='lineHeader'] {
   column-gap: 8px;
+  min-width: 1320px;
 }
 
 .sfp-line-table [class*='priceMemoryNote'],
@@ -1638,7 +1667,8 @@ button {
 .sfp-line-table {
   border: 1px solid var(--line-default);
   border-radius: var(--radius-card);
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
   background: var(--surface-card);
 }
 

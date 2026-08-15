@@ -31,14 +31,26 @@ test('R3 BUNDLE 전개행의 수량·단가·삭제가 사용자 입력으로 �
   const secondComponentLineNo = draftLineNo + 1
   const thirdComponentLineNo = draftLineNo + 2
   const quantity = page.getByRole('spinbutton', { name: `수량 ${firstComponentLineNo}` })
-  const unitPrice = page.getByRole('spinbutton', { name: new RegExp(`단가\\(VAT포함\\) ${secondComponentLineNo}$`) })
+  const unitPrice = page.getByLabel(new RegExp(`단가\\(VAT포함\\) ${secondComponentLineNo}$`))
+  const deletedProduct = page.getByRole('combobox', { name: `라인 ${thirdComponentLineNo} 품목` })
+  const deletedProductCode = await deletedProduct.inputValue()
+  const blankProductRowsBeforeDelete = await page.locator('input[role="combobox"]').evaluateAll(
+    (inputs) => (inputs as HTMLInputElement[]).filter((input) => input.value === '').length,
+  )
   await quantity.fill('9')
   await unitPrice.fill('123456')
   await page.getByRole('button', { name: `${thirdComponentLineNo}번 행 삭제` }).click()
 
   await expect(quantity).toHaveValue('9')
-  await expect(unitPrice).toHaveValue('123456')
-  await expect(rows).toHaveCount(afterExpand - 1)
+  await expect(unitPrice).toHaveValue('123,456')
+  await expect(unitPrice).toHaveAttribute('type', 'text')
+  await expect.poll(() => page.locator('input[role="combobox"]').evaluateAll((inputs, code) => (
+    inputs as HTMLInputElement[]
+  ).filter((input) => input.value === code).length, deletedProductCode)).toBe(0)
+  await expect(rows).toHaveCount(afterExpand)
+  await expect.poll(() => page.locator('input[role="combobox"]').evaluateAll((inputs) => (
+    inputs as HTMLInputElement[]
+  ).filter((input) => input.value === '').length)).toBe(blankProductRowsBeforeDelete + 1)
   await expect(page.getByTestId('sales-slip-edit-save')).toBeEnabled()
   await page.screenshot({
     path: path.join(SHOTS, '01-r3-bundle-user-edits-before-save.png'),

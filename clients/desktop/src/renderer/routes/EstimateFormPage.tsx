@@ -71,6 +71,7 @@ import {
   type PartnerRepriceOutcome,
 } from '../utils/usePartnerPriceRefresh'
 import { CollaborativeSlipInput } from '../components/collab/CollaborativeSlipInput'
+import { formatEditableAmountInput, parseEditableAmountForServer } from '../utils/editableAmountInput'
 import { createDocCoeditProvider, type DocCoeditProvider } from '../realtime/createCoeditProvider'
 import {
   coeditLineIdsAreStale,
@@ -646,6 +647,8 @@ function EstimateMobileLineCard(props: {
           // 가 pending REMEMBERED/CATALOG 분류를 USER 로 덮어 마커가 소멸하는 것을 차단(R4-F6).
           // 분류 판정은 페이지 구독(coeditLinesToDraftLines + localAutoPriceWrites)이 단일 소스.
           onDocSyncValueChange={(value) => props.onUpdate({ unitPrice: value })}
+          formatValue={formatEditableAmountInput}
+          parseFormattedValue={parseEditableAmountForServer}
           inputSize="sm"
           readOnly={props.isReadOnly}
           type="text"
@@ -2491,6 +2494,8 @@ export function EstimateFormPage() {
                   type="text"
                   value={line.unitPrice}
                   onValueChange={(value) => updatePrice(i, value)}
+                  formatValue={formatEditableAmountInput}
+                  parseFormattedValue={parseEditableAmountForServer}
                   // doc-sync 유래 값 반영은 분류(priceSource) 를 건드리지 않는다 — 자동채움 provider
                   // write 가 pending REMEMBERED/CATALOG 분류를 USER 로 덮는 마커 소멸 차단(R4-F6).
                   // 분류 판정은 페이지 구독(coeditLinesToDraftLines + localAutoPriceWrites)이 단일 소스.
@@ -2535,6 +2540,8 @@ export function EstimateFormPage() {
                 type="text"
                 value={line.supplyAmount}
                 onValueChange={(value) => updateVat(i, 'SUPPLY', value)}
+                formatValue={formatEditableAmountInput}
+                parseFormattedValue={parseEditableAmountForServer}
                 onDocSyncValueChange={(value) => updateLine(i, { supplyAmount: value })}
                 readOnly={Boolean(isReadOnly) || isBundle || coeditActive}
                 inputMode="numeric"
@@ -2549,6 +2556,8 @@ export function EstimateFormPage() {
                 type="text"
                 value={line.vatAmount}
                 onValueChange={(value) => updateVat(i, 'VAT', value)}
+                formatValue={formatEditableAmountInput}
+                parseFormattedValue={parseEditableAmountForServer}
                 onDocSyncValueChange={(value) => updateLine(i, { vatAmount: value })}
                   readOnly={Boolean(isReadOnly) || isBundle || coeditActive}
                   inputMode="numeric"

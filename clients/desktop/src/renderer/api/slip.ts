@@ -27,7 +27,7 @@ import { searchSlips } from './slipSearch'
 export type SlipType = 'OUTBOUND' | 'INBOUND'
 
 /** 전표 발행 출처 — 취소 가능 여부처럼 subtype별 lifecycle 가드에 사용한다. */
-export type SlipSourceType = 'ESTIMATE' | 'PARTNER_ORDER' | 'MANUAL' | 'MIGRATED_ECOUNT'
+export type SlipSourceType = 'ESTIMATE' | 'PARTNER_ORDER' | 'MANUAL' | 'MIGRATED_ECOUNT' | 'INBOUND_XLSX'
 
 /** 목록용 요약 응답 — BE `SlipResponse`. */
 export interface SlipSummary {
@@ -430,6 +430,8 @@ export interface CreateSlipRequest {
   sourceWarehouseId?: string
   destinationWarehouseId?: string
   partnerId?: string
+  /** 가입고 XLSX 고정 거래처 업무코드 — 사용자 화면에는 UUID 대신 코드만 노출한다. */
+  partnerCode?: string
   partnerName?: string
   deliveryTag?: DeliveryTagCode
   memo?: string
@@ -479,6 +481,10 @@ export interface CreateSlipRequest {
    * 당착(지방 당일하차) 시 slipDate 와 동일 값을 전송.
    */
   unloadDate?: string
+  /** 생성 출처 — 가입고 XLSX 경로가 저장 계층까지 보존하는 provenance. */
+  sourceType?: SlipSourceType
+  /** 파일·창고·청크 단위 재시도 멱등성 키. 헤더가 유실돼도 저장할 정본. */
+  idempotencyKey?: string
   lines: SlipLineInput[]
 }
 
@@ -649,8 +655,11 @@ export async function getOutboundSlipBySlipNo(slipNo: string): Promise<SlipDetai
  */
 export async function createSlip(
   body: CreateSlipRequest,
+  options?: { idempotencyKey?: string },
 ): Promise<SlipDetail> {
-  const res = await apiClient.post<ApiEnvelope<SlipDetail>>('/slips', body)
+  const res = await apiClient.post<ApiEnvelope<SlipDetail>>('/slips', body, {
+    headers: options?.idempotencyKey ? { 'Idempotency-Key': options.idempotencyKey } : undefined,
+  })
   return res.data.data
 }
 

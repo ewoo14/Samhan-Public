@@ -5268,6 +5268,9 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       recipientPhone?: string
       paymentDueDate?: string
       slipType?: string
+      partnerCode?: string
+      sourceType?: string
+      idempotencyKey?: string
       deliveryTag?: string
       memo?: string
       lines?: unknown[]
@@ -5288,6 +5291,8 @@ export function getMockResponse(config: AxiosRequestConfig): unknown | null {
       status: 'DRAFT',
       partnerId: null,
       partnerName: reqBody.partnerName ?? '신규 거래처',
+      partnerCode: reqBody.partnerCode ?? null,
+      sourceType: reqBody.sourceType ?? 'MANUAL',
       sourceWarehouseId: HQ_ID,
       destinationWarehouseId: null,
       deliveryTag: reqBody.deliveryTag ?? 'SALE',
