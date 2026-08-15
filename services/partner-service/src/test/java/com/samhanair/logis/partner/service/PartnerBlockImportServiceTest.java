@@ -168,6 +168,14 @@ class PartnerBlockImportServiceTest {
     }
 
     @Test
+    void parseNotionDateTime_sameInstantAcrossFormats_usesSameStoredAxis() {
+        LocalDateTime korean = service.parseNotionDateTime("2026년 4월 26일 오전 7:36");
+        LocalDateTime iso = service.parseNotionDateTime("2026-04-25 22:36:00Z");
+
+        assertThat(iso).isEqualTo(korean);
+    }
+
+    @Test
     void importCsv_actualIsoUtcTimestamp_isImported() {
         // 실제 2026-07-28 BLOCK 원천 6행: 모두 ISO UTC이며 코드-only도 원천 형식이다.
         String csv = "거래처코드,이카운트 사업자명,생성 일시\n"

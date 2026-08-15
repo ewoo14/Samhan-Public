@@ -216,9 +216,10 @@ public class PartnerBlockImportService {
             return LocalDateTime.parse(value, NOTION_DATETIME);
         } catch (DateTimeParseException koreanFormatFailure) {
             // 실제 export의 "2026-04-25 22:36:20Z"처럼 날짜와 시간 사이가 공백인
-            // ISO offset 형식도 허용한다. Offset은 저장 모델이 LocalDateTime이므로 UTC로 정규화한다.
+            // ISO offset 형식도 허용한다. 한국어 표기 및 BaseEntity LocalDateTime 축과
+            // 일치하도록 KST wall-clock 값으로 저장한다.
             String iso = value.replaceFirst("^(\\d{4}-\\d{2}-\\d{2})\\s+", "$1T");
-            return OffsetDateTime.parse(iso).withOffsetSameInstant(ZoneOffset.UTC).toLocalDateTime();
+            return OffsetDateTime.parse(iso).withOffsetSameInstant(ZoneOffset.ofHours(9)).toLocalDateTime();
         }
     }
 
