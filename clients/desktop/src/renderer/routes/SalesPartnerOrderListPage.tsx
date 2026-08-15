@@ -140,6 +140,13 @@ export function SalesPartnerOrderListPage() {
   const canSearchPartners = canAccess('partners.search', 'view')
   const canRestoreDeletedOrder = canAccess('sales.partner-order.list', 'restore')
 
+  // 목록 모집단이 바뀌면 기존 선택을 즉시 폐기한다. 이전 필터의 보이지 않는 주문이
+  // 현재 목록의 전환 대상으로 남지 않도록 하며, 검색·기간·상태·전표상태·페이지 이동을
+  // 모두 같은 규칙으로 처리한다.
+  useEffect(() => {
+    setSelectedMergeOrders((current) => current.length === 0 ? current : [])
+  }, [dateFrom, dateTo, partnerId, statusFilter, slipPublishStatusFilter, searchKeyword, page])
+
   /**
    * P1-3: status 변경 시 기간 필터 초기화 + 컨텍스트 힌트 표시.
    * DRAFT/ON_HOLD/CONFIRMING → confirmedAt NULL, 기간 기본 미설정(전체 조회) 으로 유도.

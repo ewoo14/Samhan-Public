@@ -441,6 +441,38 @@ describe('SalesPartnerOrderListPage merge selection', () => {
     fireEvent.click(openButton)
     expect(screen.getByTestId('test-individual-dialog')).toBeTruthy()
   })
+
+  it('removes selections that disappear when the status filter changes', async () => {
+    const visibleOrders = [
+      row({ orderNumber: '2026/05/31-visible-1', partnerCode: 'P-A', partnerName: 'A', status: 'DRAFT' }),
+      row({ orderNumber: '2026/05/31-visible-2', partnerCode: 'P-A', partnerName: 'A', status: 'DRAFT' }),
+    ]
+    mocks.listPartnerOrders.mockImplementation((_page: number, _size: number, filters?: { status?: string }) =>
+      Promise.resolve({
+        content: filters?.status === 'CONVERTED' ? [] : visibleOrders,
+        totalElements: filters?.status === 'CONVERTED' ? 0 : visibleOrders.length,
+        totalPages: filters?.status === 'CONVERTED' ? 0 : 1,
+        number: 0,
+        size: 50,
+        first: true,
+        last: true,
+      }),
+    )
+
+    renderPage()
+    fireEvent.click(await screen.findByTestId('partner-order-select-2026/05/31-visible-1'))
+    fireEvent.click(screen.getByTestId('partner-order-select-2026/05/31-visible-2'))
+    expect(screen.getByTestId('merge-convert-selection-count').textContent).toContain('2')
+
+    fireEvent.change(screen.getByTestId('partner-order-list-status-filter'), { target: { value: 'CONVERTED' } })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('merge-convert-selection-count').textContent).toContain('0')
+    })
+
+    fireEvent.click(screen.getByTestId('order-convert-open'))
+    expect(screen.getByTestId('test-individual-dialog').textContent).toContain('0개 개별 전환')
+  })
 })
 
 describe('SalesPartnerOrderListPage individual conversion', () => {
