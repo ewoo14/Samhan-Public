@@ -94,6 +94,49 @@ public record CreateSlipRequest(
         @Valid List<SlipLineRequest> lines) {
 
     /**
+     * 기존 POST /slips 호출자와 서비스 테스트를 위한 호환 생성자.
+     * {@code partnerCode}는 가입고 XLSX 경로에서만 선택적으로 전달되며,
+     * 기존 호출자는 거래처 UUID 조회 경로를 그대로 사용한다.
+     */
+    public CreateSlipRequest(
+            SlipType slipType,
+            LocalDate slipDate,
+            UUID sourceWarehouseId,
+            UUID destinationWarehouseId,
+            UUID partnerId,
+            String partnerName,
+            DeliveryTag deliveryTag,
+            String memo,
+            String driverName,
+            String driverPhone,
+            String ioType,
+            String timeDate,
+            String customerTel,
+            String customerAddress,
+            String customerRepresentative,
+            String shippingAddress,
+            String inspectionAddress,
+            String receiverPhone,
+            String paymentDueLabel,
+            String discountInfo,
+            String collectTerm,
+            String agreeTerm,
+            String deliveryAddress,
+            String supervisionAddress,
+            String projectName,
+            String recipientPhone,
+            LocalDate paymentDueDate,
+            LocalDate unloadDate,
+            List<SlipLineRequest> lines) {
+        this(slipType, slipDate, sourceWarehouseId, destinationWarehouseId, partnerId,
+                null, partnerName, deliveryTag, memo, driverName, driverPhone, ioType, timeDate,
+                customerTel, customerAddress, customerRepresentative, shippingAddress,
+                inspectionAddress, receiverPhone, paymentDueLabel, discountInfo, collectTerm,
+                agreeTerm, deliveryAddress, supervisionAddress, projectName, recipientPhone,
+                paymentDueDate, unloadDate, lines);
+    }
+
+    /**
      * 전표 라인 — productId / 수량 / 단가 / 메모 + 표시용 snapshot 명칭.
      * Slice A (sales-polish-2): {@code specification} 필드 신규 추가 (사용자 피드백 #4).
      */
