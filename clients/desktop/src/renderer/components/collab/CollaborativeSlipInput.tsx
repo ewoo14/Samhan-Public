@@ -76,6 +76,10 @@ export interface CollaborativeSlipInputProps {
    * 호출부 전부) raw 값을 그대로 통과시켜 기존 동작과 100% 동일하다.
    */
   parseValue?: (raw: string) => string | null
+  /** 표시용 포맷터. 반환값은 화면 표시값과 포맷 후 커서 위치다. */
+  formatValue?: (raw: string, selectionStart: number | null) => { displayValue: string; selectionStart: number }
+  /** 표시값을 서버/Y.Doc 계약값으로 되돌린다. */
+  parseFormattedValue?: (displayValue: string) => string
   type?: string
   min?: number
   maxLength?: number
@@ -107,6 +111,8 @@ export function CollaborativeSlipInput({
   onValueChange,
   onDocSyncValueChange,
   parseValue,
+  formatValue,
+  parseFormattedValue,
   type,
   min,
   maxLength,
@@ -298,11 +304,20 @@ export function CollaborativeSlipInput({
           // Y.Doc 미기록. controlled input 이라 다음 렌더에서 이전 value prop 으로 되돌아간다.
           const nextValue = parseValue ? parseValue(raw) : raw
           if (nextValue === null) return
-          onValueChange(nextValue)
+          const formatted = formatValue
+            ? formatValue(nextValue, event.target.selectionStart)
+            : { displayValue: nextValue, selectionStart: event.target.selectionStart ?? nextValue.length }
+          const serverValue = parseFormattedValue ? parseFormattedValue(formatted.displayValue) : formatted.displayValue
+          onValueChange(serverValue)
           if (provider) {
-            setProviderValue(provider, fieldPath, nextValue)
+            setProviderValue(provider, fieldPath, serverValue)
             provider.setLocalLastEdit(fieldPath)
           }
+          const restoreSelection = () => {
+            inputRef.current?.setSelectionRange(formatted.selectionStart, formatted.selectionStart)
+          }
+          if (typeof requestAnimationFrame === 'function') requestAnimationFrame(restoreSelection)
+          else setTimeout(restoreSelection, 0)
           updateCursor()
         }}
       />
