@@ -18,19 +18,25 @@ export function buildMergedPreview(orders: PartnerOrderDetail[]): {
   orders.forEach((order) => {
     order.lines.forEach((line) => {
       const sourceLine = line as PartnerOrderLine
+      const sourceSubtotal = Number.isFinite(sourceLine.subtotal)
+        ? sourceLine.subtotal
+        : sourceLine.deliveryPrice * sourceLine.quantity
       const key = `${sourceLine.modelCode}\u0000${sourceLine.deliveryPrice}`
       const existingIndex = keyToIndex.get(key)
       if (existingIndex === undefined) {
         keyToIndex.set(key, lines.length)
-        lines.push({ ...sourceLine, sourceOrderNumbers: [order.orderNumber] })
+        lines.push({ ...sourceLine, subtotal: sourceSubtotal, sourceOrderNumbers: [order.orderNumber] })
         return
       }
       const existing = lines[existingIndex]!
+      const sourceOrderNumbers = existing.sourceOrderNumbers.includes(order.orderNumber)
+        ? existing.sourceOrderNumbers
+        : [...existing.sourceOrderNumbers, order.orderNumber]
       lines[existingIndex] = {
         ...existing,
         quantity: existing.quantity + sourceLine.quantity,
-        subtotal: existing.subtotal + sourceLine.subtotal,
-        sourceOrderNumbers: [...existing.sourceOrderNumbers, order.orderNumber],
+        subtotal: existing.subtotal + sourceSubtotal,
+        sourceOrderNumbers,
       }
     })
   })

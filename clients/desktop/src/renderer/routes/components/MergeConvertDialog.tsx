@@ -615,8 +615,39 @@ export function MergeConvertDialog({
           이 작업은 되돌릴 수 없습니다.
           {convertItemCount > 0
             ? ` (${selectedOrders.length}개 주문, ${convertItemCount}개 품목 전환 예정)`
-            : null}
+          : null}
         </div>
+
+        {/* 승인 판단에 필요한 병합 결과를 선택/창고 입력보다 먼저 보여준다. 모달 본문이
+            세로로 제한되어도 헤더 카드와 전체 라인 표가 첫 화면에 함께 들어온다. */}
+        {!isLoadingDetails && !hasDetailError && initialSelectedOrders.length >= 2 && mergedPreview.header ? (
+          <section data-testid="merge-convert-preview" style={{ marginBottom: 20 }}>
+            <h3 style={{ margin: '0 0 8px' }}>승인 전 병합 주문서 상세</h3>
+            <p data-testid="merge-convert-preview-header" style={{ margin: '0 0 8px' }}>
+              헤더는 첫 번째 주문 기준: {mergedPreview.header.orderNumber} · 거래처 {selectedPartner?.name ?? mergedPreview.header.partnerName ?? mergedPreview.header.partnerCode}
+            </p>
+            <p data-testid="merge-convert-discarded-header-notice" role="note">
+              두 번째 이후 주문의 배송지·납기·메모·거래처 등 품목 외 필드는 사용하지 않습니다.
+            </p>
+            <p data-testid="merge-convert-source-notice" style={{ margin: '0 0 8px', fontSize: 12 }}>
+              <span>출처</span>는 각 라인의 모델명 아래에 표시됩니다.
+            </p>
+            <PartnerOrderDetailReadOnly
+              order={{
+                ...mergedPreview.header,
+                partnerName: selectedPartner?.name ?? mergedPreview.header.partnerName,
+                lines: mergedPreview.lines,
+                totalAmount: mergedPreview.lines.reduce((total, line) => total + line.subtotal, 0),
+                linkedSlipNo: null,
+                status: 'DRAFT',
+              }}
+              renderLineSource={(line) => {
+                const sourceOrderNumbers = (line as typeof line & { sourceOrderNumbers?: string[] }).sourceOrderNumbers ?? []
+                return sourceOrderNumbers.join(', ')
+              }}
+            />
+          </section>
+        ) : null}
 
         {/* [B] 목록 선택 주문은 고정하고, 구형 직접 진입만 거래처 우선 선택을 허용한다. */}
         <div
@@ -626,7 +657,7 @@ export function MergeConvertDialog({
           {initialSelectedOrders.length > 0 ? (
             <div data-testid="merge-convert-fixed-partner">
               선택 주문 거래처: <span data-testid="merge-convert-partner-input-value">{initialSelectedOrders[0]?.partnerName ?? initialSelectedOrders[0]?.partnerCode}</span>
-              <span data-testid="merge-convert-mock-selected-order-count">{selectedOrders.length}개 선택됨</span>
+              <span data-testid="merge-convert-mock-selected-order-count" style={{ display: 'inline-block', marginLeft: 8 }}>{selectedOrders.length}개 선택됨</span>
             </div>
           ) : (
             <PartnerAutocomplete
@@ -725,28 +756,6 @@ export function MergeConvertDialog({
               {ineligibleOrders.length > 0 ? ` ${ineligibleOrders.length}건은 병합에서 제외됨` : ''}
             </p>
           </div>
-        ) : null}
-
-        {!isLoadingDetails && !hasDetailError && initialSelectedOrders.length >= 2 && mergedPreview.header ? (
-          <section data-testid="merge-convert-preview" style={{ marginBottom: 20 }}>
-            <h3 style={{ margin: '0 0 8px' }}>승인 전 병합 주문서 상세</h3>
-            <p data-testid="merge-convert-preview-header" style={{ margin: '0 0 8px' }}>
-              헤더는 첫 번째 주문 기준: {mergedPreview.header.orderNumber} · 거래처 {selectedPartner?.name ?? mergedPreview.header.partnerName ?? mergedPreview.header.partnerCode}
-            </p>
-            <p data-testid="merge-convert-discarded-header-notice" role="note">
-              두 번째 이후 주문의 배송지·납기·메모·거래처 등 품목 외 필드는 사용하지 않습니다.
-            </p>
-            <PartnerOrderDetailReadOnly
-              order={{
-                ...mergedPreview.header,
-                partnerName: selectedPartner?.name ?? mergedPreview.header.partnerName,
-                lines: mergedPreview.lines,
-                totalAmount: mergedPreview.lines.reduce((total, line) => total + line.subtotal, 0),
-                linkedSlipNo: null,
-                status: 'DRAFT',
-              }}
-            />
-          </section>
         ) : null}
 
         {/* [D] 출고 창고 선택 (필수) — 가이드 §2.2 */}
@@ -911,7 +920,7 @@ export function MergeConvertDialog({
         ) : null}
 
         {/* [D] 주문별 라인 그룹 표 */}
-        {!isLoadingDetails && !hasDetailError
+        {!isLoadingDetails && !hasDetailError && initialSelectedOrders.length === 0
           ? orderDetails.map((detail, oi) => {
               if (!detail) return null
               const order = selectedOrders[oi]!
@@ -1041,7 +1050,7 @@ export function MergeConvertDialog({
 const PARTNER_ORDER_STATUS_LABEL_LOCAL: Record<string, string> = {
   DRAFT: '접수',
   ON_HOLD: '보류',
-  CONFIRMING: '확인중',
+  CONFIRMING: '접수',
   CONFIRMED: '완료',
   CANCELED: '취소',
   CONVERTED: '완료',

@@ -1,10 +1,13 @@
-import { Badge, Card, OrderStatusBadge } from '@samhan/design-system'
+import { Badge, Card } from '@samhan/design-system'
 import type { ReactNode } from 'react'
 import type { PartnerOrderDetail } from '../../api/sales'
 import styles from '../../components/sales/sales.module.css'
 
 const krw = (value: number) => new Intl.NumberFormat('ko-KR').format(value)
 const empty = (value: string | null | undefined) => value || '-'
+const displayOrderNumber = (value: string) => value.replace(/^(\d{4})-(\d{2})-(\d{2})-/, '$1/$2/$3-')
+const firstNonBlank = (...values: Array<string | null | undefined>) =>
+  values.find((value) => typeof value === 'string' && value.trim().length > 0) ?? '-'
 
 /**
  * 주문서 상세의 표시 본문. 라우트의 편집/전환 제어와 분리해 병합 승인 전에도
@@ -20,6 +23,16 @@ type PartnerOrderDetailReadOnlyProps = {
   onLineLookup?: () => void
   onClearSelection?: () => void
   canViewProductLookups?: boolean
+  /** 병합 승인 미리보기에서 품목별 원 주문번호를 같은 표 안에 표시한다. */
+  renderLineSource?: (line: PartnerOrderDetail['lines'][number]) => ReactNode
+}
+
+const statusLabel = (status: string) => {
+  if (status === 'DRAFT') return '접수'
+  if (status === 'CONVERTED' || status === 'CONFIRMED') return '완료'
+  if (status === 'ON_HOLD') return '보류'
+  if (status === 'CONFIRMING') return '접수'
+  return status
 }
 
 export function PartnerOrderDetailReadOnly({
@@ -32,6 +45,7 @@ export function PartnerOrderDetailReadOnly({
   onLineLookup,
   onClearSelection,
   canViewProductLookups = false,
+  renderLineSource,
 }: PartnerOrderDetailReadOnlyProps) {
   const interactive = selectedLineIds !== undefined && onToggleLine && onToggleAllLines
   const selectedCount = selectedLineIds?.size ?? 0
@@ -40,8 +54,10 @@ export function PartnerOrderDetailReadOnly({
       <Card padding={4} shadow="sm">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-            <h4 style={{ margin: 0 }}>거래처 · {order.partnerName ?? order.partnerCode}</h4>
-            <OrderStatusBadge status={order.status} />
+            <h4 style={{ margin: 0 }}>거래처 · {firstNonBlank(order.partnerName, order.partnerCode)}</h4>
+            <Badge variant={order.status === 'CONVERTED' || order.status === 'CONFIRMED' ? 'success' : 'warning'}>
+              {statusLabel(order.status)}
+            </Badge>
             {statusBadge}
           </div>
           <strong style={{ fontVariantNumeric: 'tabular-nums' }}>합계 {krw(order.totalAmount)}원</strong>
@@ -78,7 +94,7 @@ export function PartnerOrderDetailReadOnly({
           ) : null}
         </div>
         <div style={{ overflowX: 'auto' }}>
-          <table className={styles['estTable']}>
+          <table className={`${styles['estTable']} ${styles['orderLineTable']}`}>
             <thead>
               <tr>
                 <th style={{ width: 28, textAlign: 'center' }}>
@@ -107,6 +123,7 @@ export function PartnerOrderDetailReadOnly({
               {order.lines.map((line, index) => {
                 const converted = line.convertedQuantity ?? 0
                 const remaining = line.quantity - converted
+                const lineSource = renderLineSource?.(line)
                 return (
                   <tr key={`${line.lineId}-${index}`}>
                     <td style={{ textAlign: 'center', paddingLeft: 4 }}>
@@ -119,7 +136,14 @@ export function PartnerOrderDetailReadOnly({
                     />
                     </td>
                     <td className={styles['tdLeft']}>{line.productName}</td>
-                    <td>{line.modelCode}</td>
+                    <td>
+                      <div>{line.modelCode}</div>
+                      {lineSource !== undefined ? (
+                        <div data-testid={`partner-order-line-source-${line.lineId}`} style={{ fontSize: 11, color: 'var(--color-neutral-500, #6b7280)', marginTop: 2 }}>
+                          {typeof lineSource === 'string' ? displayOrderNumber(lineSource) : lineSource}
+                        </div>
+                      ) : null}
+                    </td>
                     <td className={styles['numericCol']}>{line.quantity}</td>
                     <td className={styles['numericCol']}>{krw(line.deliveryPrice)}</td>
                     <td className={styles['numericCol']}>{krw(line.subtotal)}</td>

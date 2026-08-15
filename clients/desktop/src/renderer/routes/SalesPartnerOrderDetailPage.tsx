@@ -16,13 +16,13 @@ import {
   Input,
   Modal,
   OrderNumberDisplay,
-  OrderStatusBadge,
   Select,
   Spinner,
   WarehouseAutocomplete,
 } from '@samhan/design-system'
 import type { Warehouse } from '@samhan/design-system'
 import { listWarehouses, type StockBalanceLookupLine } from '../api/inventory'
+import { searchPartners } from '../api/partnerApi'
 import {
   SLIP_PUBLISH_STATUS_DISPLAY,
   convertPartnerOrderToSlip,
@@ -98,6 +98,16 @@ const bundleModeLabel = (mode: 'EXPAND' | 'KEEP' | null) => {
   if (mode === 'KEEP') return '묶음 유지'
   return null
 }
+
+const partnerOrderStatusLabel = (status: string) => {
+  if (status === 'DRAFT' || status === 'CONFIRMING') return '접수'
+  if (status === 'CONFIRMED' || status === 'CONVERTED') return '완료'
+  if (status === 'ON_HOLD') return '보류'
+  return status
+}
+
+const firstNonBlank = (...values: Array<string | null | undefined>) =>
+  values.find((value) => typeof value === 'string' && value.trim().length > 0) ?? '-'
 /**
  * 출고전표 전환 가능 status 화이트리스트 — BE requireConvertible(DRAFT/ON_HOLD 한정) 과 정합.
  * CONFIRMED 포함 나머지 상태는 전환 불가(BE 409 또는 business rule 위반).
@@ -254,6 +264,20 @@ export function SalesPartnerOrderDetailPage() {
     enabled: isValidId,
     retry: 1,
   })
+  const partnerNameQuery = useQuery({
+    queryKey: ['partner-name', query.data?.partnerCode ?? null],
+    queryFn: async () => {
+      const options = await searchPartners(query.data!.partnerCode, { activeOnly: true })
+      return options.find((option) => option.partnerCode === query.data!.partnerCode) ?? null
+    },
+    enabled: Boolean(query.data?.partnerCode && !query.data.partnerName),
+    staleTime: 5 * 60 * 1000,
+  })
+  const displayPartnerName = firstNonBlank(
+    query.data?.partnerName,
+    partnerNameQuery.data?.name,
+    query.data?.partnerCode,
+  )
   const { refetch } = query
   // coedit provider effect 는 query.data 객체 참조 변화가 아니라 모달/권한 상태 전이만 따라가야 한다.
   const orderDataRef = useRef<PartnerOrderDetail | null>(null)
@@ -882,10 +906,12 @@ export function SalesPartnerOrderDetailPage() {
                 {/* 배지 2개를 그룹핑 래퍼로 묶어야 space-between 3-child 배치로 상태 배지가
                     중앙에 부유하지 않는다(#854 R5 LOW-5). */}
                 <span className="mobile-summary-badge-group">
-                  <OrderStatusBadge
+                  <Badge
+                    variant={query.data.status === 'CONVERTED' || query.data.status === 'CONFIRMED' ? 'success' : 'warning'}
                     className="mobile-status-badge"
-                    status={query.data.status}
-                  />
+                  >
+                    {partnerOrderStatusLabel(query.data.status)}
+                  </Badge>
                   {slipPublishStatusMeta ? (
                     <Badge
                       variant={slipPublishStatusMeta.variant}
@@ -909,7 +935,7 @@ export function SalesPartnerOrderDetailPage() {
                 </div>
               ) : null}
               <div className="mobile-summary-partner">
-                {query.data.partnerName ?? query.data.partnerCode}
+                {displayPartnerName}
               </div>
               <div className="mobile-summary-divider" />
               <div className="mobile-summary-total-row">
@@ -1127,9 +1153,11 @@ export function SalesPartnerOrderDetailPage() {
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   <h4 style={{ margin: 0 }}>
-                    거래처 · {query.data!.partnerName ?? query.data!.partnerCode}
+                    거래처 · {displayPartnerName}
                   </h4>
-                    <OrderStatusBadge status={query.data!.status} />
+                    <Badge variant={query.data!.status === 'CONVERTED' || query.data!.status === 'CONFIRMED' ? 'success' : 'warning'}>
+                      {partnerOrderStatusLabel(query.data!.status)}
+                    </Badge>
                   {slipPublishStatusMeta ? (
                     <Badge
                       variant={slipPublishStatusMeta!.variant}
@@ -1222,7 +1250,7 @@ export function SalesPartnerOrderDetailPage() {
                 </div>
               </div>
               <div className="detail-mobile-hide" style={{ overflowX: 'auto' }}>
-                <table className={styles['estTable']}>
+                <table className={`${styles['estTable']} ${styles['orderLineTable']}`}>
                   <thead>
                     {/* v2 §정정 4/5 — '품명'→'품목명', '모델 코드'→'모델명' */}
                     <tr>

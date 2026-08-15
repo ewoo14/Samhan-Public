@@ -173,6 +173,54 @@ it('상세 조회 실패 시 실패 사실을 표시하고 승인을 막는다',
   expect(screen.getByTestId('merge-convert-submit').hasAttribute('disabled')).toBe(true)
 })
 
+it('승인 전 병합 미리보기는 합쳐진 모든 라인과 출처 주문번호를 보여주고 접수 라벨을 쓴다', async () => {
+  mocks.searchPartners.mockResolvedValue([PARTNER_A])
+  mocks.listPartnerOrders.mockResolvedValue({ content: [ORDER_A, ORDER_C], totalElements: 2 })
+  mocks.listWarehouses.mockResolvedValue([])
+  mocks.getPartnerOrder.mockImplementation(async (orderNumber: string) => ({
+    orderNumber,
+    partnerName: PARTNER_A.name,
+    partnerCode: PARTNER_A.partnerCode,
+    status: 'DRAFT',
+    deliveryAddress: null,
+    contactPhone: null,
+    dueDate: null,
+    memo: null,
+    totalAmount: 1000,
+    lines: [
+      { lineId: `${orderNumber}-1`, productId: 'p-1', productName: '품목 1', modelCode: `MODEL-${orderNumber}-1`, quantity: 1, deliveryPrice: 100 },
+      { lineId: `${orderNumber}-2`, productId: 'p-2', productName: '품목 2', modelCode: `MODEL-${orderNumber}-2`, quantity: 2, deliveryPrice: 200 },
+    ],
+  } as never))
+
+  renderDialog(undefined, [ORDER_A, ORDER_C])
+
+  expect(await screen.findByText('MODEL-2026-07-23-A-1')).toBeTruthy()
+  expect(screen.getByText('MODEL-2026-07-23-A-2')).toBeTruthy()
+  expect(screen.getByText('MODEL-2026-07-23-C-1')).toBeTruthy()
+  expect(screen.getByText('MODEL-2026-07-23-C-2')).toBeTruthy()
+  expect(screen.getAllByText('접수').length).toBeGreaterThan(0)
+  expect(screen.getByText('출처')).toBeTruthy()
+  expect(screen.getAllByText('2026/07/23-A')).toHaveLength(2)
+})
+
+it('선택 주문 거래처와 선택 건수 사이에 시각적 간격을 둔다', async () => {
+  mocks.searchPartners.mockResolvedValue([PARTNER_A])
+  mocks.listPartnerOrders.mockResolvedValue({ content: [ORDER_A, ORDER_C], totalElements: 2 })
+  mocks.listWarehouses.mockResolvedValue([])
+  mocks.getPartnerOrder.mockResolvedValue({
+    orderNumber: ORDER_A.orderNumber,
+    partnerName: PARTNER_A.name,
+    lines: [],
+  } as never)
+
+  renderDialog(undefined, [ORDER_A, ORDER_C])
+
+  const count = await screen.findByTestId('merge-convert-mock-selected-order-count')
+  expect(count.previousElementSibling?.textContent).toContain(PARTNER_A.name)
+  expect(count.getAttribute('style')).toContain('margin')
+})
+
 describe('MergeConvertDialog 거래처 우선 주문 칩', () => {
   it('거래처 A를 먼저 양성 확인하면 A 주문만 후보에 보이고 B 주문은 0건이며 거래처 변경 시 칩 선택이 초기화된다', async () => {
     mocks.searchPartners.mockResolvedValue([PARTNER_A, PARTNER_B])
