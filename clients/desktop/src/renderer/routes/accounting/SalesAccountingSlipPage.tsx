@@ -27,7 +27,7 @@ const SLIP_STATUS_LABEL: Record<SalesAccountingSlipStatus, string> = {
 }
 
 export function SalesAccountingSlipPage() {
-  usePageTitle('매출전표')
+  usePageTitle('출고전표')
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { canAccess } = usePermissions()
@@ -59,7 +59,6 @@ export function SalesAccountingSlipPage() {
   const columns: DataTableColumn<SalesAccountingSlipResponse>[] = useMemo(
     () => [
       { key: 'slipNo', header: '전표번호', width: '160px', mobilePriority: 'primary' },
-      { key: 'slipDate', header: '일자', width: '110px', mobilePriority: 'hidden' },
       { key: 'partnerName', header: '거래처', mobilePriority: 'secondary' },
       {
         key: 'status',
@@ -113,7 +112,7 @@ export function SalesAccountingSlipPage() {
     <div data-testid="sales-accounting-slip-page">
       <Card style={{ marginBottom: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
-          <h3 style={{ margin: 0 }}>매출전표</h3>
+          <h3 style={{ margin: 0 }}>출고전표</h3>
           {canCreate ? (
             <Button variant="primary" onClick={() => navigate('/accounting/sales-slips/new')}>
               작성
@@ -140,16 +139,16 @@ export function SalesAccountingSlipPage() {
       <Card>
         {query.isLoading ? (
           <div style={{ display: 'grid', placeItems: 'center', minHeight: 160 }}>
-            <Spinner size="lg" label="매출전표 로딩 중" />
+            <Spinner size="lg" label="출고전표 로딩 중" />
           </div>
         ) : query.isError ? (
-          <div className="error-banner" role="alert">매출전표 목록을 불러오지 못했습니다.</div>
+          <div className="error-banner" role="alert">출고전표 목록을 불러오지 못했습니다.</div>
         ) : (
           <DataTable
             columns={columns}
             rows={query.data ?? []}
             rowKey={(row) => row.slipNo}
-            emptyMessage="매출전표가 없습니다."
+            emptyMessage="출고전표가 없습니다."
           />
         )}
       </Card>

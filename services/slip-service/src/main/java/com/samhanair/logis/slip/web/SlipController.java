@@ -18,6 +18,7 @@ import com.samhanair.logis.slip.service.SlipCleanupService;
 import com.samhanair.logis.slip.service.SlipDuplicateService;
 import com.samhanair.logis.slip.service.SlipExcelExportService;
 import com.samhanair.logis.slip.service.SlipService;
+import com.samhanair.logis.slip.service.RevertabilityQueryService;
 import com.samhanair.logis.slip.web.dto.AddLineRequest;
 import com.samhanair.logis.slip.web.dto.CreateSlipRequest;
 import com.samhanair.logis.slip.web.dto.EditHeaderRequest;
@@ -28,7 +29,9 @@ import com.samhanair.logis.slip.web.dto.RejectRequest;
 import com.samhanair.logis.slip.web.dto.SlipCleanupResponse;
 import com.samhanair.logis.slip.web.dto.SlipDetailResponse;
 import com.samhanair.logis.slip.web.dto.SlipResponse;
+import com.samhanair.logis.slip.web.dto.SlipRevertabilityResponse;
 import com.samhanair.logis.slip.web.dto.SlipSearchResult;
+import com.samhanair.logis.slip.web.dto.SlipScanContextResponse;
 import com.samhanair.logis.slip.web.dto.UpdateSlipDriverRequest;
 import com.samhanair.logis.slip.web.dto.UpdateSlipRequest;
 import io.swagger.v3.oas.annotations.Operation;
@@ -77,8 +80,8 @@ import org.springframework.web.bind.annotation.RestController;
  * <p>SP-D6-6 권한 가드:
  * <ul>
  *   <li>사용자-facing write/print/cleanup endpoint 는 {@code @RequirePermission} 으로 보호</li>
- *   <li>매입 슬립 목록 (purchases.slip.list) — GET /slips?slipType=INBOUND 진입 시 checkViewPermission</li>
- *   <li>매출 슬립 목록 (sales.slip.list) — GET /slips?slipType=OUTBOUND 진입 시 checkViewPermission</li>
+ *   <li>입고전표 목록 (purchases.slip.list) — GET /slips?slipType=INBOUND 진입 시 checkViewPermission</li>
+ *   <li>출고전표 목록 (sales.slip.list) — GET /slips?slipType=OUTBOUND 진입 시 checkViewPermission</li>
  *   <li>기존 slipType 기반 동적 가드는 목록/호환 경로의 보조 가드로 유지</li>
  * </ul>
  */
@@ -88,19 +91,19 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class SlipController {
 
-    /** SP-D3 — 매입 슬립 목록 페이지 코드. */
+    /** SP-D3 — 입고전표 목록 페이지 코드. */
     private static final String PURCHASES_SLIP_LIST_PAGE_CODE = "purchases.slip.list";
-    /** 매입 전표 변경 권한 페이지 코드. */
+    /** 입고 전표 변경 권한 페이지 코드. */
     private static final String PURCHASES_SLIP_EDIT_PAGE_CODE = "purchases.slip.edit";
-    /** SP-D3 — 매출 슬립 목록 페이지 코드. */
+    /** SP-D3 — 출고전표 목록 페이지 코드. */
     private static final String SALES_SLIP_LIST_PAGE_CODE = "sales.slip.list";
-    /** 매출 전표 생성 권한 페이지 코드. */
+    /** 출고 전표 생성 권한 페이지 코드. */
     private static final String SALES_SLIP_CREATE_PAGE_CODE = "sales.slip.create";
-    /** 매출 전표 변경 권한 페이지 코드. */
+    /** 출고 전표 변경 권한 페이지 코드. */
     private static final String SALES_SLIP_EDIT_PAGE_CODE = "sales.slip.edit";
-    /** 매출 전표 확정 권한 페이지 코드. */
+    /** 출고 전표 확정 권한 페이지 코드. */
     private static final String SALES_SLIP_CONFIRM_PAGE_CODE = "sales.slip.confirm";
-    /** 매출 전표 취소 권한 페이지 코드. */
+    /** 출고 전표 취소 권한 페이지 코드. */
     private static final String SALES_SLIP_CANCEL_PAGE_CODE = "sales.slip.cancel";
     /** 견적 작성/수정 권한 페이지 코드. */
     private static final String ESTIMATES_LIST_PAGE_CODE = "estimates.list";
@@ -117,6 +120,7 @@ public class SlipController {
     private static final String CALLER_NAME_HEADER = "X-User-Name";
 
     private final SlipService slipService;
+    private final RevertabilityQueryService revertabilityQueryService;
     /** R6-H2 — 전표 서버측 복사 (세트 계보 승계 + 구성품 가격기억 제외). */
     private final SlipDuplicateService slipDuplicateService;
     private final NextDaySlipImageService nextDaySlipImageService;
@@ -184,7 +188,7 @@ public class SlipController {
         }
         Pageable pageable = PageRequest.of(page, size,
                 Sort.by(Sort.Order.desc("slipDate"), Sort.Order.desc("seqNo")));
-        // E2 삭제행(취소선) 노출은 OUTBOUND(판매전표) 목록 화면 전용 — INBOUND·기타 소비처는 활성전용.
+        // E2 삭제행(취소선) 노출은 OUTBOUND(출고전표) 목록 화면 전용 — INBOUND·기타 소비처는 활성전용.
         boolean effectiveIncludeDeleted = SlipType.OUTBOUND.equals(effectiveSlipType) && includeDeleted;
         return ApiResponse.ok(slipService.list(effectiveSlipType, status, from, to,
                 partnerCode, driverPhone, regionGroup, deliveryTags, effectiveIncludeDeleted, pageable));
@@ -284,6 +288,46 @@ public class SlipController {
         SlipSalesAccessGuard.guardOutboundSalesRead(response.slipType(), response.status(), role, userGroups,
                 isSystemMaster, approvalLineAllowed);
         return ApiResponse.ok(response);
+    }
+
+    /**
+     * 창고 QR 출고 전용 최소 문맥 조회 — 전체 매출 상세와 권한·응답 DTO를 분리한다.
+     */
+    @Operation(summary = "QR 출고 최소 문맥 조회", description = "거래처·금액·주소·UUID 없는 출고 스캔용 문맥")
+    @GetMapping("/{id}/scan-context")
+    public ApiResponse<SlipScanContextResponse> getOutboundScanContext(
+            @PathVariable String id,
+            @RequestHeader(value = "X-User-Role", required = false) String role,
+            @RequestHeader(value = "X-User-Groups", required = false) String userGroups,
+            @RequestHeader(value = "X-Is-System-Master", required = false) String isSystemMaster) {
+        SlipSalesAccessGuard.guardOutboundScanContext(SlipType.OUTBOUND, role, userGroups, isSystemMaster);
+        return ApiResponse.ok(slipService.getOutboundScanContext(OpaqueUuidDeserializer.decode(id)));
+    }
+
+    /** 전표번호로 진입하는 창고 QR 출고 최소 문맥 조회 — 목록 조회를 거치지 않는다. */
+    @Operation(summary = "전표번호 QR 출고 최소 문맥 조회", description = "출고전표번호 exact lookup")
+    @GetMapping("/scan-context/by-number")
+    public ApiResponse<SlipScanContextResponse> getOutboundScanContextByNumber(
+            @RequestParam String slipNo,
+            @RequestHeader(value = "X-User-Role", required = false) String role,
+            @RequestHeader(value = "X-User-Groups", required = false) String userGroups,
+            @RequestHeader(value = "X-Is-System-Master", required = false) String isSystemMaster) {
+        SlipSalesAccessGuard.guardOutboundScanContext(SlipType.OUTBOUND, role, userGroups, isSystemMaster);
+        return ApiResponse.ok(slipService.getOutboundScanContext(slipNo));
+    }
+
+    /** 검수완료 전표의 되돌림 가능성만 조회한다. 실제 되돌림 endpoint는 이 슬라이스에 없다. */
+    @Operation(summary = "전표 되돌림 가능성 조회", description = "읽기 전용 preflight. 상태·재고·연결을 변경하지 않음.")
+    @GetMapping("/{id}/revertability")
+    public ApiResponse<SlipRevertabilityResponse> revertability(@PathVariable UUID id) {
+        return ApiResponse.ok(SlipRevertabilityResponse.from(revertabilityQueryService.evaluate(id)));
+    }
+
+    /** 활성 COMPLETED 전표 전체를 사용자 식별자와 사유만으로 판정한다. */
+    @GetMapping("/revertability")
+    public ApiResponse<List<SlipRevertabilityResponse>> completedRevertability() {
+        return ApiResponse.ok(revertabilityQueryService.evaluateCompleted().stream()
+                .map(SlipRevertabilityResponse::from).toList());
     }
 
     /**
@@ -696,7 +740,7 @@ public class SlipController {
      * 최대 10,000 행.
      *
      * <p>#907 재수렴 R — search* 파라미터(판매/구매관리 검색모달)와 deliveryTag/includeDeleted
-     * (판매전표목록 배송태그·삭제행 포함)를 신규 추가. 화면이 조회에 쓰는 조건이 파일에도 그대로
+     * (출고전표목록 배송태그·삭제행 포함)를 신규 추가. 화면이 조회에 쓰는 조건이 파일에도 그대로
      * 반영되어야 한다(P-1) — 이전에는 이 파라미터들을 export 가 받지 않아 화면에서 검색/필터를
      * 좁혀도 파일은 slipType/기간만으로 전체가 나왔다.
      *
@@ -705,8 +749,8 @@ public class SlipController {
      * @param from                  전표일자 시작 (null 이면 하한 없음)
      * @param to                    전표일자 종료 (null 이면 상한 없음)
      * @param partnerCode           거래처코드 필터 (null 이면 전체)
-     * @param deliveryTags          배송 태그 필터 (판매전표목록 화면 셀렉트, 반복 param 허용)
-     * @param includeDeleted        soft-delete 포함 여부 (판매전표목록 OUTBOUND 화면 파리티)
+     * @param deliveryTags          배송 태그 필터 (출고전표목록 화면 셀렉트, 반복 param 허용)
+     * @param includeDeleted        soft-delete 포함 여부 (출고전표목록 OUTBOUND 화면 파리티)
      * @param searchPartnerName     거래처명 부분 검색 (판매/구매관리 검색모달)
      * @param searchPartnerCode     거래처코드 부분 검색
      * @param searchBusinessNumber  사업자등록번호 부분 검색

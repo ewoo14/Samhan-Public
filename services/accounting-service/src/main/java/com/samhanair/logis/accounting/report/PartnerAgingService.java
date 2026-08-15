@@ -27,8 +27,8 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p>계정 코드 및 잔액 계산 규칙:
  * <ul>
- *   <li>RECEIVABLE (미수) — 110 외상매출금: debit - credit (양수 = 미수 잔존)</li>
- *   <li>PAYABLE (미지급) — 201 외상매입금: credit - debit (양수 = 미지급 잔존)</li>
+ *   <li>RECEIVABLE (미수) — 1089 외상매출금: debit - credit (양수 = 미수 잔존)</li>
+ *   <li>PAYABLE (미지급) — 2519 외상매입금: credit - debit (양수 = 미지급 잔존)</li>
  * </ul>
  *
  * <p>partnerId null 분개는 "기타" 그룹으로 통합. 잔액이 0 이하인 거래처는 제외.
@@ -47,9 +47,9 @@ public class PartnerAgingService {
     public static final String TYPE_PAYABLE = "PAYABLE";
 
     /** 외상매출금 계정 코드 (미수). */
-    private static final String ACCOUNT_RECEIVABLE = "110";
+    private static final String ACCOUNT_RECEIVABLE = "1089";
     /** 외상매입금 계정 코드 (미지급). */
-    private static final String ACCOUNT_PAYABLE = "201";
+    private static final String ACCOUNT_PAYABLE = "2519";
 
     private static final String ACCOUNT_RECEIVABLE_NAME = "외상매출금";
     private static final String ACCOUNT_PAYABLE_NAME = "외상매입금";

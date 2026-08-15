@@ -8,7 +8,7 @@
  *   <li>{@code GET    /accounting/tax-invoices/{id}}           — 단건 + lines</li>
  *   <li>{@code POST   /accounting/tax-invoices}                — DRAFT 생성</li>
  *   <li>{@code PUT    /accounting/tax-invoices/{id}}           — DRAFT 수정 (헤더 + 라인 일괄)</li>
- *   <li>{@code POST   /accounting/tax-invoices/{id}/issue}     — DRAFT → ISSUED + 자동 분개 (110/255/400)</li>
+ *   <li>{@code POST   /accounting/tax-invoices/{id}/issue}     — DRAFT → ISSUED + 자동 분개 (1089/2559/4019)</li>
  *   <li>{@code POST   /accounting/tax-invoices/{id}/cancel}    — ISSUED → CANCELLED + 자동 역분개</li>
  *   <li>{@code POST   /accounting/tax-invoices/{id}/emit-nts}  — ISSUED → 국세청 전자세금계산서 발행 (SP-09-1)</li>
  * </ul>
@@ -98,6 +98,8 @@ export interface TaxInvoiceSummary {
   /** 자동 분개 UUID — 분개장 link 용. */
   journalId: string | null
   reverseJournalId: string | null
+  legacyReadOnly?: boolean
+  eligibilityReasons?: string[]
 }
 
 /**
@@ -120,6 +122,8 @@ export interface TaxInvoiceDetail extends TaxInvoiceSummary {
   cancelReason: string | null
   eTaxExternalId: string | null
   description: string | null
+  legacyReadOnly?: boolean
+  eligibilityReasons?: string[]
   lines: TaxInvoiceLine[]
 }
 

@@ -38,7 +38,7 @@ import {
   type EstimateLineRequest,
   type UpdateEstimateRequest,
 } from '../api/estimateApi'
-import { searchPartners, type PartnerSummary } from '../api/sales'
+import { getPartnerDcConfig, searchPartners, type PartnerSummary } from '../api/sales'
 import {
   lookupProductByModelName,
   getPriceMemory,
@@ -50,7 +50,8 @@ import { useIsMobile } from '../hooks/useIsMobile'
 import { usePageTitle } from '../hooks/usePageTitle'
 import { usePermissions } from '../hooks/usePermissions'
 import { isAutoPriceSource, shouldAutoFillPrice } from '../utils/priceSourceRules'
-import { resolveEstimateCatalogPrice } from '../utils/estimatePrice'
+import { resolveEstimateCatalogPrice, resolveEstimateNewLinePrice, shouldApplyPartnerDcToEstimate } from '../utils/estimatePrice'
+import type { SlipDiscountConfig } from '../utils/slipDiscount'
 import {
   changeLineQuantity,
   editLineVat,
@@ -134,6 +135,12 @@ interface DraftLine {
   lookupLoading: boolean
   /** 품목 유형 — "SINGLE" | "BUNDLE". BUNDLE 일 때만 세트 옵션 노출. */
   productType: string | null
+  modelCode?: string | null
+  discountOption?: ProductOption['discountOption']
+  classificationAssigned?: boolean
+  categoryKey?: string | null
+  hasVariableDiscount?: boolean | null
+  fixedDiscountRate?: number | null
   goodsType: 'GOODS' | 'NON_GOODS' | null
   status?: string | null
   /** 세트 전개 옵션 — BUNDLE 라인에 한해 채움 (BE BundleSetOptions). */
@@ -168,6 +175,12 @@ const emptyLine = (): DraftLine => ({
   lookupError: null,
   lookupLoading: false,
   productType: null,
+  modelCode: null,
+  discountOption: null,
+  classificationAssigned: undefined,
+  categoryKey: null,
+  hasVariableDiscount: null,
+  fixedDiscountRate: null,
   goodsType: null,
   status: null,
   setOptions: emptyBundleSetOptions(),
@@ -197,6 +210,14 @@ const datePlusDays = (iso: string, days: number): string => {
 
 const fmt = (n: number): string => Math.trunc(n).toLocaleString('ko-KR')
 const ESTIMATE_HEADER_TEXT_FIELDS = new Set<string>(['memo'])
+/**
+ * 견적 라인 헤더/행 공용 grid.
+ *
+ * 출고전표 LineRowVat 의 열 정책을 그대로 사용하되, 견적에 없는 체크박스와
+ * 드래그 열만 제외한다. 모델명·품목명은 같은 minmax(100px, 1.5fr) 비율로
+ * 남는 폭을 대등하게 나눈다.
+ */
+const ESTIMATE_LINE_GRID_TEMPLATE = 'var(--col-line-no) minmax(100px, 1.5fr) minmax(100px, 1.5fr) 86px var(--col-qty) var(--col-price) 108px 92px var(--col-sum) var(--col-delete)'
 /** 서버 견적 version과 협업 Y.Doc의 seed 세대를 연결하는 내부 헤더 키. 화면 미노출. */
 const ESTIMATE_SERVER_VERSION_HEADER = 'estimateServerVersion'
 
@@ -308,6 +329,8 @@ function toDraftLinesFromEstimate(estimate: EstimateDetail): DraftLine[] {
           lookupLoading: false,
           // 편집 모드: 이미 전개·저장된 구성품 라인이므로 재전개하지 않음.
           productType: null,
+          discountOption: undefined,
+          classificationAssigned: undefined,
           goodsType: null,
           setOptions: line.setOptions ?? emptyBundleSetOptions(),
         }
@@ -377,7 +400,12 @@ function coeditLinesToDraftLines(
 ): DraftLine[] {
   return provider.items.toArray().map((_, index) => {
     const previous = current[index]
+    const quantity = provider.getItemValue(index, 'quantity') || '0'
     const unitPrice = provider.getItemValue(index, 'unitPrice') || '0'
+    const recalculated = previous
+      && (unitPrice !== previous.unitPrice || quantity !== previous.quantity)
+      ? recalculateLineVat(asVatLine({ ...previous, quantity, unitPrice }), 'PRICE')
+      : undefined
     const expectedAutoWrite = previous ? localAutoPriceWrites?.get(previous.uid) : undefined
     const isExpectedAutoWrite = expectedAutoWrite?.unitPrice === unitPrice
     if (previous && expectedAutoWrite) localAutoPriceWrites?.delete(previous.uid)
@@ -415,15 +443,15 @@ function coeditLinesToDraftLines(
         ? previous?.specification ?? specification
         : specification,
       specificationSource,
-      quantity: provider.getItemValue(index, 'quantity') || '0',
+      quantity,
       unitPrice,
       goodsType: previous?.goodsType ?? null,
-      supplyAmount: previous?.supplyAmount ?? '0',
-      vatAmount: previous?.vatAmount ?? '0',
-      lineTotal: previous?.lineTotal ?? '0',
-      authority: previous?.authority ?? 'PRICE',
-      vatDirty: previous?.vatDirty ?? false,
-      vatWarning: previous?.vatWarning ?? false,
+      supplyAmount: recalculated?.supplyAmount ?? previous?.supplyAmount ?? '0',
+      vatAmount: recalculated?.vatAmount ?? previous?.vatAmount ?? '0',
+      lineTotal: recalculated?.lineTotal ?? previous?.lineTotal ?? '0',
+      authority: recalculated?.authority ?? previous?.authority ?? 'PRICE',
+      vatDirty: recalculated?.vatDirty ?? previous?.vatDirty ?? false,
+      vatWarning: recalculated?.vatWarning ?? previous?.vatWarning ?? false,
       priceSource: isExpectedAutoWrite
         ? expectedAutoWrite.priceSource
         : isRemoteUnitPriceChange
@@ -459,6 +487,8 @@ function coeditLinesToDraftLines(
         : previous?.lookupError ?? null,
       lookupLoading: previous?.lookupLoading ?? false,
       productType: previous?.productType ?? null,
+      discountOption: previous?.discountOption ?? null,
+      classificationAssigned: previous?.classificationAssigned,
       setOptions: previous?.setOptions ?? emptyBundleSetOptions(),
     }
   })
@@ -786,6 +816,9 @@ export function EstimateFormPage() {
   /** D-R8-1: 가드 위반 시 해당 필드로 포커스 이동 — 배너만 띄우면 SR/키보드 사용자가 원인을 못 찾는다. */
   const partnerInputRef = useRef<HTMLInputElement>(null)
   const selectedPartnerIdRef = useRef<string>('')
+  const partnerDcConfigRef = useRef<SlipDiscountConfig | null>(null)
+  const partnerDcConfigPartnerCodeRef = useRef('')
+  const partnerDcConfigPromiseRef = useRef<Promise<SlipDiscountConfig | null> | null>(null)
   const priceRefreshRequestRef = useRef(0)
   const modelLookupRequestRef = useRef(new Map<string, number>())
   const selectedProductRef = useRef(new Map<string, ProductOption>())
@@ -793,6 +826,31 @@ export function EstimateFormPage() {
   const localSpecificationWritesRef = useRef(new Map<string, LocalSpecificationWrite>())
   const linesRef = useRef(lines)
   linesRef.current = lines
+  const ensurePartnerDcConfig = async (partnerCode: string): Promise<SlipDiscountConfig | null> => {
+    if (!shouldApplyPartnerDcToEstimate(!isEdit) || !partnerCode) return null
+    if (partnerDcConfigPartnerCodeRef.current === partnerCode && partnerDcConfigPromiseRef.current) {
+      return partnerDcConfigPromiseRef.current
+    }
+    partnerDcConfigPartnerCodeRef.current = partnerCode
+    const promise = getPartnerDcConfig(partnerCode).then((config) => {
+      const normalized = config
+        ? {
+            homeMultiDc: config.homeMultiDc,
+            commercialMultiDc: config.commercialMultiDc,
+            threeSixty: config.threeSixty,
+            fourWay: config.fourWay,
+            oneWay: config.oneWay,
+            stand: config.stand,
+            deluxe: config.deluxe,
+            firstGrade: config.firstGrade,
+          }
+        : null
+      partnerDcConfigRef.current = normalized
+      return normalized
+    })
+    partnerDcConfigPromiseRef.current = promise
+    return promise
+  }
   const markExplicitLineDeletion = (line: DraftLine) => {
     if (!isEdit || !line.lineId || !hydratedEstimateLineIdsRef.current.has(line.lineId)) return
     explicitlyClearedEstimateLineIdsRef.current.add(line.lineId)
@@ -1120,8 +1178,18 @@ export function EstimateFormPage() {
     setPartnerBusinessNo(nextBizNo)
     setPartnerAddress(nextAddress)
     propagatePartnerToCoedit(nextPartnerId, p.companyName, nextBizNo, nextAddress)
+    partnerDcConfigRef.current = null
+    partnerDcConfigPromiseRef.current = null
+    partnerDcConfigPartnerCodeRef.current = p.partnerCode ?? ''
     if (nextPartnerId) {
+      const configPromise = ensurePartnerDcConfig(p.partnerCode ?? '')
       void refreshAutoPricesForPartner(nextPartnerId)
+      void configPromise.then(() => {
+        if (partnerDcConfigRef.current && selectedPartnerIdRef.current === nextPartnerId) {
+          return refreshAutoPricesForPartner(nextPartnerId)
+        }
+        return undefined
+      })
     }
   }
 
@@ -1137,7 +1205,7 @@ export function EstimateFormPage() {
   }
 
   /**
-   * 견적 라인 품목 검색 — 판매전표와 같은 ProductAutocomplete 공용 검색 경로를 사용한다.
+   * 견적 라인 품목 검색 — 출고전표와 같은 ProductAutocomplete 공용 검색 경로를 사용한다.
    * 기존 정확 모델 lookup은 레거시 서버/테스트 계약의 안전망으로만 남겨, 부분검색 API가
    * 후보를 반환하면 절대 실행하지 않는다.
    */
@@ -1157,6 +1225,8 @@ export function EstimateFormPage() {
         productType: legacy.productType,
         fixedDiscountRate: legacy.fixedDiscountRate,
         fixedDiscountSource: legacy.fixedDiscountSource,
+        discountOption: legacy.discountOption ?? null,
+        classificationAssigned: legacy.discountOption != null,
         status: legacy.status,
       }]
     } catch {
@@ -1342,8 +1412,28 @@ export function EstimateFormPage() {
         productId: line.productId!,
         currentUnitPrice: line.unitPrice,
         catalogFallback: line.catalogUnitPrice ?? catalogByProductId.get(line.productId!) ?? null,
+        ...(partnerDcConfigRef.current
+          ? {
+              discountInput: {
+                classificationOptions: line.discountOption ? [line.discountOption] : [],
+                classificationAssigned: line.classificationAssigned,
+                modelCode: line.modelCode,
+                fixedDiscountRate: line.fixedDiscountRate,
+                category: line.categoryKey === 'homemulti'
+                  ? 'HOMEMULTI'
+                  : line.categoryKey === 'commercialMulti'
+                    ? 'COMMERCIAL_MULTI'
+                    : 'OTHER',
+                hasVariableDiscount: line.hasVariableDiscount,
+              },
+            }
+          : {}),
       }))
-      const { outcomes, isCurrent } = await partnerReprice.run(effectivePartnerId, repriceCandidates)
+      const { outcomes, isCurrent } = await partnerReprice.run(
+        effectivePartnerId,
+        repriceCandidates,
+        partnerDcConfigRef.current,
+      )
       const requestIsCurrent = () => partnerRepriceSessionIsCurrent(
         requestId,
         priceRefreshRequestRef.current,
@@ -1364,7 +1454,7 @@ export function EstimateFormPage() {
         }
         const nextUnitPrice = outcome.source === 'UNAVAILABLE' ? '' : outcome.unitPrice
         const nextLine: DraftLine = {
-          ...current,
+          ...recalculateLineVat(asVatLine({ ...current, unitPrice: nextUnitPrice }), 'PRICE'),
           unitPrice: nextUnitPrice,
           priceSource: outcome.source === 'UNAVAILABLE' ? null : outcome.source,
           priceMemoryUpdatedAt: outcome.updatedAt,
@@ -1501,6 +1591,13 @@ export function EstimateFormPage() {
         fixedDiscountSource: 'fixedDiscountSource' in rawResult
           ? rawResult.fixedDiscountSource ?? null
           : null,
+        modelCode: 'modelCode' in rawResult ? rawResult.modelCode ?? null : null,
+        discountOption: 'discountOption' in rawResult ? rawResult.discountOption ?? null : null,
+        classificationAssigned: 'discountOption' in rawResult && rawResult.discountOption != null,
+        categoryKey: 'categoryKey' in rawResult ? rawResult.categoryKey ?? null : null,
+        hasVariableDiscount: 'hasVariableDiscount' in rawResult
+          ? rawResult.hasVariableDiscount ?? null
+          : null,
         productType: rawResult.productType,
         goodsType: rawResult.goodsType,
         status: rawResult.status ?? null,
@@ -1513,10 +1610,20 @@ export function EstimateFormPage() {
       // R4-F1: 전표(applyProductSelection)와 동일 semantics(공유 헬퍼) — 빈 단가뿐 아니라 이전
       // 품목의 자동채움(CATALOG/REMEMBERED) 단가도 새 품목 기준으로 재채움 + 가격기억 재조회.
       const shouldAutoFill = shouldAutoFillPrice(line.priceSource, line.unitPrice)
-      const catalogPrice = resolveEstimateCatalogPrice(
-        Number(result.sellingPrice),
-        result.fixedDiscountRate,
-      )
+      // 거래처 선택 시 설정 조회가 진행 중이어도 품목 lookup의 stale 순서를 막는다.
+      // 설정 도착 후 handleSelectPartner의 refresh가 신규 라인을 다시 계산한다.
+      const partnerDcConfig = partnerDcConfigRef.current
+      const catalogPrice = shouldApplyPartnerDcToEstimate(!isEdit)
+        ? resolveEstimateNewLinePrice({
+            sellingPrice: Number(result.sellingPrice),
+            modelCode: result.modelCode,
+            classificationOptions: result.discountOption ? [result.discountOption] : [],
+            classificationAssigned: result.classificationAssigned,
+            fixedDiscountRate: result.fixedDiscountRate,
+            categoryKey: result.categoryKey,
+            hasVariableDiscount: result.hasVariableDiscount,
+          }, partnerDcConfig)
+        : resolveEstimateCatalogPrice(Number(result.sellingPrice), result.fixedDiscountRate)
       let nextUnitPrice = String(catalogPrice.unitPrice)
       let nextPriceSource: DraftLine['priceSource'] = 'CATALOG'
       let nextPriceMemoryUpdatedAt: string | null = null
@@ -1592,14 +1699,25 @@ export function EstimateFormPage() {
             : current.specificationSource
       const nextLine: DraftLine = {
         ...current,
+        ...(applyPrice
+          ? recalculateLineVat(asVatLine({ ...current, unitPrice: nextUnitPrice }), 'PRICE')
+          : {}),
         modelName: result.modelName || current.modelName,
         productId: result.productId,
         productName: result.productName,
         specification: nextSpecification,
         specificationSource: nextSpecificationSource,
         productType: result.productType ?? 'SINGLE',
+        modelCode: result.modelCode,
+        discountOption: result.discountOption,
+        classificationAssigned: result.classificationAssigned,
+        categoryKey: result.categoryKey,
+        hasVariableDiscount: result.hasVariableDiscount,
+        fixedDiscountRate: result.fixedDiscountRate,
         goodsType: result.goodsType ?? current.goodsType,
-        catalogUnitPrice: String(catalogPrice.unitPrice),
+        catalogUnitPrice: partnerDcConfig
+          ? String(result.sellingPrice)
+          : String(catalogPrice.unitPrice),
         unitPrice: applyPrice ? nextUnitPrice : current.unitPrice,
         priceSource: applyPrice ? nextPriceSource : current.priceSource,
         priceMemoryUpdatedAt: applyPrice ? nextPriceMemoryUpdatedAt : current.priceMemoryUpdatedAt,
@@ -1678,6 +1796,8 @@ export function EstimateFormPage() {
         modelName: '',
         productName: '',
         productType: null,
+        discountOption: null,
+        classificationAssigned: undefined,
         goodsType: null,
         status: null,
         catalogUnitPrice: null,
@@ -2125,34 +2245,6 @@ export function EstimateFormPage() {
           {priceBannerAnnouncement || null}
         </div>
 
-        {!isMobile ? (
-          /* 라인 헤더 */
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns:
-                '32px 160px 1fr 100px 80px 130px 108px 92px 130px 36px',
-              gap: 8,
-              padding: '8px 0',
-              borderBottom: '2px solid var(--line-default)',
-              fontSize: 12,
-              color: '#6B7280',
-              fontWeight: 600,
-            }}
-          >
-            <div style={{ textAlign: 'center' }}>#</div>
-            <div>모델명</div>
-            <div>품목명</div>
-            <div>규격</div>
-            <div style={{ textAlign: 'right' }}>수량</div>
-            <div style={{ textAlign: 'right' }}>단가(VAT포함)</div>
-            <div style={{ textAlign: 'right' }}>공급가액</div>
-            <div style={{ textAlign: 'right' }}>부가세</div>
-            <div style={{ textAlign: 'right' }}>합계(VAT포함)</div>
-            <div />
-          </div>
-        ) : null}
-
         {isMobile && !isReadOnly && canViewProductLookups ? (
           <div style={{ marginBottom: 12, display: 'flex', justifyContent: 'flex-end' }}>
             <Button
@@ -2167,7 +2259,54 @@ export function EstimateFormPage() {
           </div>
         ) : null}
 
-        <div className={isMobile ? 'mobile-line-card-list' : undefined}>
+        <div data-testid={!isMobile ? 'estimate-form-line-scroll' : undefined}>
+        {!isMobile ? (
+          /* 라인 헤더 — 행과 같은 grid 상수를 공유한다. */
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: ESTIMATE_LINE_GRID_TEMPLATE,
+              padding: '8px 0',
+              borderBottom: '2px solid var(--line-default)',
+              fontSize: 12,
+              color: '#6B7280',
+              fontWeight: 600,
+              whiteSpace: 'nowrap',
+            }}
+            data-testid="estimate-form-line-header"
+          >
+            <div style={{ textAlign: 'center' }}>#</div>
+            <div>모델명</div>
+            <div>품목명</div>
+            <div>규격</div>
+            <div style={{ textAlign: 'right' }}>수량</div>
+            <div style={{ textAlign: 'right' }}>단가(VAT포함)</div>
+            <div style={{ textAlign: 'right' }}>공급가액</div>
+            <div style={{ textAlign: 'right' }}>부가세</div>
+            <div style={{ display: 'none' }}>합계(VAT포함)</div>
+            <div />
+          </div>
+        ) : null}
+
+        {!isMobile ? (
+          <div data-testid="estimate-price-source-summary" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, margin: '8px 0', fontSize: 12, color: 'var(--ink-secondary, #5C6773)' }}>
+            {lines.map((line, i) => {
+              const status = priceSourceStatus(line, hasPartner)
+              if (!status && !line.priceRefreshChanged) return null
+              return (
+                <span key={line.uid}>
+                  라인 {i + 1}:{' '}
+                  {status ? <span id={`estimate-price-status-${line.uid}`} title={status.description}>{status.label}</span> : null}
+                  {line.priceRefreshChanged ? <span id={`estimate-price-changed-${line.uid}`}>{status ? ' · ' : ''}가격 변경됨</span> : null}
+                </span>
+              )
+            })}
+          </div>
+        ) : null}
+
+        <div
+          className={isMobile ? 'mobile-line-card-list' : undefined}
+        >
         {lines.map((line, i) => {
           const calculated = recalculateLineVat(asVatLine(line), line.authority ?? 'PRICE')
           const lineIncl = Number(calculated.lineTotal)
@@ -2200,7 +2339,7 @@ export function EstimateFormPage() {
             )
           }
           return (
-           <div key={line.uid}>
+           <div key={line.uid} className="estimate-line-input-grid" data-testid={`estimate-line-input-grid-${i}`} style={{ display: 'grid', gridTemplateColumns: ESTIMATE_LINE_GRID_TEMPLATE }}>
             {/*
               R6-L2: role="row" 는 부모 table/rowgroup 없는 orphan(axe aria-required-parent
               serious)이라 제거.
@@ -2215,12 +2354,13 @@ export function EstimateFormPage() {
               이 div 의 속성은 시각/DOM 연관 표기로만 남긴다.
             */}
             <div
+              className="estimate-line-input-grid"
               aria-describedby={line.priceRefreshChanged ? priceChangedStatusId : undefined}
               style={{
                 display: 'grid',
-                gridTemplateColumns:
-                  '32px 160px 1fr 100px 80px 130px 108px 92px 130px 36px',
-                gap: 8,
+                gridTemplateColumns: ESTIMATE_LINE_GRID_TEMPLATE,
+                columnGap: 8,
+                gridAutoRows: 'minmax(40px, auto)',
                 padding: '6px 0',
                 alignItems: 'center',
                 // R6-H4: 강조행 구분선 #F3F4F6 on --surface-selected(#EFF6FF)=1.01:1 —
@@ -2249,58 +2389,61 @@ export function EstimateFormPage() {
               >
                 {i + 1}
               </div>
-              <ProductAutocomplete
-                value={line.productId && line.modelName ? {
-                  id: line.productId,
-                  modelName: line.modelName,
-                  productName: line.productName,
-                  productType: line.productType ?? undefined,
-                  status: line.status,
-                  sellingPrice: line.catalogUnitPrice == null ? undefined : Number(line.catalogUnitPrice),
-                  specification: line.specification,
-                } : null}
-                onChange={(product) => handleProductSelection(i, product)}
-                onInputCommitChange={(committed) => {
-                  if (committed) return
-                  if (!isCoeditLineValueEditable(line)) return
-                  handleProductSelection(i, null)
-                }}
-                onInputBlur={(draft) => {
-                  if (!isCoeditLineValueEditable(line) || !draft.trim()) return
-                  updateLine(i, { modelName: draft.trim(), productId: null, productName: '' }, true)
-                  window.setTimeout(() => void handleModelLookup(i), 0)
-                }}
-                searchProducts={searchEstimateProducts}
-                label=""
-                ariaLabel={`라인 ${i + 1} 모델명`}
-                placeholder="모델명 또는 품목명"
-                resultSelectionMode="single"
-                autoSelectSingleResult
-                debounceMs={250}
-                disabled={Boolean(isReadOnly) || estimateFormCoeditPending || !isCoeditLineValueEditable(line)}
-                error={line.lookupError ?? undefined}
-              />
-              <CollaborativeSlipInput
-                provider={estimateFormCoeditProvider}
-                coeditPending={estimateFormCoeditPending}
-                fieldPath={`items.${i}.modelName`}
-                value={line.modelName}
-                onValueChange={(value) => updateLine(i, {
-                  modelName: value,
-                  productId: null,
-                  productName: '',
-                }, true)}
-                onDocSyncValueChange={(value) => updateLine(i, {
-                  modelName: value,
-                  productId: null,
-                  productName: '',
-                })}
-                onBlur={() => handleModelLookup(i)}
-                readOnly={Boolean(isReadOnly) || estimateFormCoeditPending || coeditActive}
-                aria-label={`라인 ${i + 1} 모델명 동기화`}
-                inputStyle={{ display: 'none' }}
-                data-testid={`estimate-coedit-items-${i}-modelName`}
-              />
+              <div>
+                <ProductAutocomplete
+                  value={line.productId && line.modelName ? {
+                    id: line.productId,
+                    modelName: line.modelName,
+                    productName: line.productName,
+                    productType: line.productType ?? undefined,
+                    status: line.status,
+                    sellingPrice: line.catalogUnitPrice == null ? undefined : Number(line.catalogUnitPrice),
+                    specification: line.specification,
+                  } : null}
+                  onChange={(product) => handleProductSelection(i, product)}
+                  onInputCommitChange={(committed) => {
+                    if (committed) return
+                    if (!isCoeditLineValueEditable(line)) return
+                    handleProductSelection(i, null)
+                  }}
+                  onInputBlur={(draft) => {
+                    if (!isCoeditLineValueEditable(line) || !draft.trim()) return
+                    updateLine(i, { modelName: draft.trim(), productId: null, productName: '' }, true)
+                    window.setTimeout(() => void handleModelLookup(i), 0)
+                  }}
+                  searchProducts={searchEstimateProducts}
+                  label=""
+                  ariaLabel={`라인 ${i + 1} 모델명`}
+                  placeholder="모델명 또는 품목명"
+                  resultSelectionMode="single"
+                  autoSelectSingleResult
+                  debounceMs={250}
+                  disabled={Boolean(isReadOnly) || estimateFormCoeditPending || !isCoeditLineValueEditable(line)}
+                  error={line.lookupError ?? undefined}
+                />
+                {/* 화면 입력은 ProductAutocomplete가 담당하고, 이 필드는 협업 문서 동기화만 담당한다. */}
+                <CollaborativeSlipInput
+                  provider={estimateFormCoeditProvider}
+                  coeditPending={estimateFormCoeditPending}
+                  fieldPath={`items.${i}.modelName`}
+                  value={line.modelName}
+                  onValueChange={(value) => updateLine(i, {
+                    modelName: value,
+                    productId: null,
+                    productName: '',
+                  }, true)}
+                  onDocSyncValueChange={(value) => updateLine(i, {
+                    modelName: value,
+                    productId: null,
+                    productName: '',
+                  })}
+                  onBlur={() => handleModelLookup(i)}
+                  readOnly={Boolean(isReadOnly) || estimateFormCoeditPending || coeditActive}
+                  aria-label={`라인 ${i + 1} 모델명 동기화`}
+                  inputStyle={{ display: 'none' }}
+                  data-testid={`estimate-coedit-items-${i}-modelName`}
+                />
+              </div>
               <CollaborativeSlipInput
                 provider={estimateFormCoeditProvider}
                 coeditPending={estimateFormCoeditPending}
@@ -2323,21 +2466,23 @@ export function EstimateFormPage() {
                 readOnly={Boolean(isReadOnly)}
                 aria-label={`라인 ${i + 1} 규격`}
               />
-              <CollaborativeSlipInput
-                provider={estimateFormCoeditProvider}
-                coeditPending={estimateFormCoeditPending}
-                fieldPath={`items.${i}.quantity`}
-                type="text"
-                value={line.quantity}
+              <div>
+                <CollaborativeSlipInput
+                  provider={estimateFormCoeditProvider}
+                  coeditPending={estimateFormCoeditPending}
+                  fieldPath={`items.${i}.quantity`}
+                  type="text"
+                  value={line.quantity}
                   onValueChange={(value) => updateQuantity(i, value)}
                   onDocSyncValueChange={(value) => updateQuantity(i, value)}
-                readOnly={Boolean(isReadOnly) || !isQuantityEditable(line.productId, line.status)}
-                inputMode="numeric"
-                inputStyle={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
-                aria-label={`라인 ${i + 1} 수량${line.status === 'OUT_OF_STOCK' ? ' 품절' : !isQuantityEditable(line.productId, line.status) ? ' 상태 확인 중' : ''}`}
-                data-testid={`estimate-form-line-${i}-qty`}
-              />
-              {!isQuantityEditable(line.productId, line.status) ? <span role="status">{line.status === 'OUT_OF_STOCK' ? '품절' : '상태 확인 중'}</span> : null}
+                  readOnly={Boolean(isReadOnly) || !isQuantityEditable(line.productId, line.status)}
+                  inputMode="numeric"
+                  inputStyle={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+                  aria-label={`라인 ${i + 1} 수량${line.status === 'OUT_OF_STOCK' ? ' 품절' : !isQuantityEditable(line.productId, line.status) ? ' 상태 확인 중' : ''}`}
+                  data-testid={`estimate-form-line-${i}-qty`}
+                />
+                {!isQuantityEditable(line.productId, line.status) ? <span role="status">{line.status === 'OUT_OF_STOCK' ? '품절' : '상태 확인 중'}</span> : null}
+              </div>
               <div>
                 <CollaborativeSlipInput
                   provider={estimateFormCoeditProvider}
@@ -2365,19 +2510,23 @@ export function EstimateFormPage() {
                   ].filter(Boolean).join(' ') || undefined}
                   data-testid={`estimate-form-line-${i}-unit-price`}
                 />
-                {/* R4-D2: 라인별 aria-live 제거 — 전역 고지는 배너(role="status") 1곳이 담당. */}
                 {priceStatus ? (
                   <span
                     id={priceStatusId}
                     role="note"
                     aria-label={priceStatus.description}
                     title={priceStatus.description}
-                    className="price-source-note"
+                    className="s4-line-metadata-visually-hidden"
                   >
                     {priceStatus.label}
                   </span>
                 ) : null}
-                {line.priceRefreshChanged ? <PriceChangeIndicator id={priceChangedStatusId} /> : null}
+                {line.priceRefreshChanged ? (
+                  <span className="s4-line-metadata-visually-hidden">
+                    <PriceChangeIndicator id={priceChangedStatusId} />
+                  </span>
+                ) : null}
+                {/* R4-D2: 라인별 aria-live 제거 — 전역 고지는 배너(role="status") 1곳이 담당. */}
               </div>
               <CollaborativeSlipInput
                 provider={estimateFormCoeditProvider}
@@ -2408,33 +2557,19 @@ export function EstimateFormPage() {
                 />
                 {line.vatWarning ? <span role="note" style={{ color: '#9A6700', fontSize: 10 }}>⚠ 10%와 다름</span> : null}
               </div>
-              <div
-                style={{
-                  textAlign: 'right',
-                  fontSize: 13,
-                  color: 'var(--ink-primary)',
-                  fontVariantNumeric: 'tabular-nums',
-                  background: '#F9FAFB',
-                  padding: '6px 8px',
-                  borderRadius: 4,
-                }}
-              >
+              <div style={{ display: 'none' }}>
                 <CollaborativeSlipInput
                   provider={estimateFormCoeditProvider}
                   coeditPending={estimateFormCoeditPending}
                   fieldPath={`items.${i}.lineTotal`}
                   type="text"
-                  value={line.lineTotal}
-                  onValueChange={(value) => updateVat(i, 'TOTAL', value)}
-                  onDocSyncValueChange={(value) => updateLine(i, { lineTotal: value })}
-                  readOnly={Boolean(isReadOnly) || isBundle || coeditActive}
-                  inputMode="numeric"
-                  inputStyle={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+                  value={String(lineIncl)}
+                  onValueChange={() => undefined}
+                  readOnly
                   aria-label={`라인 ${i + 1} 합계(VAT포함)`}
+                  data-testid={`estimate-form-line-${i}-line-total`}
                 />
-                <div style={{ fontSize: 10, color: 'var(--ink-secondary, #5C6773)', fontWeight: 400 }}>
-                  공급 {fmt(lineSupply)} · VAT {fmt(lineVat)}
-                </div>
+                <span>{`${lineSupply} / ${lineVat}`}</span>
               </div>
               <button
                 type="button"
@@ -2457,6 +2592,7 @@ export function EstimateFormPage() {
            </div>
           )
         })}
+        </div>
         </div>
 
         {!isReadOnly ? (

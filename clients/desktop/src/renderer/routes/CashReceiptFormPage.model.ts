@@ -2,8 +2,8 @@ import type { CashReceiptLine, CashReceiptRequest, CashReceiptRow } from '../api
 import { localTodayIso } from './localDate'
 import { asBusinessNumber, asPartnerCode, type PartnerSelectionOption } from '../types/partnerIdentity'
 
-export const CASH_RECEIPT_DEFAULT_DEBIT_ACCOUNT_CODE = '102'
-export const CASH_RECEIPT_DEFAULT_CREDIT_ACCOUNT_CODE = '110'
+export const CASH_RECEIPT_DEFAULT_DEBIT_ACCOUNT_CODE = '1039'
+export const CASH_RECEIPT_DEFAULT_CREDIT_ACCOUNT_CODE = '1089'
 
 export interface CashReceiptFormState {
   partnerCode: string
@@ -53,7 +53,7 @@ export function cashReceiptLineHasValue(line: CashReceiptLineState): boolean {
     || (line.amount ?? '').trim() || (line.memo ?? '').trim())
 }
 
-/** 판매전표와 같은 규칙: 마지막 행에 실제 값이 생길 때 빈행 하나를 자동 추가한다. */
+/** 출고전표와 같은 규칙: 마지막 행에 실제 값이 생길 때 빈행 하나를 자동 추가한다. */
 export function updateCashReceiptLine(
   lines: CashReceiptLineState[],
   index: number,

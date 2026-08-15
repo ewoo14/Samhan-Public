@@ -22,10 +22,12 @@
 - [🚨🚨 mock hard gate 가 실 A…](feedback_mock_gate_leaks_to_real_api.md)
 - [🚨🚨 "Browser 런타임 []" 은 틀…](feedback_live_qa_use_playwright_not_browser_runtime.md)
 - [🚨 QA "전부 PASS" 는 결함 0 이…](feedback_qa_pass_is_not_defect_zero.md)
+- [🚨🚨 만든 것과 사용자가 닿는 것은 다르다 — 단위테스트 GREEN 이어도](feedback_built_it_but_user_cannot_reach_it.md)
 - [🚨🚨 기존 테스트를 새 동작에 맞추면 회귀…](feedback_test_adapted_to_new_behavior_hides_regression.md)
 - [🚨🚨 fix 브리핑에 "잃으면 안 되는 것…](feedback_fix_briefing_must_state_what_not_to_lose.md)
 - [🚨 fix 는 양방향 RED 로 — 한쪽만…](feedback_bidirectional_red_for_fix.md)
 - [🚨 QA 브리핑 맨 앞에 환경 확인 절 —…](feedback_qa_environment_verification_first.md)
+- [🚨 "로그인 화면에서 막혔다"=결함 아니라 renderer 미기동](feedback_live_qa_needs_renderer_running_first.md)
 - [🚨🚨 라운드 기본값은 SOL 이다 — OP…](feedback_sol_stage_starvation.md)
 - [🚨 하네스 설계 정본 — 결함 0 이 궁극…](feedback_harness_defect_zero_design.md)
 - [🚨 Codex 5-agent=mcp 직접(…](feedback_codex_rescue_unreliable_use_mcp.md)
@@ -40,6 +42,7 @@
 - [🚨 불변식처럼 보이는 수단 지시 — PM…](feedback_pm_means_instruction_creates_defect.md)
 - [🚨 PM 슬라이스 effort 조절·엣지…](feedback_pm_regulate_slice_effort.md)
 - [🚨 PM 직접실행 최소화·Codex 토큰…](feedback_pm_delegate_to_codex_conserve_tokens.md)
+- [🚨 설계가 뒤집히면 도는 codex 스레드부터…](feedback_stop_superseded_codex_threads.md)
 - [🚨 병렬 라운드 중 `git add -A`…](feedback_git_add_all_swallows_concurrent_round.md)
 - [🚨 머지·종료된 워크트리는 바로 정리 (2…](feedback_cleanup_merged_worktrees_immediately.md)
 - [🚨 산출물 옮길 때 `git diff --…](feedback_pm_copy_untracked_files.md)
@@ -47,6 +50,7 @@
 - [🚨🚨 조인 키로 쓰는 코드 컬럼이 비어 있…](feedback_join_key_column_empty_uuid_populated.md)
 - [🚨🚨 fix 는 결함이 아니라 정상 경로를…](feedback_fix_blocks_normal_path.md)
 - [🚨 머지 충돌 해소는 fix 다 — git…](feedback_merge_conflict_resolution_is_a_fix.md)
+- [🚨 병렬 트랙은 워크트리에 main 을 자주 머지하라](feedback_merge_main_into_worktree_regularly.md)
 - [🚨 새 데이터로 도는 QA 는 기존 행 호…](feedback_fresh_data_qa_misses_legacy_rows.md)
 - [🚨 머지 전 재수렴 의무·CI green≠…](feedback_reconvergence_before_merge.md)
 - [기획 spec 기존 결정 교차검증](feedback_spec_cross_check_prior_decisions.md)
@@ -66,6 +70,7 @@
 - [🚨🚨 "어느 쪽이 맞나" 를 올리기 전에…](feedback_conflict_is_mostly_one_sided_blank.md)
 - [무결성도메인 정책 선확인](feedback_integrity_domain_policy_preconfirm.md)
 - [개발책임자 결정은 PR에 누적 기록](feedback_post_devlead_decisions_to_pr.md)
+- [🚨 라운드는 커밋이 아니라 게시로 끝난다…](feedback_round_ends_only_when_posted.md)
 - [🚨🚨 리뷰 1:1 게시 엄수 — 커밋과 게…](feedback_review_post_one_to_one_enforcement.md)
 - [PM-Codex 진행 검증·10분 보고](feedback_pm_codex_progress_verification.md)
 - [🚨🚨 이슈 생성 금지 (2026-08-07…](feedback_issue_registration_delegated_to_pm.md)
@@ -92,6 +97,7 @@
 
 # 커밋/PR/문서 규약
 - [한국어 의무 — 커밋/PR/Issue/보고](feedback_korean_commits.md)
+- [🚨 QA 하네스 커밋 전 저장소 가드를 먼저…](feedback_qa_harness_must_pass_repo_guards.md)
 - [🚨🚨 내가 커밋한 QA 하네스가 CI 를…](feedback_qa_harness_commit_breaks_ci.md)
 - [🚨 QA 스샷=SendUserFile+PR…](feedback_pr_screenshot_sha_pinned_urls.md)
 - [스크린샷 항상 사용자 인라인 첨부](feedback_qa_screenshots_inline_to_user.md)
@@ -113,6 +119,7 @@
 - [Monitor 자동 사용](feedback_monitor_no_permission.md)
 
 - [🚨 CI 실패 스텝이 `Set up job…](feedback_ci_setup_job_failure_is_github_outage.md)
+- [🚨 CI cancelled 는 매달린 실패일 수 있다 — 재실행 전 로그](feedback_cancelled_ci_job_can_be_a_disguised_failure.md)
 
 - [🚨 "배포본 나이를 재라" 는 백엔드 전용…](feedback_client_bundle_is_also_a_deployment.md)
 
@@ -121,6 +128,7 @@
 - [🚨 낡은 배포본은 "없는 기능"처럼 보인다…](feedback_stale_deployment_looks_like_defect.md)
 - [🚨 머지 안 된 마이그레이션이 다른 트랙…](feedback_unmerged_migration_blocks_other_tracks.md)
 - [🚨🚨 백엔드 트랙은 직렬화 — 병렬 트랙이…](feedback_parallel_backend_tracks_share_docker_stack.md)
+- [🚨 compose 단위 기동이 eureka·gateway 를 끌고 재생성한다](feedback_compose_up_recreates_parent_containers.md)
 - [🚨 `git worktree add` 는…](feedback_git_worktree_cwd_use_dash_c.md)
 - [🚨 새 테스트마다 "이 단정이 Linux…](feedback_new_test_needs_linux_skip_guard.md)
 - [🚨 새 워크트리에는 gitignore 된…](feedback_worktree_missing_gitignored_inputs.md)
@@ -271,3 +279,8 @@
 - [🚨 "우회 경로를 찾아라" 는 codex…](feedback_audit_framing_triggers_cyber_flag.md)
 - [🚨🚨 구글 의존성 제거 — 시트는 "1회성…](project_remove_google_sheets_dependency.md)
 
+- [🚨 창고 별칭 정본 — 삼성=초월=삼한 · 이화=상일물류=상일창고 (2026-08-13 개발책임자)](project_warehouse_name_aliases.md) — 삼성전자 배송상황조회 엑셀의 `고객명` 은 사람이 아니라 우리 창고명이라 이름 문자열로 조인하면 갈라지거나 통째로 누락된다. 🚨회사PC 실측: 그룹A 가 DB 에 세 행(`00003`·`11152`·`11155`), "이화창고" 는 DB 에 없음 — 정본 확인 대기
+- [🚨 계열 sweep 은 **이름이 아니라 역할**로 훑는다 (2026-08-13 하루 4회)](feedback_sweep_by_assertion_not_filename.md) — `UUID.fromString` 으로 훑어 `jsonPath` 단정 2곳을 놓치고, 파일 목록 9개를 줬더니 6계열이 남고, 이관 대상 테이블만 봤더니 `column_default` 가 새 행에 죽은 코드를 넣고 있었다. ✅축을 **문장**으로 적을 것("X 를 요청에 싣거나 응답에서 읽어 비교하는 곳 전부") + "좌표 밖에 더 있으면 그것도 닫고 목록으로 보고" · 🔑DB 를 고쳤으면 애플리케이션 상수도 세라
+- [🚨 codex 가동 수는 **태스크 상태**로 센다 — 세션 파일 나이가 아니라 (2026-08-13 개발책임자 정정)](feedback_count_tasks_not_session_files.md) — PM 이 `~/.codex/sessions` 최근 수정 파일 수로 "활성 5개" 라 했으나 실제는 3개. 끝난 세션도 종료 시 마지막 기록을 남긴다. ✅가동 수=TaskList · 🔑파일 mtime 은 "돌고 있나"가 아니라 **"진전이 있나"**(굶은 세션 판별)에 쓴다 — 태스크 살아있음 + mtime 정지 + diff 0 이면 굶은 것
+- [🚨 값을 이관하면 **행은 옮겨지지만 그 값이 박혀 있는 다른 위치**가 남는다 (2026-08-13 #1072 하루 4회)](feedback_data_migration_leaves_hardcoded_values.md) — 컬럼 DEFAULT → 애플리케이션 상수 → 집계 MV → 테스트 fixture 순으로 CI 가 네 번 터졌고 이관 SQL 은 매번 정확했다. 🔑**기존 행 검증은 신규 행을 보증하지 않는다**(3자리 잔존 0·차대 합계 일치가 다 통과했는데 새 행이 죽은 코드로 생김). ✅information_schema·pg_catalog 로 DEFAULT·CHECK·trigger·view·function 전수 + 마이그레이션에 잔존 가드 + "신규 생성 경로가 새 값을 갖는가" 검증
+- [🚨 재고이동은 **금액 개념이 없다** — 수량만 변동·재고수불부에만 반영 (2026-08-13 개발책임자)](project_stock_transfer_no_amount.md) — *"어짜피 창고 간 재고이동이라서 재고만 서로 변동되고, 해당 내용이 재고수불부에만 반영이 되면 되거든."* 🔑전표와 다르다 — **이동은 회계 이벤트가 아니다**(회사 전체 재고 총액이 안 변하므로 금액을 붙이면 없는 손익이 생긴다). 현재 구현 일치 확인: `StockTransferLine` 은 `productId`·`requested/shipped/receivedQuantity`·`lotId` 뿐이고 `TransferFormPage.tsx:7` 이 *"이동전표는 단가/금액 개념이 없으므로"* 로 명시. ⚠️**재고실사에는 `차이금액` 열이 있다** — 실사는 장부↔실물 차이를 금액 평가하는 것이라 성격이 다르고, 메뉴가 인접해 스크린샷만으로 혼동하기 쉽다. 🚩미확인=**이동 확정이 재고수불부에 출고행+입고행을 함께 만드는가**(한쪽만이면 총 재고 불일치) · 확정 상태 표본 유무부터 셀 것

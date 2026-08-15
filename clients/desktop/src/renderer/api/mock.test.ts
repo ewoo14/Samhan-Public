@@ -101,7 +101,7 @@ describe('SOL-1178 mock fail-closed 사용자 경로 회귀', () => {
       .toBe('요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.')
   })
 
-  it('SOL-1178-02 RED: 판매전표 저장 응답은 저장 후 화면이 소비하는 SlipDetailResponse shape다', () => {
+  it('SOL-1178-02 RED: 출고전표 저장 응답은 저장 후 화면이 소비하는 SlipDetailResponse shape다', () => {
     const response = getMockResponse({
       method: 'PUT',
       url: '/slips/slip-005/sales',
@@ -1012,14 +1012,14 @@ describe('mock manual journal contract', () => {
         description: '수동 분개',
         lines: [
           {
-            accountCode: '101',
+            accountCode: '1019',
             debitAmount: '1000',
             creditAmount: '0',
             partnerId: partnerSearch.data[0]?.partnerId,
             memo: '입금 메모',
           },
           {
-            accountCode: '401',
+            accountCode: '4019',
             debitAmount: '0',
             creditAmount: '1000',
             partnerId: null,
@@ -1035,7 +1035,7 @@ describe('mock manual journal contract', () => {
     expect(created.data.totalDebit).toBe('1000')
     expect(created.data.totalCredit).toBe('1000')
     expect(created.data.lines[0]).toMatchObject({
-      accountCode: '101',
+      accountCode: '1019',
       debitAmount: '1000',
       creditAmount: '0',
       partnerName: '엘에이시스템에어',
@@ -1234,7 +1234,7 @@ describe('mock business document number contract', () => {
     expect(collectedNos.filter((value) => OLD_PREFIX_FMT.test(value))).toEqual([])
   })
 
-  it('매출·매입전표 allocation sourceSlipNo 는 source API slipNo 와 cross-file 일치한다', async () => {
+  it('매출·입고전표 allocation sourceSlipNo 는 source API slipNo 와 cross-file 일치한다', async () => {
     vi.stubEnv('VITE_MOCK_MODE', '1')
 
     const outboundSources = await listSlipAllocationSources({

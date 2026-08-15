@@ -62,7 +62,6 @@ import {
   Badge,
   Button,
   DataTable,
-  SlipNumberDisplay,
   SlipStatusBadge,
   type DataTableColumn,
   type DeliveryTagCode,
@@ -76,6 +75,7 @@ import { exportSlips } from '../api/excelExportApi'
 import { useExcelDownload, makeExportFilename } from '../hooks/useExcelDownload'
 import { ExcelDownloadError } from '../components/ExcelDownloadError'
 import { SlipListRealtimeClient } from '../realtime/SlipListRealtimeClient'
+import { DocumentNumberLink } from '../components/DocumentNumberLink'
 import { useCollectionRealtime } from '../realtime/useCollectionRealtime'
 import './SlipListPage.css'
 import {
@@ -89,23 +89,30 @@ export interface SlipListPageProps {
   mode: SlipType
 }
 
-/** 판매관리 legacy(OUTBOUND) 배송태그 옵션 — BE DeliveryTagCode 8종 */
+/** 판매관리 legacy(OUTBOUND) 배송태그 옵션 — BE DeliveryTagCode 11종 */
 const OUTBOUND_DELIVERY_TAG_OPTIONS: { value: DeliveryTagCode; label: string }[] = [
-  { value: 'DAY',                label: '당일' },
+  { value: 'SALE',               label: '판매' },
   { value: 'STACK',              label: '야적' },
   { value: 'REGION',             label: '지방' },
   { value: 'LOGEN',              label: '로젠택배' },
   { value: 'GYEONGDONG_PARCEL',  label: '경동택배' },
   { value: 'GYEONGDONG_FREIGHT', label: '경동화물' },
   { value: 'RENTAL',             label: '대여' },
-  { value: 'RETURN_RENTAL',      label: '반납' },
+  { value: 'BORROW_RETURN',      label: '차용반납' },
+  { value: 'DEFECT_RETURN',      label: '불량반납' },
+  { value: 'DIRECT_DELIVERY',    label: '직배' },
+  { value: 'PREEMPTIVE_ACTION',  label: '착하선조치' },
 ]
 
-/** 구매관리 legacy(INBOUND) 배송태그 옵션 — BE DeliveryTagCode 3종 */
+/** 구매관리 legacy(INBOUND) 배송태그 옵션 — BE DeliveryTagCode 7종 */
 const INBOUND_DELIVERY_TAG_OPTIONS: { value: DeliveryTagCode; label: string }[] = [
-  { value: 'RETURN_TRIP', label: '회차' },
-  { value: 'RETURN',      label: '반품' },
-  { value: 'BORROW',      label: '차용' },
+  { value: 'PURCHASE',        label: '구매' },
+  { value: 'BORROW',          label: '차용' },
+  { value: 'RENTAL_RETURN',   label: '대여반납' },
+  { value: 'RETURN',          label: '반품' },
+  { value: 'DELIVERY_RETURN', label: '착하반품' },
+  { value: 'RETURN_TRIP',     label: '회차' },
+  { value: 'REENTRY',         label: '재입고' },
 ]
 
 /**
@@ -113,17 +120,24 @@ const INBOUND_DELIVERY_TAG_OPTIONS: { value: DeliveryTagCode; label: string }[] 
  * BE 가 deliveryTagLabel 을 별도 응답할 경우 해당 값을 우선 사용.
  */
 const DELIVERY_TAG_LABEL_MAP: Record<DeliveryTagCode, string> = {
-  DAY:                '당일',
+  SALE:               '판매',
   STACK:              '야적',
   REGION:             '지방',
   LOGEN:              '로젠택배',
   GYEONGDONG_PARCEL:  '경동택배',
   GYEONGDONG_FREIGHT: '경동화물',
   RENTAL:             '대여',
-  RETURN_RENTAL:      '반납',
+  BORROW_RETURN:      '차용반납',
+  DEFECT_RETURN:      '불량반납',
+  DIRECT_DELIVERY:    '직배',
+  PREEMPTIVE_ACTION:  '착하선조치',
   RETURN_TRIP:        '회차',
   RETURN:             '반품',
   BORROW:             '차용',
+  PURCHASE:           '구매',
+  RENTAL_RETURN:      '대여반납',
+  DELIVERY_RETURN:    '착하반품',
+  REENTRY:             '재입고',
 }
 
 // SSE 목록 동기화용 coarse 무효화 키(안정 참조 — 렌더마다 재구독 방지).
@@ -150,8 +164,8 @@ export function SlipListPage({ mode }: SlipListPageProps) {
   const { canAccess } = usePermissions()
   const isOutbound = mode === 'OUTBOUND'
   const basePath = isOutbound ? '/sales' : '/purchases'
-  const titleLabel = isOutbound ? '판매전표 목록' : '입고전표 목록'
-  const newButtonLabel = isOutbound ? '새 판매전표' : '새 입고전표'
+  const titleLabel = isOutbound ? '출고전표 목록' : '입고전표 목록'
+  const newButtonLabel = isOutbound ? '새 출고전표' : '새 입고전표'
   const canExport = canAccess('slip.print.export', 'download')
   // [C5-2b] canCreateSlip(role) → canAccess('sales.slip.create', 'create')
   const canCreate = canAccess('sales.slip.create', 'create')
@@ -169,9 +183,9 @@ export function SlipListPage({ mode }: SlipListPageProps) {
   const { downloading, download, error: downloadError } = useExcelDownload()
 
   // Slice A: AppHeader 동적 화면명 (Designer wireframes.md § 1.3)
-  usePageTitle(isOutbound ? '판매전표 목록' : '입고전표 목록')
+  usePageTitle(isOutbound ? '출고전표 목록' : '입고전표 목록')
 
-  // E2: 판매전표 목록 삭제/복원/수정 이벤트 수신 시 coarse key 무효화.
+  // E2: 출고전표 목록 삭제/복원/수정 이벤트 수신 시 coarse key 무효화.
   useCollectionRealtime(SlipListRealtimeClient, 'list', SLIP_LIST_REALTIME_KEYS)
 
   useEffect(() => {
@@ -218,12 +232,16 @@ export function SlipListPage({ mode }: SlipListPageProps) {
         // 취소선은 SlipNumberDisplay(inline-flex atomic box) 자신에 직접 지정 — 조상 span 의
         // line-through 는 atomic 자손에 전파되지 않아 전표번호가 취소선 없이 렌더되던 회귀 해소.
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minWidth: 0, maxWidth: '100%' }}>
-          <SlipNumberDisplay
-            slipDate={row.slipDate}
-            seqNo={row.seqNo}
-            size="sm"
-            style={row.isDeleted ? SLIP_DELETED_ROW_TEXT_STYLE : undefined}
-          />
+          <span style={row.isDeleted ? SLIP_DELETED_ROW_TEXT_STYLE : undefined}>
+            <DocumentNumberLink
+              number={row.slipNo}
+              to={row.id ? `${basePath}/${row.id}` : ''}
+              detailWindow={row.id ? {
+                documentType: isOutbound ? 'OUTBOUND_SLIP' : 'INBOUND_SLIP',
+                documentId: row.id,
+              } : undefined}
+            />
+          </span>
           {row.isDeleted ? (
             <Badge
               variant="neutral"
@@ -386,7 +404,7 @@ export function SlipListPage({ mode }: SlipListPageProps) {
                       ...(deliveryTagFilter ? { deliveryTag: deliveryTagFilter } : {}),
               includeDeleted: isOutbound && includeDeleted,
                     }),
-                  makeExportFilename(isOutbound ? '판매전표목록' : '입고전표목록'),
+                  makeExportFilename(isOutbound ? '출고전표목록' : '입고전표목록'),
                 )
               }
               data-testid="slip-list-excel-export"

@@ -11,7 +11,7 @@
  * 8 SidebarCategory 그룹 (각 그룹은 권한 1개라도 보이면 헤더+자식 노출, 전무 시 완전 미렌더):
  * - 판매     — 판매관리/견적서/주문서/거래처/DC설정/발송금지/전표정리/내일자전표/품목 관리/시트 동기화
  * - 구매     — 구매관리/재고이동 관리/입고 검수/재고실사/DPS 비교
- * - 회계     — 매출·매입전표/계정과목/분개장/세금계산서/시산표/재무보고서/마감/원장/운영 회계 항목
+ * - 회계     — 매출·입고전표/계정과목/분개장/세금계산서/시산표/재무보고서/마감/원장/운영 회계 항목
  * - 그룹웨어 — 링크발송/알리고 주소록/단톡방 매핑
  * - 인사     — 인사 관리/권한설정/권한 일괄/그룹 권한/권한그룹 관리/권한 위임
  * - 배차     — 배차현황/가배차리스트/미배차리스트/배차안내 SMS/실배차 비교/배차지역 관리/배차 admin
@@ -43,6 +43,7 @@ import { usePermissions } from '../hooks/usePermissions'
 import { NotificationBellDropdown } from './NotificationBellDropdown'
 import { recordMenuAccess } from '../api/activityLog'
 import { resolveBuildAppVersion } from '../version/versionCheck'
+import { sanitizeDisplayName } from '../common/userDisplayName'
 
 const CURRENT_VERSION = resolveBuildAppVersion(
   import.meta.env.VITE_APP_VERSION ?? (import.meta.env.MODE === 'test' ? '0.1.0' : undefined),
@@ -589,6 +590,7 @@ export function AppLayout() {
   const showProductsList           = dynamicCanAccess('products.list',                'view')
   const _showProductsAdmin         = dynamicCanAccess('products.admin',               'view')
   const showProductsSync           = dynamicCanAccess('products.sync',                'view')
+  const showPriceSchedule          = dynamicCanAccess('products.price-schedule',       'view')
   const showArologisAdminPage      = dynamicCanAccess('arologis.admin',               'view')
   const showArologisRegionPage     = dynamicCanAccess('arologis.region',              'view')
   // [Round A P3] 구 showInventoryGroup 집계 변수 삭제 — 창고운영 그룹 게이트는
@@ -643,10 +645,7 @@ export function AppLayout() {
     const showBlockedPartners = showPartnersBlock
     const showPartnerManagement = showPartnersList
     const showPartnerDcConfig = dynamicCanAccess('sales.partner-dc-config', 'view')
-    // H1(#17 S4b R1): ACCOUNTANT 는 products.price-schedule VIEW 만으로도 사이드바
-    // 진입점을 봐야 한다(라우트 가드와 동일 OR 판정).
-    const showEstimateConfig =
-      dynamicCanAccess('sales.estimate-config', 'view') || dynamicCanAccess('products.price-schedule', 'view')
+    const showEstimateConfig = dynamicCanAccess('sales.estimate-config', 'view')
   // [samhan-dispatch-board Phase A + SP-D1 cycle 2] 배차 보드 route — 동적 RBAC 권한 연동.
   // 기존 정적 역할 체크 → dispatch.board 동적 canAccess 로 전환.
   const showDispatchBoard = dynamicCanAccess('dispatch.board', 'view')
@@ -654,7 +653,7 @@ export function AppLayout() {
     showSalesSlipList || showEstimatesList || showPartnerOrderList
     || showPartnerDcConfig || showEstimateConfig || showPartnerManagement || showSlipCleanup
     || showNextDaySlip || showBlockedPartners
-    || showProductsList || showSheetSync
+    || showProductsList || showPriceSchedule || showSheetSync
   const showPurchase =
     showPurchaseSlipList || showInventoryStockTransfer
     || showInboundInspection || showAudit || showDpsCompare || showDpsByProduct
@@ -717,6 +716,7 @@ export function AppLayout() {
               '/products/catalog',
               '/products/estimate-items',
               '/products/classifications',
+              '/products/price-schedule',
               '/admin/sheet-sync',
             ]}
             exactTargets={['/sales']}
@@ -814,13 +814,20 @@ export function AppLayout() {
             >
               견적품목 관리
             </SidebarLink>
-            <SidebarLink
-              to="/products/classifications"
-              show={showProductsList}
-              data-testid="sidebar-products-classifications"
-            >
-              분류 관리
-            </SidebarLink>
+              <SidebarLink
+                to="/products/classifications"
+                show={showProductsList}
+                data-testid="sidebar-products-classifications"
+              >
+                분류 관리
+              </SidebarLink>
+              <SidebarLink
+                to="/products/price-schedule"
+                show={showPriceSchedule}
+                data-testid="sidebar-products-price-schedule"
+              >
+                카테고리별 단가변동
+              </SidebarLink>
             <SidebarLink
               to="/admin/sheet-sync"
               show={showSheetSync && showProductsList}
@@ -949,14 +956,14 @@ export function AppLayout() {
                 show={showAccountingSalesSlip}
                 data-testid="sidebar-accounting-sales-slips"
               >
-                매출전표
+                출고전표
               </SidebarLink>
               <SidebarLink
                 to="/accounting/purchase-slips"
                 show={showAccountingPurchaseSlip}
                 data-testid="sidebar-accounting-purchase-slips"
               >
-                매입전표
+                입고전표
               </SidebarLink>
               <SidebarLink
                 to="/accounting/accounts"
@@ -1748,7 +1755,7 @@ export function AppLayout() {
                   fontSize: 13,
                 }}
               >
-                {auth?.fullName ?? '사용자'} · {auth?.role ?? '-'}
+                {sanitizeDisplayName(auth?.fullName)} · {auth?.role ?? '-'}
                 <span aria-hidden="true" style={{ marginLeft: 6, fontSize: 10 }}>
                   ▼
                 </span>

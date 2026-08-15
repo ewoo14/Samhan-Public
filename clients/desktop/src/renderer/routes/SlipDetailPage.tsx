@@ -61,6 +61,7 @@ import {
   createBundleInstanceKey,
   emptyBundleSetOptions,
   getSlip,
+  getSlipRevertability,
   removeLine,
   transitionSlip,
   updatePurchaseSlip,
@@ -68,6 +69,7 @@ import {
   updateSlipDriver,
   type ExpandedSlipLine,
   type SlipDetail,
+  type SlipRevertability,
   type SlipLineInput,
   type SlipSourceType,
   type SlipTransitionAction,
@@ -85,6 +87,7 @@ import { searchPartners, type PartnerSummary } from '../api/sales'
 import { getApiErrorInfo } from '../api/apiError'
 import { type StockBalanceLookupLine } from '../api/inventory'
 import { InventoryLookupModal } from './components/InventoryLookupModal'
+import { SlipQrScanPanel, SlipQrPrintPanel } from './components/SlipQrScanPanel'
 import { invalidateSignature } from '../api/signature'
 import {
   listAuditLogs,
@@ -274,6 +277,8 @@ export function slipLineAmounts(line: SlipLine) {
 export interface SlipDetailPageProps {
   /** OUTBOUND 또는 INBOUND — 라우트별 listPath 결정 + ship/deliver 노출 여부. */
   mode: SlipType
+  /** 전표번호 opaque 진입 경로가 내부 상세 UUID를 해석한 뒤 전달하는 값. URL에는 UUID를 쓰지 않는다. */
+  slipId?: string
 }
 
 const SLIP_STATUS_LABEL: Record<string, string> = {
@@ -1616,9 +1621,9 @@ export function canSoftDeleteSlip(
   return isDirectEditStatus(status) && canAccess(pageCode, 'delete')
 }
 
-export function SlipDetailPage({ mode }: SlipDetailPageProps) {
+export function SlipDetailPage({ mode, slipId }: SlipDetailPageProps) {
   const params = useParams<{ id: string }>()
-  const id = params.id ?? ''
+  const id = slipId ?? params.id ?? ''
   const slipCollabBasePath = useMemo(() => `/slips/${id}`, [id])
   const navigate = useNavigate()
   const { canAccess } = usePermissions()
@@ -1868,7 +1873,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
       salesSlipLedgerRequest?.from ?? '',
     ],
     queryFn: () => {
-      if (!salesSlipLedgerRequest) throw new Error('판매전표 거래처 코드 없음')
+      if (!salesSlipLedgerRequest) throw new Error('출고전표 거래처 코드 없음')
       return getSalesSlipLedgerData(
         salesSlipLedgerRequest.partnerCode,
         salesSlipLedgerRequest.from,
@@ -1877,6 +1882,12 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
       )
     },
     enabled: isOutbound && salesSlipLedgerRequest !== null,
+    retry: false,
+  })
+  const revertabilityQuery = useQuery<SlipRevertability>({
+    queryKey: ['slip-revertability', id, detailQuery.data?.updatedAt],
+    queryFn: () => getSlipRevertability(id),
+    enabled: !!id && detailQuery.data?.status === 'COMPLETED',
     retry: false,
   })
   const productPresenceQuery = useQuery({
@@ -2021,7 +2032,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
 
   // Slice A: AppHeader 동적 화면명 — slipNo bracket meta (Designer wireframes.md § 1.3)
   usePageTitle(
-    isOutbound ? '판매전표 상세' : '입고전표 상세',
+    isOutbound ? '출고전표 상세' : '입고전표 상세',
     detailQuery.data?.slipNo,
   )
 
@@ -2060,6 +2071,10 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
       transitionDiscardRef.current = false
       void queryClient.invalidateQueries({ queryKey: ['slip', id] })
       void queryClient.invalidateQueries({ queryKey: ['slips'] })
+      if (vars.action === 'ship' || vars.action === 'confirm') {
+        void queryClient.invalidateQueries({ queryKey: ['inventory-balances'] })
+        void queryClient.invalidateQueries({ queryKey: ['inventory-ledger'] })
+      }
       // S2d-1 NB6: 임계 전이(send/inspect)가 redline anchor 를 세팅하므로 redline 도 갱신한다.
       void queryClient.invalidateQueries({ queryKey: ['slipRedline', id] })
       setRejectReason('')
@@ -2084,7 +2099,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
   })
 
   /**
-   * SP-08-6-2: 매출 전표 direct PUT 수정 mutation.
+   * SP-08-6-2: 출고 전표 direct PUT 수정 mutation.
    * 성공 → modal 닫기 + cache invalidate (OUTBOUND query 포함).
    * 409  → 낙관적 잠금 충돌 배너 (salesIsConflict).
    * 422  → 라인 입력값 오류 배너.
@@ -2128,7 +2143,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
         return
       }
       setSalesIsConflict(false)
-      setSalesConflictMessage('매출 전표 수정에 실패했습니다. 입력값을 확인해 주세요.')
+      setSalesConflictMessage('출고 전표 수정에 실패했습니다. 입력값을 확인해 주세요.')
     },
   })
 
@@ -2167,12 +2182,12 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
         return
       }
       setPurchaseIsConflict(false)
-      setPurchaseConflictMessage('매입 전표 수정에 실패했습니다. 입력값을 확인해 주세요.')
+      setPurchaseConflictMessage('입고 전표 수정에 실패했습니다. 입력값을 확인해 주세요.')
     },
   })
 
   /**
-   * SP-08-5-3: 매입 전표 soft delete mutation.
+   * SP-08-5-3: 입고 전표 soft delete mutation.
    * 성공 → 매입 목록(/purchases)으로 redirect + list cache invalidate.
    * 409  → 낙관적 잠금 충돌 배너 (purchaseDeleteConflict).
    * 422  → 검수 완료 전표 삭제 불가 alert.
@@ -2198,21 +2213,21 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
           return
         }
         if (status === 422) {
-          setPurchaseDeleteInspectionAlert('검수 완료된 매입 전표는 삭제할 수 없습니다')
+          setPurchaseDeleteInspectionAlert('검수 완료된 입고 전표는 삭제할 수 없습니다')
           return
         }
         if (status === 403) {
-          alert('매입 전표 삭제 권한이 없습니다')
+          alert('입고 전표 삭제 권한이 없습니다')
           setPurchaseDeleteOpen(false)
           return
         }
       }
-      alert('매입 전표 삭제에 실패했습니다.')
+      alert('입고 전표 삭제에 실패했습니다.')
     },
   })
 
   /**
-   * SP-08-6-3: 매출 전표 soft delete mutation.
+   * SP-08-6-3: 출고 전표 soft delete mutation.
    * 성공 → 매출 목록(/sales)으로 redirect + list cache invalidate.
    * 409  → 낙관적 잠금 충돌 배너 (salesDeleteConflict).
    * 422  → 출고 완료 전표 삭제 불가 alert.
@@ -2241,15 +2256,15 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
           return
         }
         if (status === 422) {
-          setSalesDeleteShippedAlert('출고 완료된 매출 전표는 삭제할 수 없습니다')
+          setSalesDeleteShippedAlert('출고 완료된 출고 전표는 삭제할 수 없습니다')
           return
         }
         if (status === 403) {
-          setSalesDeleteForbiddenAlert('매출 전표 삭제 권한이 없습니다.')
+          setSalesDeleteForbiddenAlert('출고 전표 삭제 권한이 없습니다.')
           return
         }
       }
-      setSalesDeleteErrorAlert('매출 전표 삭제에 실패했습니다.')
+      setSalesDeleteErrorAlert('출고 전표 삭제에 실패했습니다.')
     },
   })
 
@@ -2669,7 +2684,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
     && canSoftDeleteSlip(mode, slip.status, canAccess)
 
   /**
-   * SP-08-6-2: 매출 전표 직접 수정 권한 판단.
+   * SP-08-6-2: 출고 전표 직접 수정 권한 판단.
    * - mode = OUTBOUND (출고전표)
    * - canAccess('sales.slip.edit', 'update') — 동적 권한(MASTER 자동 전권)
    * - status = SAVED 또는 DRAFT
@@ -2677,7 +2692,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
   const canDirectEditSalesByPermission = mode === 'OUTBOUND' && directEditAllowed
 
   /**
-   * SP-08-6-3: 매출 전표 soft delete 권한 판단.
+   * SP-08-6-3: 출고 전표 soft delete 권한 판단.
    * - mode = OUTBOUND (출고전표)
    * - canAccess('sales.slip.edit', 'delete') — 동적 권한(MASTER 자동 전권)
    * - status = SAVED 또는 DRAFT
@@ -3256,18 +3271,18 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
   }
 
   /*
-    E1-b-1: 매출 전표 수정은 상세 라인 영역에서 인라인으로 렌더한다.
+    E1-b-1: 출고 전표 수정은 상세 라인 영역에서 인라인으로 렌더한다.
     기존 모달의 payload/충돌/라인 coedit 계약은 그대로 유지하고 shell 만 제거한다.
   */
   const salesEditInlineForm = (
     <section
       ref={salesEditFormRef}
       className="slip-edit-inline"
-      aria-label="매출 전표 수정"
+      aria-label="출고 전표 수정"
       data-testid="sales-slip-edit-modal"
     >
       <div className="slip-edit-inline-header">
-        <h4 className="detail-section-title">매출 전표 수정</h4>
+        <h4 className="detail-section-title">출고 전표 수정</h4>
         <div className="slip-edit-inline-actions">
           <Button
             type="button"
@@ -3622,18 +3637,18 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
   )
 
   /*
-    E1-b-2: 매입 전표 수정도 상세 라인 영역에서 인라인으로 렌더한다.
+    E1-b-2: 입고 전표 수정도 상세 라인 영역에서 인라인으로 렌더한다.
     E1-b-1 매출 인라인 패턴을 복제하되, INBOUND direct PUT/409/422/coedit 계약은 그대로 유지한다.
   */
   const purchaseEditInlineForm = (
     <section
       ref={purchaseEditFormRef}
       className="slip-edit-inline"
-      aria-label="매입 전표 수정"
+      aria-label="입고 전표 수정"
       data-testid="purchase-slip-edit-modal"
     >
       <div className="slip-edit-inline-header">
-        <h4 className="detail-section-title">매입 전표 수정</h4>
+        <h4 className="detail-section-title">입고 전표 수정</h4>
         <div className="slip-edit-inline-actions">
           <Button
             type="button"
@@ -4011,11 +4026,11 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
                 size="sm"
                 onClick={() => navigate(`/sales/${id}/print/dispatch`)}
               >
-                판매전표 출력
+                출고전표 출력
               </Button>
             </div>
           ) : (
-            // SP-08-5-5: 매입 전표 인쇄 버튼 (INBOUND — 모든 조회 가능 권한)
+            // SP-08-5-5: 입고 전표 인쇄 버튼 (INBOUND — 모든 조회 가능 권한)
             <div className="detail-print-actions">
             <Button
               variant="secondary"
@@ -4023,7 +4038,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
               data-testid="purchase-slip-print-button"
               onClick={() => navigate(`/purchases/${id}/print/purchase`)}
             >
-              매입 전표 인쇄
+              입고 전표 인쇄
             </Button>
             </div>
           )}
@@ -4187,7 +4202,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
                           navigate(`/sales/${id}/print/dispatch`)
                         }}
                       >
-                        판매전표 출력
+                        출고전표 출력
                       </button>
                     </>
                   ) : null}
@@ -4254,7 +4269,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
                         setPurchaseDeleteOpen(true)
                       }}
                     >
-                      매입 전표 삭제
+                      입고 전표 삭제
                     </button>
                   ) : null}
                   {canDirectDeleteSales ? (
@@ -4268,7 +4283,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
                         setSalesDeleteOpen(true)
                       }}
                     >
-                      매출 전표 삭제
+                      출고 전표 삭제
                     </button>
                   ) : null}
                   {possibleActions.includes('reject') ? (
@@ -4471,6 +4486,24 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
         </div>
       ) : null}
 
+      {slip.status === 'COMPLETED' && revertabilityQuery.data ? (
+        <Card padding={4} shadow="sm" style={{ marginTop: 16 }} data-testid="slip-revertability-card">
+          <h4 style={{ marginTop: 0 }}>되돌림 가능성</h4>
+          <div
+            role="status"
+            data-testid="slip-revertability-result"
+            style={{ color: revertabilityQuery.data.revertable ? 'var(--color-success-700, #15803D)' : 'var(--color-danger-700, #B91C1C)' }}
+          >
+            {revertabilityQuery.data.revertable ? '현재 되돌림 가능' : '현재 되돌릴 수 없음'}
+          </div>
+          {!revertabilityQuery.data.revertable ? (
+            <ul data-testid="slip-revertability-reasons" style={{ marginBottom: 0 }}>
+              {revertabilityQuery.data.reasons.map((reason) => <li key={reason}>{reason}</li>)}
+            </ul>
+          ) : null}
+        </Card>
+      ) : null}
+
       {deletedProductWarningIds.length > 0 ? (
         <div role="alert" className="warning-banner" data-testid="slip-detail-deleted-product-banner">
           이 전표는 삭제된 품목을 포함합니다. 저장된 품목명은 유지됩니다.
@@ -4583,6 +4616,18 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
             </div>
           )}
         </Card>
+      ) : null}
+
+      {isOutbound ? (
+          <SlipQrScanPanel
+            slipNo={slip.slipNo}
+            canScan={canAccess('inventory.stock-balance', 'update') && canAccessSlipAction('confirm', mode, canAccess)}
+        />
+      ) : mode === 'INBOUND' ? (
+        <SlipQrPrintPanel
+          slipNo={slip.slipNo}
+          deliveryTag={slip.deliveryTag}
+        />
       ) : null}
 
       {/*
@@ -5389,7 +5434,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
       />
 
       {/*
-        SP-08-5-3: 매입 전표 삭제 확인 modal.
+        SP-08-5-3: 입고 전표 삭제 확인 modal.
         - UUID 비공개 가드: slipNo 만 표시 (id 미노출).
         - 409 충돌 시 "최신 내용 불러오기" 배너 표시 + refetch 후 재시도.
       */}
@@ -5402,7 +5447,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
             setPurchaseDeleteInspectionAlert(null)
           }
         }}
-        title="매입 전표 삭제"
+        title="입고 전표 삭제"
         size="sm"
         data-testid="purchase-slip-delete-confirm"
         footer={(
@@ -5493,7 +5538,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
       </Modal>
 
       {/*
-        SP-08-6-3: 매출 전표 삭제 확인 modal.
+        SP-08-6-3: 출고 전표 삭제 확인 modal.
         - UUID 비공개 가드: slipNo 만 표시 (id 미노출).
         - 409 충돌 시 "최신 내용 불러오기" 배너 표시 + refetch 후 재시도.
         - 422 SHIPPED 시 삭제 불가 안내.
@@ -5509,7 +5554,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
             setSalesDeleteErrorAlert(null)
           }
         }}
-        title="매출 전표 삭제"
+        title="출고 전표 삭제"
         size="sm"
         data-testid="sales-slip-delete-confirm"
         footer={(
@@ -5589,7 +5634,7 @@ export function SlipDetailPage({ mode }: SlipDetailPageProps) {
               style={{ marginTop: 12 }}
             >
               <strong>삭제 불가</strong>
-              <p style={{ margin: '4px 0 0 0' }}>출고 진행 중이거나 완료된 매출 전표는 삭제할 수 없습니다.</p>
+              <p style={{ margin: '4px 0 0 0' }}>출고 진행 중이거나 완료된 출고 전표는 삭제할 수 없습니다.</p>
             </div>
           )}
           {salesDeleteForbiddenAlert && (

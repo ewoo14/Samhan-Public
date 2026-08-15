@@ -8,6 +8,7 @@ import { app, BrowserWindow, ipcMain } from 'electron'
 // default import(= 전체 module.exports 객체)로 받아 구조분해하면 getter 가 property-access
 // 시점에 정상 동작한다 — 이 파일의 나머지 코드는 변경 없음.
 import electronUpdater, { type ProgressInfo, type UpdateInfo } from 'electron-updater'
+import { classifyDesktopUpdaterError } from './update-error.js'
 
 const { autoUpdater } = electronUpdater
 
@@ -56,7 +57,7 @@ function displayVersionFromUpdateInfo(version: string): string {
 
 function messageFromError(error: unknown): string {
   console.error('[auto-update] electron-updater 상세 오류(사용자 화면 비공개)', error)
-  return '업데이트에 실패했습니다. 인터넷 연결을 확인한 뒤 다시 실행해 주세요.'
+  return classifyDesktopUpdaterError(error).message
 }
 
 function configureAutoUpdater(): void {
@@ -67,8 +68,8 @@ function configureAutoUpdater(): void {
   // 다운로드는 available 이벤트를 받은 뒤 자동 시작한다. 설치/재시작도 기동 렌더러가 위임한다.
   autoUpdater.autoDownload = false
   autoUpdater.autoInstallOnAppQuit = false
-  // 잘못된 릴리스의 semver 다운그레이드는 자동 롤백으로 허용하지 않는다.
-  autoUpdater.allowDowngrade = false
+  // 장애 릴리스 복구를 위해 낮은 semver도 설치 대상으로 허용한다.
+  autoUpdater.allowDowngrade = true
 
   autoUpdater.on('checking-for-update', () => broadcast({ kind: 'checking' }))
   autoUpdater.on('update-available', (info: UpdateInfo) => {
@@ -110,7 +111,7 @@ export function registerAutoUpdateIpcHandlers(): void {
     }
   })
 
-  ipcMain.handle(INSTALL_CHANNEL, () => {
+  ipcMain.handle(INSTALL_CHANNEL, async () => {
     if (!app.isPackaged) {
       broadcast({ kind: 'not-available' })
       return
@@ -119,6 +120,8 @@ export function registerAutoUpdateIpcHandlers(): void {
       autoUpdater.quitAndInstall(true, true)
     } catch (error: unknown) {
       broadcast({ kind: 'error', message: messageFromError(error) })
+      // ipcRenderer.invoke()가 실패를 관찰해야 renderer가 설치 재시도 상태를 되돌린다.
+      throw error
     }
   })
 }

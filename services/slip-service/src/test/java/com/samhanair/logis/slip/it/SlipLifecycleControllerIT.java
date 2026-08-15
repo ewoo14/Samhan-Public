@@ -11,6 +11,7 @@ import com.samhanair.logis.slip.SlipServiceApplication;
 import com.samhanair.logis.slip.client.InventoryClient;
 import com.samhanair.logis.slip.client.ProductClient;
 import com.samhanair.logis.slip.client.ProductSummary;
+import com.samhanair.logis.slip.client.PartnerInternalClient;
 import com.samhanair.logis.slip.client.UserInternalClient;
 import com.samhanair.logis.slip.client.WarehouseInternalClient;
 import java.math.BigDecimal;
@@ -71,9 +72,13 @@ class SlipLifecycleControllerIT extends AbstractPostgresIT {
     /** SP-08-FU2 P2-2 — WarehouseInternalClient @MockBean 격리. */
     @MockBean
     private WarehouseInternalClient warehouseInternalClient;
+    @MockBean
+    private PartnerInternalClient partnerInternalClient;
 
     @BeforeEach
     void mockProductClient() {
+        Mockito.lenient().when(partnerInternalClient.resolvePartnerCode(ArgumentMatchers.any()))
+                .thenReturn(Optional.of("P-IT-001"));
         Mockito.lenient().when(userInternalClient.resolveFullName(ArgumentMatchers.any()))
                 .thenReturn(Optional.of("담당자"));
         Mockito.lenient().when(productClient.lookup(ArgumentMatchers.anyList()))
@@ -91,12 +96,12 @@ class SlipLifecycleControllerIT extends AbstractPostgresIT {
     }
 
     private Map<String, Object> outboundBody() {
-        // 출고전표 — DAY 태그 (OUTBOUND direction)
-        return slipBody("OUTBOUND", true, "DAY");
+        // 출고전표 — SALE 태그 (OUTBOUND direction)
+        return slipBody("OUTBOUND", true, "SALE");
     }
 
     private Map<String, Object> inboundBody() {
-        // 입고전표 — RETURN_TRIP 태그 (INBOUND direction). DAY 같은 OUTBOUND 태그 사용 시
+        // 입고전표 — RETURN_TRIP 태그 (INBOUND direction). SALE 같은 OUTBOUND 태그 사용 시
         // BE 가 IllegalArgumentException 으로 거부.
         return slipBody("INBOUND", false, "RETURN_TRIP");
     }

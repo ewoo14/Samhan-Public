@@ -3,11 +3,28 @@ package com.samhanair.logis.accounting.repository;
 import com.samhanair.logis.accounting.domain.PurchaseAccountingSlipAllocation;
 import java.math.BigDecimal;
 import java.util.UUID;
+import java.util.List;
+import java.util.Collection;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface PurchaseAccountingSlipAllocationRepository extends JpaRepository<PurchaseAccountingSlipAllocation, UUID> {
+
+    /** 삭제되지 않은 allocation만 원천 입고전표 단위로 조회한다. */
+    @Query("""
+        SELECT a FROM PurchaseAccountingSlipAllocation a
+        JOIN FETCH a.purchaseSlipLine line
+        JOIN FETCH line.slip slip
+        WHERE a.sourceSlipId = :sourceSlipId
+          AND a.isDeleted = false
+          AND line.isDeleted = false
+          AND slip.isDeleted = false
+        """)
+    List<PurchaseAccountingSlipAllocation> findActiveBySourceSlipId(@Param("sourceSlipId") UUID sourceSlipId);
+
+    @Query("SELECT a FROM PurchaseAccountingSlipAllocation a WHERE a.sourceSlipNo IN :sourceSlipNos AND a.isDeleted = false")
+    List<PurchaseAccountingSlipAllocation> findActiveBySourceSlipNoIn(@Param("sourceSlipNos") Collection<String> sourceSlipNos);
 
     /**
      * 특정 입고전표 line 에 이미 할당된 금액 합계.

@@ -28,12 +28,23 @@ public class AuditLogConsumer {
 
     private final AuditLogRepository repository;
 
-    @RabbitListener(queues = "samhan.audit.queue")
+    @RabbitListener(queues = {RabbitConfig.QUEUE, RabbitConfig.FAILURE_QUEUE, RabbitConfig.READ_QUEUE})
     public void consume(AuditLogEvent event) {
         try {
             AuditLog entry = AuditLog.builder()
                     .id(event.schemaVersion() == null ? blankToUuid(event.id()) : event.id())
                     .serviceName(event.serviceName())
+                    .schemaVersion(event.schemaVersion())
+                    .retentionClass(event.retentionClass())
+                    .eventKind(event.eventKind())
+                    .outcome(event.outcome())
+                    .auditAction(event.auditAction())
+                    .requestId(event.requestId())
+                    .traceId(event.traceId())
+                    .parentService(event.parentService())
+                    .httpMethod(event.httpMethod())
+                    .routeTemplate(event.routeTemplate())
+                    .durationMs(event.durationMs())
                     .userId(event.userId())
                     .userRole(event.userRole())
                     .actorDisplayName(event.actorDisplayName())
@@ -53,7 +64,7 @@ public class AuditLogConsumer {
                     .ingestedAt(Instant.now())
                     .build();
 
-            repository.save(entry);
+            repository.persistByRetentionClass(entry);
             log.debug("audit log persisted: id={} service={} action={}",
                     entry.getId(), entry.getServiceName(), entry.getAction());
         } catch (RuntimeException ex) {

@@ -56,6 +56,15 @@ export interface SlipSummary {
   deletedByName?: string | null
 }
 
+/** 창고 QR 출고 전용 최소 문맥 — 영업 정보와 UUID를 포함하지 않는다. */
+export interface SlipScanContext {
+  slipType: 'OUTBOUND'
+  slipNo: string
+  status: SlipStatus
+  canScan: boolean
+  lines: Array<{ productCode: string | null; quantity: number; serialManaged: boolean }>
+}
+
 /** 라인 응답 — BE `SlipLineResponse`. */
 export interface SlipLineDetail {
   id: string
@@ -249,6 +258,15 @@ export interface SlipDetail extends SlipSummary {
   deliveryScheduleLabel?: string | null
 }
 
+/** 검수완료 전표 되돌림 가능성 — 실행 없이 읽기 전용으로만 조회한다. */
+export interface SlipRevertability {
+  slipNo: string
+  revertable: boolean
+  reasonCodes: string[]
+  reasons: string[]
+  userVisibleText: string
+}
+
 /**
  * 세트 전개 옵션 — BE `BundleSetOptions` (estimate/web/dto) 와 1:1.
  *
@@ -383,7 +401,7 @@ export interface SlipLineInput {
   lineTotalWithVat?: string
 }
 
-/** 매입 전표 direct PUT 수정 요청 — BE `SlipUpdateRequest`. */
+/** 입고 전표 direct PUT 수정 요청 — BE `SlipUpdateRequest`. */
 export interface SlipUpdateRequest {
   updatedAt: string
   /**
@@ -492,6 +510,8 @@ export interface ProductLookupResult {
   /** product-service가 계산한 유효 정액DC율(%) 및 적용 출처. */
   fixedDiscountRate?: number | null
   fixedDiscountSource?: string | null
+  /** product-service가 판정한 정액DC 분류 정본. */
+  discountOption?: 'THREE_SIXTY' | 'FOUR_WAY' | 'ONE_WAY' | 'STAND' | 'DELUXE' | 'FIRST_GRADE' | null
   status?: string | null
 }
 
@@ -506,6 +526,7 @@ interface ProductLookupWireResult {
   specification?: string | null
   fixedDiscountRate?: string | number | null
   fixedDiscountSource?: string | null
+  discountOption?: 'THREE_SIXTY' | 'FOUR_WAY' | 'ONE_WAY' | 'STAND' | 'DELUXE' | 'FIRST_GRADE' | null
   status?: string | null
 }
 
@@ -571,6 +592,14 @@ export async function getSlip(id: string): Promise<SlipDetail> {
   return res.data.data
 }
 
+/** 상태·재고·후속 연결을 변경하지 않는 되돌림 preflight 조회. */
+export async function getSlipRevertability(id: string): Promise<SlipRevertability> {
+  const res = await apiClient.get<ApiEnvelope<SlipRevertability>>(
+    `/slips/${encodeURIComponent(id)}/revertability`,
+  )
+  return res.data.data
+}
+
 /** 전표번호와 유형으로 전표를 해석한다. UUID는 검색 결과 내부에서만 사용한다. */
 export async function getSlipByNumber(slipNo: string, slipType: SlipType): Promise<SlipDetail> {
   const date = slipNo.slice(0, 10).replace(/\//g, '-')
@@ -578,6 +607,16 @@ export async function getSlipByNumber(slipNo: string, slipType: SlipType): Promi
   const summary = page.content.find((candidate) => candidate.slipNo === slipNo)
   if (!summary) throw new Error(`전표 ${slipNo}를 찾을 수 없습니다.`)
   return getSlip(summary.id)
+}
+
+/** 창고 담당자가 목록 권한 없이 전표번호로 출고 QR 문맥에 진입한다. */
+export async function getOutboundSlipScanContextByNumber(slipNo: string): Promise<SlipScanContext> {
+  const normalized = slipNo.trim()
+  if (!normalized) throw new Error('slipNo is required')
+  const res = await apiClient.get<ApiEnvelope<SlipScanContext>>('/slips/scan-context/by-number', {
+    params: { slipNo: normalized },
+  })
+  return res.data.data
 }
 
 /** 사용자 권한으로 출고전표 번호를 exact 해석해 라인 포함 상세를 조회한다. */
@@ -673,7 +712,7 @@ export async function getPriceMemories(
 }
 
 /**
- * 매입 전표 soft delete — optimistic lock (updatedAt 필수).
+ * 입고 전표 soft delete — optimistic lock (updatedAt 필수).
  *
  * BE `DELETE /slips/{id}` + request body `{ updatedAt }`.
  * 응답 없음 (204). 204/200 모두 성공으로 처리.
@@ -697,7 +736,7 @@ export async function deletePurchaseSlip(
 }
 
 /**
- * 매출 전표 soft delete — SP-08-6-3 신규. optimistic lock (updatedAt 필수).
+ * 출고 전표 soft delete — SP-08-6-3 신규. optimistic lock (updatedAt 필수).
  *
  * BE `DELETE /slips/{id}/sales` + request body `{ updatedAt }`.
  * 응답 없음 (204). 204/200 모두 성공으로 처리.
@@ -741,7 +780,7 @@ export async function restoreSlip(id: string): Promise<SlipSummary> {
 }
 
 /**
- * 매입 전표 direct PUT 수정.
+ * 입고 전표 direct PUT 수정.
  *
  * @param id 전표 UUID (path param 전용, 화면 표시 금지)
  * @param body updatedAt 낙관적 잠금 + 헤더/라인 전체 교체 요청
@@ -759,7 +798,7 @@ export async function updatePurchaseSlip(
 }
 
 /**
- * 매출 전표 direct PUT 수정 — SP-08-6-2 신규.
+ * 출고 전표 direct PUT 수정 — SP-08-6-2 신규.
  *
  * OUTBOUND 전표의 헤더 및 라인을 전체 교체 (optimistic lock).
  * 에러 코드:
@@ -899,6 +938,7 @@ export async function lookupProductByModelName(
     specification: data.specification ?? undefined,
     fixedDiscountRate: data.fixedDiscountRate == null ? null : Number(data.fixedDiscountRate),
     fixedDiscountSource: data.fixedDiscountSource ?? null,
+    discountOption: data.discountOption ?? null,
     status: data.status ?? null,
   }
 }

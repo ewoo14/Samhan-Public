@@ -1,0 +1,107 @@
+package com.samhanair.logis.accounting.service;
+
+import com.samhanair.logis.accounting.client.SlipLineSnapshot;
+import com.samhanair.logis.accounting.client.SlipServiceClient;
+import com.samhanair.logis.accounting.domain.PurchaseAccountingSlipAllocation;
+import com.samhanair.logis.accounting.domain.SalesAccountingSlipAllocation;
+import com.samhanair.logis.accounting.repository.PurchaseAccountingSlipAllocationRepository;
+import com.samhanair.logis.accounting.repository.SalesAccountingSlipAllocationRepository;
+import java.math.BigDecimal;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+/**
+ * 기존 slip-service 원천 snapshot과 회계전표 allocation을 한 계약으로 합치는 조회 서비스.
+ *
+ * <p>UUID는 서비스 간 내부 조회 키로만 사용하고 반환 모델에는 전표번호를 사용한다.
+ */
+@Service
+@RequiredArgsConstructor
+public class AccountingSlipLinkReadModelService {
+
+    private final SlipServiceClient slipServiceClient;
+    private final SalesAccountingSlipAllocationRepository salesAllocationRepository;
+    private final PurchaseAccountingSlipAllocationRepository purchaseAllocationRepository;
+
+    /** 원천 전표 한 건의 연결 상태·금액을 조회한다. */
+    @Transactional(readOnly = true)
+    public AccountingSlipLinkReadModel read(UUID sourceSlipId, String sourceSlipType) {
+        List<SlipLineSnapshot> sourceLines = slipServiceClient.getSlipLines(sourceSlipId);
+        BigDecimal sourceAmount = sourceLines.stream()
+                .map(SlipLineSnapshot::lineTotal)
+                .filter(value -> value != null)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal sourceQuantity = sourceLines.stream()
+                .map(line -> BigDecimal.valueOf(line.quantity()))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal allocatedAmount = BigDecimal.ZERO;
+        BigDecimal allocatedQuantity = BigDecimal.ZERO;
+        Map<String, AccountingSlipLinkReadModel.LinkedSlip> linked = new LinkedHashMap<>();
+        String sourceSlipStatus = sourceLines.isEmpty() ? null : sourceLines.get(0).slipStatus();
+        AccountingSlipLinkReadModel.TaxInvoiceLinkStatus taxInvoiceLinkStatus =
+                "LEGACY_READ_ONLY".equals(sourceSlipStatus)
+                        ? AccountingSlipLinkReadModel.TaxInvoiceLinkStatus.LEGACY_READ_ONLY
+                        : AccountingSlipLinkReadModel.TaxInvoiceLinkStatus.NOT_LINKED;
+        String sourceSlipNo = sourceLines.isEmpty() ? null : sourceLines.get(0).slipNo();
+        String sourcePartnerCode = sourceLines.isEmpty() ? null : sourceLines.get(0).partnerCode();
+        if ("OUTBOUND".equals(sourceSlipType)) {
+            for (SalesAccountingSlipAllocation allocation
+                    : salesAllocationRepository.findActiveBySourceSlipId(sourceSlipId)) {
+                allocatedAmount = allocatedAmount.add(allocation.getAllocatedAmount());
+                allocatedQuantity = allocatedQuantity.add(allocation.getAllocatedQty());
+                var slip = allocation.getSalesSlipLine().getSlip();
+                linked.putIfAbsent(slip.getSlipNo(), new AccountingSlipLinkReadModel.LinkedSlip(
+                        slip.getSlipNo(), slip.getStatus().name(), slip.getTotalAmount(),
+                        slip.getTaxInvoiceId() == null
+                                ? AccountingSlipLinkReadModel.TaxInvoiceLinkStatus.NOT_LINKED
+                                : AccountingSlipLinkReadModel.TaxInvoiceLinkStatus.LINKED));
+                if (slip.getTaxInvoiceId() != null) {
+                    taxInvoiceLinkStatus = AccountingSlipLinkReadModel.TaxInvoiceLinkStatus.LINKED;
+                }
+            }
+        } else if ("INBOUND".equals(sourceSlipType)) {
+            for (PurchaseAccountingSlipAllocation allocation
+                    : purchaseAllocationRepository.findActiveBySourceSlipId(sourceSlipId)) {
+                allocatedAmount = allocatedAmount.add(allocation.getAllocatedAmount());
+                allocatedQuantity = allocatedQuantity.add(allocation.getAllocatedQty());
+                var slip = allocation.getPurchaseSlipLine().getSlip();
+                linked.putIfAbsent(slip.getSlipNo(), new AccountingSlipLinkReadModel.LinkedSlip(
+                        slip.getSlipNo(), slip.getStatus().name(), slip.getTotalAmount(),
+                        slip.getTaxInvoiceId() == null
+                                ? AccountingSlipLinkReadModel.TaxInvoiceLinkStatus.NOT_LINKED
+                                : AccountingSlipLinkReadModel.TaxInvoiceLinkStatus.LINKED));
+                if (slip.getTaxInvoiceId() != null) {
+                    taxInvoiceLinkStatus = AccountingSlipLinkReadModel.TaxInvoiceLinkStatus.LINKED;
+                }
+            }
+        } else {
+            throw new IllegalArgumentException("sourceSlipType은 OUTBOUND 또는 INBOUND여야 합니다");
+        }
+        boolean legacyReadOnly = "LEGACY_READ_ONLY".equals(sourceSlipStatus);
+        boolean dataIntegrityBlocked = sourcePartnerCode == null || sourcePartnerCode.isBlank();
+        return new AccountingSlipLinkReadModel(sourceSlipNo, sourceSlipType, sourceSlipStatus,
+                sourcePartnerCode, sourceQuantity, sourceAmount, allocatedAmount, allocatedQuantity,
+                List.copyOf(linked.values()), taxInvoiceLinkStatus, legacyReadOnly,
+                dataIntegrityBlocked, sourceAmount.compareTo(allocatedAmount) == 0);
+    }
+
+    /** allocation에 보존된 업무 전표번호로 내부 UUID를 역해석한다. */
+    @Transactional(readOnly = true)
+    public AccountingSlipLinkReadModel readBySourceSlipNo(String sourceSlipNo, String sourceSlipType) {
+        if (sourceSlipNo == null || sourceSlipNo.isBlank()) {
+            return null;
+        }
+        UUID sourceSlipId = "OUTBOUND".equals(sourceSlipType)
+                ? salesAllocationRepository.findActiveBySourceSlipNoIn(List.of(sourceSlipNo)).stream()
+                        .findFirst().map(SalesAccountingSlipAllocation::getSourceSlipId).orElse(null)
+                : purchaseAllocationRepository.findActiveBySourceSlipNoIn(List.of(sourceSlipNo)).stream()
+                        .findFirst().map(PurchaseAccountingSlipAllocation::getSourceSlipId).orElse(null);
+        return sourceSlipId == null ? null : read(sourceSlipId, sourceSlipType);
+    }
+}

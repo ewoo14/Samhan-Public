@@ -69,6 +69,7 @@ import {
 } from 'react-router-dom'
 import { AuthGuard } from '../components/AuthGuard'
 import { AppLayout } from '../components/AppLayout'
+import { DetailWindowRoute } from '../components/DetailWindowRoute'
 import { LoginPage } from './LoginPage'
 import { DashboardPage } from './DashboardPage'
 import { NotificationHistoryPage } from './NotificationHistoryPage'
@@ -86,7 +87,7 @@ import { ExternalDispatchRequestView } from '../print/ExternalDispatchRequestVie
 // P0-4 인쇄 양식 1차 mock — Designer 단계 신규 (견적/세금계산서)
 import { QuoteView } from '../print/QuoteView'
 import { TaxInvoiceView } from '../print/TaxInvoiceView'
-// SP-08-5-5 — 매입 전표 인쇄 양식 (A4 portrait, legacy GAS 동등)
+// SP-08-5-5 — 입고 전표 인쇄 양식 (A4 portrait, legacy GAS 동등)
 import { PurchaseSlipPrintPage } from '../print/PurchaseSlipPrintPage'
 // SP-08-6-4 — 매출 인쇄 양식 2종 (거래명세서 / 세금계산서, A4 portrait)
 import { SalesTransactionStatementPrintPage } from '../print/SalesTransactionStatementPrintPage'
@@ -177,6 +178,9 @@ import { InventoryDpsComparePage } from './InventoryDpsComparePage'
 import { DpsByProductPage } from './warehouse/DpsByProductPage'
 // [Phase 2.6c] 재고 현황 조회 — 가용/실재고/예약 3구분 (WAREHOUSE/MANAGER/MASTER)
 import { InventoryStockBalancePage } from './warehouse/InventoryStockBalancePage'
+import { StockSlipByNumberPage } from './warehouse/StockSlipByNumberPage'
+import { StockTransferByNumberPage } from './warehouse/StockTransferByNumberPage'
+import { InventoryAuditByNumberPage } from './warehouse/InventoryAuditByNumberPage'
 import { InOutAnalysisPage } from './warehouse/InOutAnalysisPage'
 // [PR-E1 FE-6] 배차안내문자 표시·편집·복사 — DISPATCH / MANAGER / MASTER 가드
 import { DispatchSmsPage } from './DispatchSmsPage'
@@ -324,7 +328,10 @@ import { ApprovalDocView } from '../print/ApprovalDocView'
 import { ProductCatalogPage } from './ProductCatalogPage'
 import { EstimateItemsCatalogPage } from './EstimateItemsCatalogPage'
 import { ProductClassificationsPage } from './ProductClassificationsPage'
+import { ProductPriceSchedulePage } from './ProductPriceSchedulePage'
 import { ProductFormPage } from './ProductFormPage'
+import { shouldUseHashRouter } from './routerSelection'
+export { shouldUseHashRouter } from './routerSelection'
 
 /**
  * Print route wrapper — `?perRoom=1` query 시 Designer NextDaySlipView 의
@@ -456,7 +463,7 @@ const routes = [
           </PermissionGuard>
         ),
       },
-      // [SP-D3] 매출 슬립 목록 — sales.slip.list 동적 RBAC (RoleGuard 이중 가드 유지).
+      // [SP-D3] 출고전표 목록 — sales.slip.list 동적 RBAC (RoleGuard 이중 가드 유지).
       {
         path: '/sales/slips',
         element: (
@@ -511,7 +518,7 @@ const routes = [
       {
         path: '/sales/estimates',
         element: (
-          <PermissionGuard pageCode="estimates.list" action="view">
+          <PermissionGuard pageCode={['estimates.list', 'sales.partner-order.list']} action="view">
             <EstimateListPage />
           </PermissionGuard>
         ),
@@ -529,9 +536,11 @@ const routes = [
       {
         path: '/sales/partner-orders/:id',
         element: (
-          <PermissionGuard pageCode="sales.partner-order.list" action="view">
-            <SalesPartnerOrderDetailPage />
-          </PermissionGuard>
+          <DetailWindowRoute>
+            <PermissionGuard pageCode="sales.partner-order.list" action="view">
+              <SalesPartnerOrderDetailPage />
+            </PermissionGuard>
+          </DetailWindowRoute>
         ),
       },
       { path: '/sales/partner-orders/web-drafts/:id', element: <WebEstimateSourceDetailPage kind="draft" /> },
@@ -557,10 +566,7 @@ const routes = [
         {
           path: '/sales/estimate-config',
           element: (
-            // H1(#17 S4b R1): ACCOUNTANT 는 sales.estimate-config 가 없어도
-            // products.price-schedule VIEW 만으로 도달 가능(OR 판정) — 페이지 내부에서
-            // estimateConfig 폼/단가변동 섹션을 각자 page-code 로 다시 게이팅한다.
-            <PermissionGuard pageCode={['sales.estimate-config', 'products.price-schedule']} action="view">
+            <PermissionGuard pageCode="sales.estimate-config" action="view">
               <EstimatePricingConfigPage />
             </PermissionGuard>
           ),
@@ -570,7 +576,7 @@ const routes = [
       // P2-1 견적서 상세/편집 (id UUID path param) — `/sales/:id` 보다 먼저 매칭되어야 함.
       { path: '/sales/estimates/:estimateNumber/print', element: <QuoteView /> },
       { path: '/sales/estimates/:id/edit', element: <EstimateFormPage /> },
-      { path: '/sales/estimates/:id', element: <EstimateDetailPage /> },
+      { path: '/sales/estimates/:id', element: <DetailWindowRoute><EstimateDetailPage /></DetailWindowRoute> },
 
       // [PR-E1 FE-5] 전표 정리 리스트 — `/sales/:id` 보다 먼저 매칭되어야 함.
       // BE: slip-service `GET /slips/cleanup` (commit 281415f). SALES/MANAGER/MASTER.
@@ -586,10 +592,16 @@ const routes = [
       {
         path: '/sales/:id',
         element: (
-          <SlipReadGuard mode="OUTBOUND" allowApprovalLineCandidate>
-            <SlipDetailPage mode="OUTBOUND" />
-          </SlipReadGuard>
+          <DetailWindowRoute>
+            <SlipReadGuard mode="OUTBOUND" allowApprovalLineCandidate>
+              <SlipDetailPage mode="OUTBOUND" />
+            </SlipReadGuard>
+          </DetailWindowRoute>
         ),
+      },
+      {
+        path: '/sales/by-number',
+        element: <StockSlipByNumberPage mode="OUTBOUND" />,
       },
       // SP-08-6-4 — 거래명세서 (A4 portrait, legacy GAS 동등). 정적 suffix 먼저 매칭.
       { path: '/sales/:id/print/statement', element: <SalesTransactionStatementPrintPage /> },
@@ -610,7 +622,7 @@ const routes = [
           </PermissionGuard>
         ),
       },
-      // [SP-D3] 매입 슬립 목록 — purchases.slip.list 동적 RBAC (RoleGuard 이중 가드 유지).
+      // [SP-D3] 입고전표 목록 — purchases.slip.list 동적 RBAC (RoleGuard 이중 가드 유지).
       {
         path: '/purchases/slips',
         element: (
@@ -632,14 +644,26 @@ const routes = [
       {
         path: '/purchases/:id',
         element: (
+          <DetailWindowRoute>
+            <PermissionGuard pageCode="purchases.slip.list" action="view">
+              <SlipReadGuard mode="INBOUND">
+                <SlipDetailPage mode="INBOUND" />
+              </SlipReadGuard>
+            </PermissionGuard>
+          </DetailWindowRoute>
+        ),
+      },
+      {
+        path: '/purchases/by-number',
+        element: (
           <PermissionGuard pageCode="purchases.slip.list" action="view">
             <SlipReadGuard mode="INBOUND">
-              <SlipDetailPage mode="INBOUND" />
+              <StockSlipByNumberPage mode="INBOUND" />
             </SlipReadGuard>
           </PermissionGuard>
         ),
       },
-      // SP-08-5-5 — 매입 전표 인쇄 양식 (A4 portrait, 창고/관리자 권한)
+      // SP-08-5-5 — 입고 전표 인쇄 양식 (A4 portrait, 창고/관리자 권한)
       { path: '/purchases/:id/print/purchase', element: <PurchaseSlipPrintPage /> },
 
       // [Phase 2.6c] 재고 현황 — 가용/실재고/예약 3구분.
@@ -647,7 +671,7 @@ const routes = [
       {
         path: '/inventory/stock-balance',
         element: (
-          <PermissionGuard pageCode="accounting.sales-slip.list" action="view">
+          <PermissionGuard pageCode="inventory.stock-balance" action="view">
             <InventoryStockBalancePage />
           </PermissionGuard>
         ),
@@ -672,6 +696,14 @@ const routes = [
         ),
       },
       {
+        path: '/transfers/by-number',
+        element: (
+          <PermissionGuard pageCode="inventory.stock-transfer" action="view">
+            <StockTransferByNumberPage />
+          </PermissionGuard>
+        ),
+      },
+      {
         path: '/transfers/new',
         element: (
           <PermissionGuard pageCode="inventory.stock-transfer" action="view">
@@ -682,9 +714,11 @@ const routes = [
       {
         path: '/transfers/:id',
         element: (
-          <PermissionGuard pageCode="inventory.stock-transfer" action="view">
-            <TransferDetailPage />
-          </PermissionGuard>
+          <DetailWindowRoute>
+            <PermissionGuard pageCode="inventory.stock-transfer" action="view">
+              <TransferDetailPage />
+            </PermissionGuard>
+          </DetailWindowRoute>
         ),
       },
 
@@ -1442,9 +1476,11 @@ const routes = [
       {
         path: '/accounting/tax-invoices/:id',
         element: (
-          <PermissionGuard pageCode="accounting.tax-invoice.list" action="view">
-            <TaxInvoiceDetailPage />
-          </PermissionGuard>
+          <DetailWindowRoute>
+            <PermissionGuard pageCode="accounting.tax-invoice.list" action="view">
+              <TaxInvoiceDetailPage />
+            </PermissionGuard>
+          </DetailWindowRoute>
         ),
       },
 
@@ -1490,6 +1526,14 @@ const routes = [
         element: (
           <PermissionGuard pageCode="products.list" action="view">
             <ProductClassificationsPage />
+          </PermissionGuard>
+        ),
+      },
+      {
+        path: '/products/price-schedule',
+        element: (
+          <PermissionGuard pageCode="products.price-schedule" action="view">
+            <ProductPriceSchedulePage />
           </PermissionGuard>
         ),
       },
@@ -1747,6 +1791,14 @@ const routes = [
         ),
       },
       {
+        path: '/warehouse/audit/by-number',
+        element: (
+          <PermissionGuard pageCode="inventory.audit" action="view">
+            <InventoryAuditByNumberPage />
+          </PermissionGuard>
+        ),
+      },
+      {
         path: '/warehouse/audit/new',
         element: (
           <PermissionGuard pageCode="inventory.audit" action="view">
@@ -1757,9 +1809,11 @@ const routes = [
       {
         path: '/warehouse/audit/:id',
         element: (
-          <PermissionGuard pageCode="inventory.audit" action="view">
-            <InventoryAuditDetailPage />
-          </PermissionGuard>
+          <DetailWindowRoute>
+            <PermissionGuard pageCode="inventory.audit" action="view">
+              <InventoryAuditDetailPage />
+            </PermissionGuard>
+          </DetailWindowRoute>
         ),
       },
 
@@ -1821,7 +1875,10 @@ const routes = [
 // 웹 배포(vite.web.config: VITE_PLATFORM='web')만 BrowserRouter(서버 SPA fallback 전제).
 // Electron(file://) 및 mock/dev 렌더러는 새로고침 404 회피 위해 HashRouter.
 const isWebDeploy = import.meta.env['VITE_PLATFORM'] === 'web'
-const createPlatformRouter = isWebDeploy ? createBrowserRouter : createHashRouter
+const createPlatformRouter = shouldUseHashRouter(
+  isWebDeploy ? 'web' : undefined,
+  typeof window === 'undefined' ? '' : window.location.hash,
+) ? createHashRouter : createBrowserRouter
 const router = createPlatformRouter(routes)
 
 /**

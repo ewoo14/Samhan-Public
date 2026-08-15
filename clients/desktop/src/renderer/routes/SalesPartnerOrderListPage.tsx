@@ -30,6 +30,7 @@ import {
 } from '../api/sales'
 import { formatSlipDate } from '../api/slipNumber'
 import { toOrderPathId } from '../utils/orderNo'
+import { DocumentNumberLink } from '../components/DocumentNumberLink'
 import { restoreScrollAnchorWhenReady, saveScrollAnchor, type ReturnToLocation } from '../utils/returnContract'
 import { AuditInfoBanner } from '../components/audit/AuditOverlaySection'
 import { usePageTitleStore } from '../stores/pageTitle'
@@ -229,7 +230,7 @@ export function SalesPartnerOrderListPage() {
     setMergeDialogOpen(false)
     // FE P2: 토스트 카피 — N개 주문 병합 전환 + 4초 소멸 (가이드 §2.7)
     setConvertSuccessMessage(
-      `판매전표 ${slipNo} 발행 완료 — ${convertedOrderNos.length}개 주문 병합 전환`,
+      `출고전표 ${slipNo} 발행 완료 — ${convertedOrderNos.length}개 주문 병합 전환`,
     )
     // 4초 후 토스트 자동 소멸
     setTimeout(() => setConvertSuccessMessage(null), 4000)
@@ -253,14 +254,12 @@ export function SalesPartnerOrderListPage() {
         return (
           <span className={styles['partnerOrderNumberCell']}>
             {deleted ? <OrderNumberDisplay orderNumber={o.orderNumber} size="sm" style={DELETED_ROW_TEXT_STYLE} /> : (
-              <Link
+              <DocumentNumberLink
+                number={o.orderNumber}
                 to={`/sales/partner-orders/${encodeURIComponent(toOrderPathId(o.orderNumber))}`}
-                state={{ returnTo, returnEntryKey: location.key }}
-                onClick={(event) => { event.stopPropagation(); saveScrollAnchor(location.key) }}
-                aria-label={`${o.orderNumber} 상세 보기`}
-              >
-                <OrderNumberDisplay orderNumber={o.orderNumber} size="sm" />
-              </Link>
+                detailWindow={{ documentType: 'PARTNER_ORDER', documentId: toOrderPathId(o.orderNumber) }}
+                ariaLabel={`${o.orderNumber} 상세 보기`}
+              />
             )}
             {deleted ? (
               <span
@@ -604,7 +603,7 @@ export function SalesPartnerOrderListPage() {
               aria-disabled={!canMergeConvert}
               onClick={() => setMergeDialogOpen(true)}
             >
-              판매전표로 병합 전환
+              출고전표로 병합 전환
             </Button>
             {!canSearchPartners ? (
               <span role="alert" data-testid="merge-convert-permission-hint">

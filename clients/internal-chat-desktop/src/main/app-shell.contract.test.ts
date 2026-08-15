@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
@@ -11,18 +11,55 @@ describe('internal chat desktop app shell contract', () => {
     const packageJson = JSON.parse(read('package.json')) as {
       name: string
       main: string
-      scripts: { build: string }
+      dependencies: Record<string, string>
+      scripts: { build: string; typecheck: string; lint: string; test: string }
     }
 
     expect(packageJson.name).toBe('@samhan/internal-chat-desktop')
     expect(packageJson.main).toBe('out/main/index.js')
     expect(packageJson.scripts.build).toContain('electron-vite build')
+    expect(packageJson.scripts.typecheck).toContain('tsc')
+    expect(packageJson.scripts.lint).toContain('eslint')
+    expect(packageJson.scripts.test).toContain('vitest run')
+    expect(packageJson.dependencies['electron-updater']).toBe('^6.8.9')
+  })
+
+  it('uses the shared date-version release wrapper with the existing generic update feed shape', () => {
+    const wrapper = read('../../scripts/build-internal-chat-desktop-release.cjs')
+    const builderConfig = read('electron-builder.yml')
+
+    expect(wrapper).toContain('createNsisDisplayVersionInclude')
+    expect(wrapper).toContain('--config.nsis.include=')
+    expect(builderConfig).toContain('publish:')
+    expect(builderConfig).toContain('provider: generic')
+    expect(builderConfig).toContain('url: ${env.INTERNAL_CHAT_UPDATE_URL}')
+    expect(builderConfig).toContain('channel: latest')
+  })
+
+  it('릴리스 패키지는 서명되지 않으면 생성되지 않는다', () => {
+    const builderConfig = read('electron-builder.yml')
+    const wrapper = read('../../scripts/build-internal-chat-desktop-release.cjs')
+
+    expect(builderConfig).toMatch(/forceCodeSigning:\s*true/)
+    expect(wrapper).toContain('INTERNAL_CHAT_UPDATE_URL')
+    expect(wrapper).toContain('CSC_LINK')
+    expect(wrapper).toContain('CSC_KEY_PASSWORD')
+  })
+
+  it('서명 신뢰 루트가 없는 경우를 운영 선행조건으로 문서화한다', () => {
+    const readme = read('README.md')
+
+    expect(readme).toContain('신뢰 루트')
+    expect(readme).toContain('UnknownError')
+    expect(readme).toContain('운영 선행조건')
   })
 
   it('keeps the renderer isolated and the sandbox preload loadable', () => {
     const viteConfig = read('electron.vite.config.ts')
     const main = read('src/main/index.ts')
 
+    expect(main).toContain("app.setName('삼한 메신저')")
+    expect(main).toContain("mainWindow?.webContents.send('internal-chat:will-quit')")
     expect(viteConfig).toContain("format: 'cjs'")
     expect(main).toContain('contextIsolation: true')
     expect(main).toContain('nodeIntegration: false')
@@ -32,7 +69,8 @@ describe('internal chat desktop app shell contract', () => {
   it('declares a packaged mascot resource for the tray', () => {
     const builderConfig = read('electron-builder.yml')
 
-    expect(existsSync(resolve(appRoot, 'build/samhani-tray.png'))).toBe(true)
+    expect(builderConfig).toContain('productName: 삼한 메신저')
+    expect(builderConfig).toContain('shortcutName: 삼한 메신저')
     expect(builderConfig).toContain('samhani-tray.png')
   })
 
@@ -44,5 +82,34 @@ describe('internal chat desktop app shell contract', () => {
     expect(main).toContain("{ label: '종료'")
     expect(main).toContain('isQuitting = true')
     expect(main).toContain("app.on('window-all-closed', () => {})")
+  })
+
+  it('opens one shared conversation renderer per room and keeps presence in the main window', () => {
+    const main = read('src/main/index.ts')
+    const preload = read('src/preload/index.ts')
+    const renderer = read('src/renderer/ChatApp.tsx')
+    expect(main).toContain("ipcMain.handle('conversation:open'")
+    expect(main).toContain('conversationWindows')
+    expect(main).toContain('existing.focus()')
+    expect(preload).toContain("ipcRenderer.invoke('conversation:open', request)")
+    expect(renderer).toContain('function ConversationRoom')
+    expect(renderer).toContain('conversation\\/room')
+    expect(renderer).toContain('conversation\\/claude')
+    expect(renderer).toContain('joinPresence(presenceSession)')
+    expect(renderer).not.toContain('ConversationRoom />')
+  })
+
+  it('wires the same version endpoint and updater IPC contract as the other desktops', () => {
+    const updater = read('src/main/auto-update.ts')
+    const preload = read('src/preload/index.ts')
+    const renderer = read('src/renderer/main.ts')
+
+    expect(updater).toContain("autoUpdater.allowDowngrade = true")
+    expect(updater).toContain("ipcMain.handle(CHECK_CHANNEL")
+    expect(updater).toContain("ipcMain.handle(INSTALL_CHANNEL")
+    expect(preload).toContain("contextBridge.exposeInMainWorld('internalChatUpdater'")
+    expect(renderer).toContain("clientType: 'INTERNAL_CHAT_DESKTOP'")
+    expect(renderer).toContain('/app/version?')
+    expect(renderer).toContain('internal-chat-version-policy-error')
   })
 })

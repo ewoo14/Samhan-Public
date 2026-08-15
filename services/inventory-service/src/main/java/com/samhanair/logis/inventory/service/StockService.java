@@ -9,11 +9,15 @@ import com.samhanair.logis.inventory.domain.StockBalance;
 import com.samhanair.logis.inventory.domain.StockLot;
 import com.samhanair.logis.inventory.domain.StockMovement;
 import com.samhanair.logis.inventory.domain.SourceOperationOutcome;
+import com.samhanair.logis.inventory.domain.StockTransfer;
+import com.samhanair.logis.inventory.domain.StockTransferLine;
 import com.samhanair.logis.inventory.domain.Warehouse;
 import com.samhanair.logis.inventory.domain.WarehouseType;
 import com.samhanair.logis.inventory.repository.StockBalanceRepository;
 import com.samhanair.logis.inventory.repository.StockLotRepository;
 import com.samhanair.logis.inventory.repository.StockMovementRepository;
+import com.samhanair.logis.inventory.repository.StockInstanceBalanceProjection;
+import com.samhanair.logis.inventory.repository.StockInstanceRepository;
 import com.samhanair.logis.inventory.repository.WarehouseRepository;
 import com.samhanair.logis.inventory.web.dto.AdjustRequest;
 import com.samhanair.logis.inventory.web.dto.DeductRequest;
@@ -35,6 +39,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -63,6 +68,7 @@ public class StockService {
     private final StockLotRepository stockLotRepository;
     private final StockBalanceRepository stockBalanceRepository;
     private final StockMovementRepository stockMovementRepository;
+    private final StockInstanceRepository stockInstanceRepository;
     private final WarehouseRepository warehouseRepository;
     private final ProductClient productClient;
 
@@ -84,8 +90,10 @@ public class StockService {
         List<BalanceRow> rows = balances.getContent().stream()
                 .map(BalanceRow::existing)
                 .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
+        List<StockInstanceBalanceProjection> serialGroups = stockInstanceRepository.findActiveBalanceGroups(
+                productId, warehouseId);
         Set<BalanceKey> existingKeys = rows.stream()
-                .map(row -> new BalanceKey(row.productId(), row.warehouse().getCode()))
+                .map(row -> new BalanceKey(row.productId(), row.warehouse().getId()))
                 .collect(java.util.stream.Collectors.toCollection(HashSet::new));
 
         List<Warehouse> virtualWarehouses = findVirtualWarehouses(warehouseId);
@@ -104,7 +112,7 @@ public class StockService {
             for (Warehouse virtualWarehouse : virtualWarehouses) {
                 for (UUID productIdWithBalance : productIdsWithBalances) {
                     if (existingKeys.add(new BalanceKey(
-                            productIdWithBalance, virtualWarehouse.getCode()))) {
+                            productIdWithBalance, virtualWarehouse.getId()))) {
                         rows.add(BalanceRow.virtual(productIdWithBalance, virtualWarehouse));
                     }
                 }
@@ -115,8 +123,9 @@ public class StockService {
                 .thenComparing(row -> row.warehouse().getCode()));
 
         Map<UUID, ProductSummary> productsById = new LinkedHashMap<>();
-        List<UUID> productIds = rows.stream()
-                .map(BalanceRow::productId)
+        List<UUID> productIds = java.util.stream.Stream.concat(
+                rows.stream().map(BalanceRow::productId),
+                serialGroups.stream().map(StockInstanceBalanceProjection::getProductId))
                 .filter(java.util.Objects::nonNull)
                 .distinct()
                 .toList();
@@ -140,6 +149,29 @@ public class StockService {
             }
         }
 
+        Map<BalanceKey, SerialQuantities> serialQuantities = serialQuantities(serialGroups);
+        Map<UUID, Warehouse> warehousesById = warehouseRepository
+                .findAllByIsDeletedFalseOrderByDisplayOrderAsc().stream()
+                .collect(java.util.stream.Collectors.toMap(Warehouse::getId, w -> w));
+
+        // 시리얼 품목은 stock_instances가 정본이다. 혹시 과거 데이터에 남은
+        // stock_balances가 있어도 중복 표시하지 않고 활성 인스턴스 수로 대체한다.
+        rows.removeIf(row -> {
+            ProductSummary product = productsById.get(row.productId());
+            return row.balance() != null && product != null && product.serialManaged();
+        });
+        for (Map.Entry<BalanceKey, SerialQuantities> entry : serialQuantities.entrySet()) {
+            BalanceKey key = entry.getKey();
+            Warehouse warehouse = warehousesById.get(key.warehouseId());
+            ProductSummary product = productsById.get(key.productId());
+            if (warehouse != null && warehouse.getType() != WarehouseType.VIRTUAL
+                    && product != null && product.serialManaged()) {
+                rows.add(BalanceRow.serial(key.productId(), warehouse, entry.getValue()));
+            }
+        }
+
+        rows.sort(Comparator.comparing(BalanceRow::productId)
+                .thenComparing(row -> row.warehouse().getCode()));
         List<StockBalanceResponse> responses = rows.stream()
                 .map(row -> row.toResponse(productsById))
                 .toList();
@@ -168,25 +200,52 @@ public class StockService {
     }
 
     /** DB 잔액 행과 저장하지 않는 VIRTUAL 표시 행을 같은 정렬 단위로 다룬다. */
-    private record BalanceRow(UUID productId, Warehouse warehouse, StockBalance balance) {
+    private record BalanceRow(UUID productId, Warehouse warehouse, StockBalance balance,
+                              int serialAvailableQty, int serialReservedQty) {
 
         private static BalanceRow existing(StockBalance balance) {
-            return new BalanceRow(balance.getProductId(), balance.getWarehouse(), balance);
+            return new BalanceRow(balance.getProductId(), balance.getWarehouse(), balance, 0, 0);
         }
 
         private static BalanceRow virtual(UUID productId, Warehouse warehouse) {
-            return new BalanceRow(productId, warehouse, null);
+            return new BalanceRow(productId, warehouse, null, 0, 0);
+        }
+
+        private static BalanceRow serial(UUID productId, Warehouse warehouse, SerialQuantities quantities) {
+            return new BalanceRow(productId, warehouse, null,
+                    quantities.availableQty(), quantities.reservedQty());
         }
 
         private StockBalanceResponse toResponse(Map<UUID, ProductSummary> productsById) {
             ProductSummary product = productsById.get(productId);
-            return balance == null
+            return balance == null && (serialAvailableQty != 0 || serialReservedQty != 0)
+                    ? StockBalanceResponse.serial(warehouse, product, serialAvailableQty, serialReservedQty)
+                    : balance == null
                     ? StockBalanceResponse.virtual(warehouse, product)
                     : StockBalanceResponse.from(balance, product);
         }
     }
 
-    private record BalanceKey(UUID productId, String warehouseCode) {
+    private record BalanceKey(UUID productId, UUID warehouseId) {
+    }
+
+    private record SerialQuantities(int availableQty, int reservedQty) {
+        private SerialQuantities add(StockInstanceBalanceProjection group) {
+            return switch (group.getStatus()) {
+                case AVAILABLE -> new SerialQuantities(availableQty + Math.toIntExact(group.getQuantity()), reservedQty);
+                case RESERVED -> new SerialQuantities(availableQty, reservedQty + Math.toIntExact(group.getQuantity()));
+                default -> this;
+            };
+        }
+    }
+
+    private Map<BalanceKey, SerialQuantities> serialQuantities(List<StockInstanceBalanceProjection> groups) {
+        Map<BalanceKey, SerialQuantities> result = new LinkedHashMap<>();
+        for (StockInstanceBalanceProjection group : groups) {
+            BalanceKey key = new BalanceKey(group.getProductId(), group.getWarehouseId());
+            result.put(key, result.getOrDefault(key, new SerialQuantities(0, 0)).add(group));
+        }
+        return result;
     }
 
     /**
@@ -234,11 +293,73 @@ public class StockService {
         stockMovementRepository.save(StockMovement.of(
                 lot.getId(), req.productId(), warehouse.getId(),
                 MovementType.INBOUND, req.quantity(),
-                "INBOUND", null, req.note(), actorUserId));
+                "INBOUND", req.sourceContext() == null ? null : req.sourceContext().slipId(),
+                req.note(), actorUserId));
 
         recordSource(req.sourceContext(), product, SourceOperationOutcome.APPLIED,
                 lot.getId() == null ? List.of() : List.of(lot.getId()), List.of());
         return StockLotResponse.from(lot);
+    }
+
+    /**
+     * 이동전표 확정 — 출발 FIFO lot/balance 를 차감하고 도착 lot/balance 를 가산한다.
+     * 출고와 입고 movement 를 같은 트랜잭션에 기록하여 이동 전후 총 수량을 보존한다.
+     *
+     * @param transfer RECEIVED 상태의 이동전표
+     * @param actorUserId 확정자 user-id
+     * @throws BusinessException(CONFLICT) 출발 가용 lot 또는 balance 가 부족할 때
+     */
+    public void transfer(StockTransfer transfer, String actorUserId) {
+        for (StockTransferLine line : transfer.getLines()) {
+            transferLine(line, transfer, actorUserId);
+        }
+    }
+
+    private void transferLine(StockTransferLine line, StockTransfer transfer, String actorUserId) {
+        UUID productId = line.getProductId();
+        UUID sourceWarehouseId = transfer.getSourceWarehouse().getId();
+        UUID destinationWarehouseId = transfer.getDestinationWarehouse().getId();
+        int quantity = line.getRequestedQuantity();
+        StockBalance sourceBalance = loadBalanceOrThrow(productId, sourceWarehouseId);
+        Warehouse destinationWarehouse = transfer.getDestinationWarehouse();
+        List<StockLot> sourceLots = stockLotRepository.findAvailableLotsForFifo(productId, sourceWarehouseId);
+        int available = sourceLots.stream().mapToInt(StockLot::getQuantity).sum();
+        if (available < quantity) {
+            throw new BusinessException(ErrorCode.CONFLICT,
+                    "이동 재고 부족: 요청 " + quantity + ", 가용 " + available);
+        }
+
+        int remaining = quantity;
+        StockLot sourceLot = null;
+        for (StockLot lot : sourceLots) {
+            if (remaining == 0) {
+                break;
+            }
+            int taken = Math.min(remaining, lot.getQuantity());
+            if (sourceLot == null) {
+                sourceLot = lot;
+            }
+            lot.deduct(taken);
+            applyWithRetry(() -> sourceBalance.deduct(taken, false));
+            stockMovementRepository.save(StockMovement.of(
+                    lot.getId(), productId, sourceWarehouseId,
+                    MovementType.TRANSFER_OUT, -taken,
+                    "STOCK_TRANSFER", transfer.getId(), transfer.getTransferNo(), actorUserId));
+            remaining -= taken;
+        }
+
+        StockLot destinationLot = stockLotRepository.save(StockLot.createFromTransfer(
+                productId, destinationWarehouse, transfer.getTransferNo(), quantity,
+                LocalDateTime.now(), null, transfer.getId()));
+        StockBalance destinationBalance = loadOrCreateBalance(productId, destinationWarehouse);
+        applyWithRetry(() -> destinationBalance.addInbound(quantity));
+        stockMovementRepository.save(StockMovement.of(
+                destinationLot.getId(), productId, destinationWarehouseId,
+                MovementType.TRANSFER_IN, quantity,
+                "STOCK_TRANSFER", transfer.getId(), transfer.getTransferNo(), actorUserId));
+
+        line.recordShipment(quantity, sourceLot == null ? null : sourceLot.getId());
+        line.recordReceipt(quantity, destinationLot.getId());
     }
 
     /**

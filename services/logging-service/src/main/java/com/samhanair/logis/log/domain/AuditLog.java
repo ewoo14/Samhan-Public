@@ -14,6 +14,7 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import com.samhanair.logis.shared.audit.contract.AuditEnums;
 
 /**
  * Audit log document persisted to Elasticsearch.
@@ -40,6 +41,39 @@ public class AuditLog {
 
     @Field(type = FieldType.Keyword)
     private String serviceName;
+
+    @Field(type = FieldType.Keyword)
+    private String schemaVersion;
+
+    @Field(type = FieldType.Keyword)
+    private AuditEnums.RetentionClass retentionClass;
+
+    @Field(type = FieldType.Keyword)
+    private AuditEnums.EventKind eventKind;
+
+    @Field(type = FieldType.Keyword)
+    private AuditEnums.Outcome outcome;
+
+    @Field(type = FieldType.Keyword)
+    private AuditEnums.AuditAction auditAction;
+
+    @Field(type = FieldType.Keyword)
+    private String requestId;
+
+    @Field(type = FieldType.Keyword)
+    private String traceId;
+
+    @Field(type = FieldType.Keyword)
+    private String parentService;
+
+    @Field(type = FieldType.Keyword)
+    private String httpMethod;
+
+    @Field(type = FieldType.Keyword)
+    private String routeTemplate;
+
+    @Field(type = FieldType.Long)
+    private Long durationMs;
 
     @Field(type = FieldType.Keyword)
     private String userId;

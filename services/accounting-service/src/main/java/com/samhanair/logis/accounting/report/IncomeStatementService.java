@@ -29,7 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
  *   <li>판관비 (800~)      = debit - credit (차변 잔액)</li>
  *   <li>영업외수익 (901~906 등) = credit - debit (대변 잔액)</li>
  *   <li>영업외비용 (951~970 등) = debit - credit (차변 잔액)</li>
- *   <li>법인세비용 (991)   = debit - credit (차변 잔액)</li>
+ *   <li>법인세비용 (9719)   = debit - credit (차변 잔액)</li>
  * </ul>
  *
  * <p>NON_OPERATING 계정은 통합하여 totalNonOperating 에 반영한다.
@@ -40,7 +40,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class IncomeStatementService {
 
-    private static final String INCOME_TAX_CODE = "991";
+    /** V101 이카운트 정본 법인세등 계정. */
+    private static final String INCOME_TAX_CODE = "9719";
 
     private final JournalLineRepository journalLineRepository;
     private final ChartOfAccountRepository chartOfAccountRepository;
@@ -99,7 +100,9 @@ public class IncomeStatementService {
             if (account == null) {
                 continue;
             }
-            BigDecimal amount = computeSignedAmount(account.getCategory(), t.getDebitTotal(), t.getCreditTotal());
+            BigDecimal amount = INCOME_TAX_CODE.equals(code)
+                    ? t.getDebitTotal().subtract(t.getCreditTotal())
+                    : computeSignedAmount(account.getCategory(), t.getDebitTotal(), t.getCreditTotal());
             amountByCode.put(code, amount);
         }
 
@@ -118,7 +121,7 @@ public class IncomeStatementService {
         BigDecimal totalNonOperating = sumAmounts(nonOperating);
         BigDecimal incomeBeforeTax = operatingProfit.add(totalNonOperating);
 
-        // 법인세비용 (991) 별도 분리
+        // 법인세비용 (9719) 별도 분리
         BigDecimal incomeTax = amountByCode.getOrDefault(INCOME_TAX_CODE, BigDecimal.ZERO);
         BigDecimal netIncome = incomeBeforeTax.subtract(incomeTax);
 
@@ -180,7 +183,7 @@ public class IncomeStatementService {
     /**
      * 영업외손익 행 목록 구성.
      *
-     * <p>NON_OPERATING 카테고리 계정 중 INCOME_TAX 코드("991")는 제외.
+     * <p>NON_OPERATING 카테고리 계정 중 INCOME_TAX 코드("9719")는 제외.
      * 영업외수익 계정은 credit 잔액 양수(플러스), 영업외비용은 debit 잔액 음수(마이너스) 표시.
      *
      * @param amountMap  계정코드별 금액 맵

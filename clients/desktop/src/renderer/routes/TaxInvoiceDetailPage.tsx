@@ -273,14 +273,14 @@ export function TaxInvoiceDetailPage() {
   const isDraft = t.status === 'DRAFT'
   const isIssued = t.status === 'ISSUED'
   // DRAFT 수정 저장과 발행(issue)은 모두 TaxInvoiceController accounting.tax-invoice.list UPDATE 계약이다.
-  const canUpdateTaxInvoice = canAccess('accounting.tax-invoice.list', 'update')
-  const canCancelTaxInvoice = canAccess('accounting.tax-invoice.cancel', 'update')
+  const canUpdateTaxInvoice = !t.legacyReadOnly && canAccess('accounting.tax-invoice.list', 'update')
+  const canCancelTaxInvoice = !t.legacyReadOnly && canAccess('accounting.tax-invoice.cancel', 'update')
   const canEmitTaxInvoiceNts = canAccess('accounting.tax-invoice.emit-nts', 'update')
   /**
    * SP-09-1: 세금계산서 발행 버튼 활성 조건.
    * - ISSUED 상태 + ACCOUNTANT / MASTER 권한 + 아직 eTaxExternalId 미등록 시.
    */
-  const canEmitNts = isIssued && canEmitTaxInvoiceNts && !t.eTaxExternalId
+  const canEmitNts = !t.legacyReadOnly && isIssued && canEmitTaxInvoiceNts && !t.eTaxExternalId
   // PR-H4c: ISSUED/CANCELLED 단계는 본문 변경 차단 — banner 노출.
   const isLocked = t.status === 'ISSUED' || t.status === 'CANCELLED'
   const auditLogs = Array.isArray(auditQuery.data) ? auditQuery.data : []
@@ -290,7 +290,7 @@ export function TaxInvoiceDetailPage() {
     setTopError('')
     if (
       !confirm(
-        '이 세금계산서를 발행하시겠습니까?\n발행 시 자동 분개 (110/255/400) 가 생성되고 더 이상 수정할 수 없습니다.',
+        '이 세금계산서를 발행하시겠습니까?\n발행 시 자동 분개 (1089/2559/4019) 가 생성되고 더 이상 수정할 수 없습니다.',
       )
     )
       return
@@ -532,6 +532,11 @@ export function TaxInvoiceDetailPage() {
               <Badge variant={STATUS_VARIANT[t.status]}>
                 {TAX_INVOICE_STATUS_LABEL[t.status]}
               </Badge>
+              {t.legacyReadOnly ? (
+                <Badge variant="neutral" data-testid="tax-invoice-detail-legacy-read-only">
+                  읽기 전용
+                </Badge>
+              ) : null}
               {/* SP-09-1 D2: 전자세금계산서 발행 완료 전용 Badge — eTaxExternalId 등록 후 병렬 표시 */}
               {t.eTaxExternalId ? (
                 <Badge variant="nts" data-testid="tax-invoice-detail-nts-emitted-badge">

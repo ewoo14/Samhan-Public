@@ -106,7 +106,7 @@ public class AccountingReportController {
 
     /** BE-A8 매출/수금/채권 집계. */
     @Operation(summary = "매출/수금/채권 집계 (BE-A8)",
-            description = "기간 + 거래처 단일/전체 필터 — 자체 분개 401/110 코드 기반 합계")
+            description = "기간 + 거래처 단일/전체 필터 — 자체 분개 4019/1089 코드 기반 합계")
     @ApiResponses({
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "200", description = "조회 성공"),
             @io.swagger.v3.oas.annotations.responses.ApiResponse(responseCode = "400", description = "from/to 누락 또는 역순")
@@ -178,7 +178,7 @@ public class AccountingReportController {
                 partnerCode, from, to, parseUuid(userId)));
     }
 
-    /** 출고 판매전표 품목과 확정 입금보고서를 함께 반환하는 거래처별 원장 read 계약. */
+    /** 출고 출고전표 품목과 확정 입금보고서를 함께 반환하는 거래처별 원장 read 계약. */
     @GetMapping("/accounting/journals/partner-ledger")
     @RequirePermission(page = "accounting.partner-ledger", action = com.samhanair.logis.security.permission.PermissionAction.VIEW)
     public ApiResponse<PartnerLedgerResponse> partnerLedger(
@@ -188,7 +188,7 @@ public class AccountingReportController {
         return ApiResponse.ok(partnerLedgerReadService.read(partnerCode, from, to));
     }
 
-    /** 판매전표 상세가 소비하는 전잔·후잔 read 계약 — 판매전표 조회 권한만 요구한다. */
+    /** 출고전표 상세가 소비하는 전잔·후잔 read 계약 — 출고전표 조회 권한만 요구한다. */
     @GetMapping("/accounting/journals/sales-slip-ledger")
     @RequirePermission(page = "sales.slip.list", action = com.samhanair.logis.security.permission.PermissionAction.VIEW)
     public ApiResponse<PartnerLedgerResponse> salesSlipLedger(

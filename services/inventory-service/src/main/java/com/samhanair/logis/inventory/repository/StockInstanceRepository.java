@@ -25,8 +25,42 @@ import org.springframework.data.repository.query.Param;
  */
 public interface StockInstanceRepository extends JpaRepository<StockInstance, UUID> {
 
+    /**
+     * 재고 현황 합성용 활성 시리얼 인스턴스 집계.
+     * {@code SHIPPED}/{@code RECALLED}는 현재 재고가 아니므로 제외한다.
+     */
+    @Query("""
+            SELECT s.productId AS productId,
+                   s.warehouseId AS warehouseId,
+                   s.status AS status,
+                   COUNT(s) AS quantity
+            FROM StockInstance s
+            WHERE s.status IN (com.samhanair.logis.inventory.domain.StockInstanceStatus.AVAILABLE,
+                               com.samhanair.logis.inventory.domain.StockInstanceStatus.RESERVED)
+              AND (:productId IS NULL OR s.productId = :productId)
+              AND (:warehouseId IS NULL OR s.warehouseId = :warehouseId)
+              AND s.isDeleted = false
+            GROUP BY s.productId, s.warehouseId, s.status
+            """)
+    List<StockInstanceBalanceProjection> findActiveBalanceGroups(
+            @Param("productId") UUID productId,
+            @Param("warehouseId") UUID warehouseId);
+
+    long countByInboundSlipNoAndIsDeletedFalse(String inboundSlipNo);
+
+    long countByOutboundSlipNoAndIsDeletedFalse(String outboundSlipNo);
+
+    /** 입고전표 QR 출력용 — 요청 전표에 귀속된 활성 인스턴스만 반환한다. */
+    List<StockInstance> findByInboundSlipNoOrderByProductCodeAscReceivedAtAsc(String inboundSlipNo);
+
     /** 사용자 노출용 serial_key로 활성 인스턴스를 단건 조회한다. */
     Optional<StockInstance> findBySerialKey(String serialKey);
+
+    /** QR mutation 대상 개체를 행 잠금으로 읽어 동일 개체의 동시 스캔을 직렬화한다. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @QueryHints(@QueryHint(name = "jakarta.persistence.lock.timeout", value = "3000"))
+    @Query("SELECT s FROM StockInstance s WHERE s.serialKey = :serialKey AND s.isDeleted = false")
+    Optional<StockInstance> findBySerialKeyForUpdate(@Param("serialKey") String serialKey);
 
     /** 모델명 전환 이후 product UUID로 AVAILABLE FIFO 후보를 조회한다. */
     List<StockInstance> findByProductIdAndStatusOrderByReceivedAtAsc(

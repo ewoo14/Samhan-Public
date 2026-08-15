@@ -47,6 +47,9 @@ public interface SlipRepository extends JpaRepository<Slip, UUID>, JpaSpecificat
     /** 전표번호({@code yyyy/MM/dd-N}) 단건 조회. soft-delete 제외. 중복 가능성 때문에 신규 코드는 type 지정 조회 권장. */
     Optional<Slip> findBySlipNo(String slipNo);
 
+    /** 입·출고 번호 충돌을 감지하기 위한 유형 무관 활성 전표 후보 조회. */
+    List<Slip> findAllBySlipNoAndIsDeletedFalse(String slipNo);
+
     /**
      * due PENDING 또는 lease가 만료된 PROCESSING snapshot 후보를 조회한다.
      *
@@ -242,7 +245,7 @@ public interface SlipRepository extends JpaRepository<Slip, UUID>, JpaSpecificat
             @org.springframework.data.repository.query.Param("partnerId") UUID partnerId);
 
     /**
-     * 거래처별 원장 판매전표 read projection source.
+     * 거래처별 원장 출고전표 read projection source.
      *
      * <p>기존 DPS용 {@code findByPeriodWithLines}와 분리된 추가 계약이다. 활성 OUTBOUND 중 호출자가
      * 넘긴 원장 포함 상태만 기간·거래처코드로 조회하고, {@code lines}를 함께 fetch한다.
@@ -252,7 +255,7 @@ public interface SlipRepository extends JpaRepository<Slip, UUID>, JpaSpecificat
      * @param to 조회 종료일(포함)
      * @param partnerCode 거래처코드, null이면 전체
      * @param statuses 원장 포함 상태
-     * @return 전표와 품목을 함께 읽은 활성 판매전표
+     * @return 전표와 품목을 함께 읽은 활성 출고전표
      */
     @EntityGraph(attributePaths = "lines")
     @org.springframework.data.jpa.repository.Query("""
@@ -289,6 +292,25 @@ public interface SlipRepository extends JpaRepository<Slip, UUID>, JpaSpecificat
             """)
     List<Slip> findAllByStatusInAndPartnerIdIsNotNullAndPartnerCodeMissingAndIsDeletedFalse(
             @Param("statuses") Collection<SlipStatus> statuses);
+
+    /** 상태와 무관하게 partner_id만 있고 partner_code가 비어 있는 활성 전표를 조회한다. */
+    @Query("""
+            select s from Slip s
+             where s.partnerId is not null
+               and (s.partnerCode is null or trim(s.partnerCode) = '')
+               and s.isDeleted = false
+            """)
+    List<Slip> findAllActiveWithPartnerIdAndPartnerCodeMissing();
+
+    /** backfill 실패 목록과 정확히 교집합인 활성 UUID-only 전표만 격리 후보로 조회한다. */
+    @Query("""
+            select s from Slip s
+             where s.slipNo in :slipNos
+               and s.partnerId is not null
+               and (s.partnerCode is null or trim(s.partnerCode) = '')
+               and s.isDeleted = false
+            """)
+    List<Slip> findAllActiveMissingPartnerCodeBySlipNoIn(@Param("slipNos") Collection<String> slipNos);
 
     /** 거래처 보정 후 남은 커밋 상태의 partner_id null 위반 건수를 계산한다. */
     long countByStatusInAndPartnerIdIsNullAndIsDeletedFalse(Collection<SlipStatus> statuses);

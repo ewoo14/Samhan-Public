@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { Button, Modal } from '@samhan/design-system'
-import { getAppVersion } from '../../api/appVersion'
+import { AppUpdateNotice, Button, Modal } from '@samhan/design-system'
+import { APP_VERSION_POLICY_FAILURE_MESSAGE, getAppVersion } from '../../api/appVersion'
 import type { AppClientType, AppVersionInfo } from '../../api/appVersion'
 import { isCapacitorPlatform, isElectronPlatform } from '../../auth/authProvider'
 import {
@@ -152,7 +152,7 @@ function toUpdateStatus(value: ElectronDesktopUpdateStatus): DesktopUpdateStatus
   if (value.kind === 'downloading') return { kind: 'downloading', percent: value.percent ?? 0 }
   if (value.kind === 'downloaded') return { kind: 'downloaded', version: value.version ?? '' }
   if (value.kind === 'not-available') return { kind: 'not-available' }
-  if (value.kind === 'error') return { kind: 'error', message: desktopUpdateErrorMessage('unknown') }
+  if (value.kind === 'error') return { kind: 'error', message: value.message || desktopUpdateErrorMessage('unknown') }
   return null
 }
 
@@ -178,6 +178,44 @@ function updateStatusText(status: DesktopUpdateStatus, installing = false): stri
     case 'not-available':
       return '현재 설치된 버전이 최신입니다.'
   }
+}
+
+/** 제목이 상태를 설명하므로 본문은 진행률·다음 행동 같은 보충 정보만 제공한다. */
+function updateStatusDescription(status: DesktopUpdateStatus, installing = false): string {
+  switch (status.kind) {
+    case 'checking':
+      return '잠시만 기다려 주세요.'
+    case 'available':
+      return '다운로드가 끝나면 자동으로 설치합니다.'
+    case 'downloading':
+      return `${Math.round(status.percent)}% 완료되었습니다.`
+    case 'downloaded':
+      return installing ? '설치가 끝나면 앱을 다시 시작합니다.' : '다음 기동 때 자동 설치합니다.'
+    case 'error':
+      return status.message
+    case 'not-available':
+      return '현재 설치된 버전이 최신입니다.'
+  }
+}
+
+function updateErrorSeverity(message: string): 'network' | 'integrity' | 'trust' {
+  if (/인증서|신뢰|certificate|signature/i.test(message)) return 'trust'
+  if (/손상|검증|integrity|checksum|hash/i.test(message)) return 'integrity'
+  return 'network'
+}
+
+function updateStatusTitle(status: DesktopUpdateStatus): string {
+  if (status.kind === 'error') {
+    const severity = updateErrorSeverity(status.message)
+    if (severity === 'trust') return '업데이트 파일의 인증서를 신뢰할 수 없습니다'
+    if (severity === 'integrity') return '업데이트 파일을 확인하지 못했습니다'
+    return '업데이트 서버에 연결하지 못했습니다'
+  }
+  if (status.kind === 'checking') return '업데이트를 확인하는 중입니다'
+  if (status.kind === 'available') return '새 업데이트를 준비하고 있습니다'
+  if (status.kind === 'downloading') return '새 업데이트를 다운로드하는 중입니다'
+  if (status.kind === 'downloaded') return '새 업데이트를 설치할 준비가 되었습니다'
+  return '업데이트 상태'
 }
 
 export function AppVersionGate({ bootstrapped, children }: { bootstrapped: boolean; children?: ReactNode }) {
@@ -302,7 +340,8 @@ export function AppVersionGate({ bootstrapped, children }: { bootstrapped: boole
         }))
       })
       .catch((err: unknown) => {
-        console.warn('[app-version] 버전체크 실패 — 앱 부팅은 계속 진행합니다.', err)
+        console.warn('[app-version] 버전 정책 조회 실패', err)
+        setUpdateStatus({ kind: 'error', message: APP_VERSION_POLICY_FAILURE_MESSAGE })
       })
       .finally(() => setVersionCheckReady(true))
   }, [bootstrapped])
@@ -337,58 +376,18 @@ export function AppVersionGate({ bootstrapped, children }: { bootstrapped: boole
   const blockingReloadLabel = isCapacitorPlatform ? '앱 다시 불러오기' : '페이지 새로고침'
 
   const statusNotice = updateStatus && updateStatus.kind !== 'not-available' && !noticeDismissed ? (
-    <div
-      role="status"
-      data-testid="app-auto-update-status"
-      // U-1/U-2(#909 SONNET5 라운드2): 화면 전용 알림 — AppLayout 사이드바/헤더와 동일하게
-      // 인쇄 시 완전히 제거한다(global.css `@media print { .no-print { display:none !important } }`,
-      // 기존 관례 재사용). display:none 은 박스 자체를 없애 높이도 0 이 되므로, 이 알림이
-      // in-flow(static)로 렌더될 때도 아래 인쇄물을 아래로 밀어내지 못한다 — "화면에서 안 보이게"가
-      // 아니라 "인쇄 레이아웃에서 존재 자체를 지운다"가 핵심(마진/포지션과 무관하게 성립).
-      className="no-print"
-      style={{
-        position: promptState.kind === 'blocking' ? 'fixed' : 'static',
-        ...(promptState.kind === 'blocking'
-          ? {
-              insetInlineEnd: 16,
-              insetBlockEnd: 16,
-              zIndex: 10000,
-              maxWidth: 'min(520px, calc(100vw - 32px))',
-            }
-          : {
-              width: 'calc(100% - 32px)',
-              maxWidth: 'calc(100% - 32px)',
-              boxSizing: 'border-box',
-              marginInline: 16,
-              marginBlockEnd: 12,
-            }),
-        display: 'flex',
-        alignItems: 'center',
-        flexWrap: 'wrap',
-        gap: 8,
-        padding: '10px 14px',
-        border: `1px solid ${updateStatus.kind === 'error' ? 'var(--color-danger-300)' : 'var(--color-brand-200)'}`,
-        borderRadius: 8,
-        background: 'var(--color-neutral-0)',
-        boxShadow: '0 8px 24px rgba(15, 23, 42, 0.16)',
-        fontSize: 13,
-      }}
-    >
-      <span>{updateStatusText(updateStatus, installing)}</span>
-      <Button type="button" size="sm" variant="secondary" onClick={checkForUpdate} style={{ marginInlineStart: 12 }}>
-        다시 확인
-      </Button>
-      <Button
-        type="button"
-        size="sm"
-        variant="ghost"
-        onClick={() => setNoticeDismissed(true)}
-        data-testid="app-auto-update-dismiss"
-        style={{ marginInlineStart: 8 }}
-      >
-        닫기
-      </Button>
-    </div>
+    <AppUpdateNotice
+      severity={updateStatus.kind === 'error' ? updateErrorSeverity(updateStatus.message) : 'network'}
+      title={updateStatusTitle(updateStatus)}
+      description={updateStatusDescription(updateStatus, installing)}
+      testId="app-auto-update-status"
+      actions={(
+        <>
+          <Button type="button" size="sm" variant="secondary" onClick={checkForUpdate}>다시 확인</Button>
+          <Button type="button" size="sm" variant="ghost" onClick={() => setNoticeDismissed(true)} data-testid="app-auto-update-dismiss">닫기</Button>
+        </>
+      )}
+    />
   ) : null
 
   const startupPending = isElectronPlatform && !IS_MOCK_MODE && (!startupUpdateReady || !versionCheckReady)
