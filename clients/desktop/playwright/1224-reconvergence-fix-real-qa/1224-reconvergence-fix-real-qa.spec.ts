@@ -3,13 +3,15 @@ import path from 'node:path'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import { expect, test } from '@playwright/test'
+import { resolveQaShotsDir } from '../support/qa-screenshot-dir'
 
 const require = createRequire(import.meta.url)
 const { resolveQaCredential } = require('../../../../scripts/lib/qa-credentials.cjs') as {
   resolveQaCredential: (name: string) => string
 }
 const here = path.dirname(fileURLToPath(import.meta.url))
-const shots = path.resolve(here, '../../../../docs/qa/1224-chatroom-link-reconvergence-fix-real-qa')
+const committedShotsDir = path.resolve(here, '../../../../docs/qa/1224-chatroom-link-reconvergence-fix-real-qa')
+const shots = resolveQaShotsDir(committedShotsDir)
 const apiBase = process.env['QA_API_BASE'] ?? 'http://127.0.0.1:8080'
 
 type Login = { token: string; userId?: string; role?: string; displayName?: string }
