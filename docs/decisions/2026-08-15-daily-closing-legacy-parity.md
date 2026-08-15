@@ -297,3 +297,89 @@ sales_accounting_slips   POSTED 1건 · posted_at 있음 1건
 ③ 입고전표 → 매입전표 경로가 매출과 대칭인가
 ④ 출고전표 원본 수정에 어떤 권한 코드가 걸려 있는가
 ```
+
+---
+
+## 2026-08-15 정찰 후 개정 — 결정 9 개정 · 12 · 13 신설
+
+### 🚩 PM 정정 — 결정 9 를 잘못된 전제 위에서 제시했다
+
+내가 이렇게 적었다: *"레거시 GAS 가 시트를 직접 고치던 것과 같은 자리"*.
+
+**틀렸다.** `Code.js` 1,034줄 전수에 `setValue`·`setValues`·`appendRow`·`insertRow`·`deleteRow` 가 **없다**.
+
+```text
+편집 중        브라우저 메모리(storeData)만 변경
+"내역저장"     전체 스냅샷을 gzip+Base64 로 별도 Notion DB 에 기록
+SpreadsheetApp 가격표·구성품 "읽기" 두 곳뿐 (Code.js:215 · Code.js:270)
+```
+
+⟹ **레거시는 원본을 안 고쳤다.** 개발책임자에게 정정 후 재확인했고, **원본 수정 방침은 유지**하기로 했다(레거시보다 한 발 더 나가는 선택).
+
+### 🔴 정찰이 찾은 충돌 — 지금 규칙으로는 일마감 대상 전표를 수정할 수 없다
+
+```text
+일마감 대상 상태    CONFIRMED · DELIVERED · COMPLETED   (결정 2)
+출고전표 수정 허용   DRAFT · SAVED 뿐
+  Slip.java:65    EnumSet.of(SlipStatus.DRAFT, SlipStatus.SAVED)
+  Slip.java:1896  "라인 수정 가능한 상태가 아닙니다: " + status
+```
+
+🔑 지금 화면에 뜨는 13건은 **하나도 수정할 수 없다.**
+
+### 결정 9 (개정) — **금액 전용 수정 경로를 새로 만든다**
+
+```text
+✅ 채택   기존 requireEditable 은 그대로 두고
+          "회계전표가 아직 생성되지 않은 CONFIRMED 전표의 금액만" 고치는 전용 경로
+          수량·품목·거래처는 못 건드린다
+          감사 로그에 "일마감에서 고쳤다" 가 남는다
+❌ 기각   CONFIRMED → SAVED 되돌린 뒤 기존 경로  (한 줄 고치려고 전표를 되돌렸다 다시 확정)
+❌ 기각   결정 9 철회 · 스냅샷                    (고친 값이 매출전표에 안 감)
+```
+
+🚨 **불변식** — 회계전표(allocation)가 이미 있는 전표는 금액을 못 바꾼다.
+🚩 정찰 실측: *"이미 회계전표가 생성되었는가 자체를 확인하는 독립 방어는 없다."*
+현재는 상태 규칙(생성은 CONFIRMED · 수정은 DRAFT/SAVED)이 간접적으로 막고 있을 뿐이다. **새 경로를 뚫는 순간 그 간접 방어가 사라지므로 직접 방어를 함께 만들어야 한다.**
+
+### 결정 12 — 편집 가능한 열은 **세 개**
+
+```text
+✅ 직접 편집   단가(VAT포함) · 출고가 · 할인율      ← GAS 와 동일
+🚫 계산 전용   공급가액 · 부가세 · 합계 · 총계 · 수량
+```
+
+🚩 GAS 도 "금액 모두" 를 편집하진 않았다. 수량은 잠가 뒀다.
+
+### 결정 13 — 출고가는 **화면 계산 기준으로만** 쓴다
+
+`SlipLine` 에는 `quantity · unitPrice · lineTotal` 뿐이고 출고가·할인율 저장 필드가 없다.
+출고가는 `price_history`(그 날짜·그 품목의 정가 — 전표별 값이 아님), 할인율은 `1 − 실단가/출고가` 파생값이다.
+
+```text
+✅ 채택   출고가를 바꾸면 그 행의 할인율·단가가 다시 계산된다. 저장되는 것은 결과 단가
+❌ 기각   price_history 정가 수정  (같은 품목을 쓴 다른 전표·다른 날짜 검증까지 전부 영향)
+❌ 기각   전표 라인에 출고가 칸 추가  (마이그레이션 + 기존 전표 백필)
+```
+
+### 결정 10 보강 — 일괄 생성 API 는 지금 **0개**다
+
+```text
+매출  POST /admin/sales-slips      단건 1개
+매입  POST /admin/purchase-slips   단건 1개
+🔑 한 요청에 여러 원천 라인을 묶어 "회계전표 1건" 을 만드는 구조다
+   "선택한 전표 3건을 각각 3건으로" 는 지금 없다
+```
+
+### 🚩 정찰이 덤으로 찾은 것 (별건 · 백로그)
+
+```text
+① 매입 폼의 eligibility batch API 가 매출 권한을 요구한다
+   AccountingSlipLinkController.java:47
+     @RequirePermission(page = "accounting.sales-slip.accounting", VIEW)
+   ⟹ 매입 생성 권한만 있고 매출 VIEW 가 없는 사용자는 매입 폼에서 막힌다
+② 일마감 화면 VIEW 는 accounting.daily-closing 인데
+   상세 API 는 accounting.reports 다 — 권한이 갈린다
+③ 매입 컨트롤러에는 삭제 API 가 없다 (매출에는 있다)
+④ MonthEndCloseService 가 원천 전표번호를 findFirst() 로 하나만 반환한다
+```
