@@ -5,12 +5,10 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 import org.apache.poi.ss.usermodel.DataFormatter;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
@@ -45,7 +43,7 @@ public class InboundXlsxParser {
             List<String> headerSheets = new ArrayList<>();
             int keywordFiltered = 0;
             int deduplicated = 0;
-            Set<String> seen = new HashSet<>();
+            Map<String, Integer> globalUnpaired = new HashMap<>();
 
             for (Sheet sheet : workbook) {
                 if (sheet.getLastRowNum() + 1 < 6) {
@@ -57,6 +55,7 @@ public class InboundXlsxParser {
                     headerSheets.add(sheet.getSheetName());
                     continue;
                 }
+                Map<String, Integer> localCounts = new HashMap<>();
                 for (int rowIndex = 7; rowIndex <= sheet.getLastRowNum(); rowIndex++) {
                     Row row = sheet.getRow(rowIndex);
                     String[] values = new String[HEADERS.size()];
@@ -69,7 +68,9 @@ public class InboundXlsxParser {
                         continue;
                     }
                     String dedupKey = DEDUP_COLUMNS.stream().map(i -> values[i]).reduce((a, b) -> a + "|" + b).orElse("");
-                    if (!seen.add(dedupKey)) {
+                    int available = globalUnpaired.getOrDefault(dedupKey, 0);
+                    if (available > 0) {
+                        globalUnpaired.put(dedupKey, available - 1);
                         deduplicated++;
                         continue;
                     }
@@ -81,7 +82,9 @@ public class InboundXlsxParser {
                             values[3], values[4], values[5], values[6], values[7], values[8],
                             values[9].isBlank() ? "" : values[9].split(" ", 2)[0], values[10], warehouse,
                             quantity(values[5], values[3])));
+                    localCounts.merge(dedupKey, 1, Integer::sum);
                 }
+                localCounts.forEach((key, count) -> globalUnpaired.merge(key, count, Integer::sum));
             }
             return new ParseResult(rows, shortSheets, headerSheets, keywordFiltered, deduplicated);
         } catch (IOException | RuntimeException ex) {

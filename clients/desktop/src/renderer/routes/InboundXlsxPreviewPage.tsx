@@ -10,7 +10,7 @@ import { usePermissions } from '../hooks/usePermissions'
 
 type PreviewRow = InboundXlsxRow & InboundProductMapping
 
-/** 가입고 XLSX → 정제 결과표. 이 라운드에서는 전표 생성 API를 호출하지 않는다. */
+/** 가입고 XLSX → 정제 결과표와 확인된 DRAFT 생성 흐름을 제공한다. */
 export function InboundXlsxPreviewPage() {
   const navigate = useNavigate()
   const [preview, setPreview] = useState<InboundXlsxPreview | null>(null)
@@ -102,7 +102,7 @@ export function InboundXlsxPreviewPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16 }}>
         <div>
           <h1>가입고 XLSX 미리보기</h1>
-          <p>레거시 규칙으로 파싱한 결과를 확인합니다. 이 화면에서는 입고전표를 생성하지 않습니다.</p>
+          <p>레거시 규칙으로 파싱한 결과를 확인합니다. 검색실패 행을 확인한 뒤 입고전표 DRAFT를 생성할 수 있습니다.</p>
         </div>
         <button type="button" onClick={() => navigate('/purchases/new')}>입고전표 작성으로 돌아가기</button>
       </div>
