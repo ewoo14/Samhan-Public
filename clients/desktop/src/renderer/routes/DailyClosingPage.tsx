@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Badge,
@@ -26,6 +26,9 @@ import {
 import { searchPartners } from '../api/partnerApi'
 import {
   getDailyClosingDetail,
+  getDailyClosingRows,
+  updateDailyClosingAmount,
+  type DailyClosingSourceRow,
   type DailyProductLine,
   type DailyProductRevalidationStatus,
   type DailyTaxInvoiceRow,
@@ -341,6 +344,527 @@ function execPartnerDraftGuardMessage(typedDraft: string, confirmedLabel: string
   return "입력한 거래처가 아직 선택되지 않았습니다. 거래처를 목록에서 선택하거나 '해제' 버튼으로 거래처 선택을 지운 뒤 다시 실행하세요."
 }
 
+
+export const DAILY_CLOSING_HEADERS = ['DC','일자','번호','창고명','품목명','수량','단가(VAT포함)','공급가액','부가세','합계','거래처명','거래처코드','출고가','할인율','총계','확인','회계반영일자'] as const
+const LEGACY_MERGE_COLS = new Set(['DC','일자','번호','창고명','거래처명','거래처코드','회계반영일자'])
+const LEGACY_DISCOUNT_COLORS: Record<string,string> = {'dc-45':'#fecaca','dc-46':'#fed7aa','dc-47':'#fef08a','dc-48':'#d9f99d','dc-49':'#bfdbfe'}
+export function formatLegacyNumber(value: string|number|null|undefined): string { return Math.round(Number(value)||0).toLocaleString() }
+function legacyDiscountClass(rate:number): string { return rate>=45&&rate<=49 ? `dc-${rate}` : '' }
+function legacyStatusBadge(row: DailyClosingSourceRow) {
+  const variant = row.confirmation==='CONFIRMED'?'success':row.confirmation==='MISMATCH'?'danger':'neutral'
+  return <span style={{display:'grid',gap:3,justifyItems:'center'}}><Badge variant={variant}>{row.confirmation==='CONFIRMED'?'확인':row.confirmation==='MISMATCH'?'불일치':'판정불가'}</Badge>{row.confirmationReason?<span style={{color:'var(--ink-secondary)',fontSize:11}}>{row.confirmationReason}</span>:null}</span>
+}
+
+type EditableAmountField = 'unit' | 'rate' | 'price'
+
+interface EditableAmountValues {
+  unit: number
+  price: number
+  rate: number
+}
+
+interface CalculatedAmountValues extends EditableAmountValues {
+  supply: number
+  vat: number
+  total: number
+}
+
+function numericInputValue(value: string): number {
+  const parsed = Number(value.replace(/,/g, '').replace(/[^0-9.-]/g, ''))
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+function initialEditableAmounts(row: DailyClosingSourceRow): EditableAmountValues {
+  const rate = Number(row.discountRate ?? 0)
+  return {
+    unit: Number(row.unitPriceWithVat ?? 0),
+    price: Number(row.productPrice ?? 0),
+    rate: rate <= 1 ? rate * 100 : rate,
+  }
+}
+
+/** 레거시 recalcRow의 onchange 세 방향을 화면 값으로 옮긴다. */
+export function recalculateLegacyAmounts(
+  current: EditableAmountValues,
+  changedField: EditableAmountField,
+  rawValue: string,
+): CalculatedAmountValues {
+  const next = { ...current }
+  if (changedField === 'unit') {
+    next.unit = numericInputValue(rawValue)
+    next.rate = next.price ? (1 - next.unit / next.price) * 100 : 0
+  } else if (changedField === 'rate') {
+    next.rate = numericInputValue(rawValue)
+    next.unit = Math.round(next.price * (1 - next.rate / 100))
+  } else {
+    next.price = numericInputValue(rawValue)
+    next.rate = next.price ? (1 - next.unit / next.price) * 100 : 0
+  }
+
+  const supply = Math.round(next.unit / 1.1)
+  return {
+    ...next,
+    supply,
+    vat: next.unit - supply,
+    total: next.unit,
+  }
+}
+
+function amountEditDisabled(row: DailyClosingSourceRow): boolean {
+  return row.amountEditable === false || Boolean(row.accountingPostedAt)
+}
+
+function amountEditDisabledReason(row: DailyClosingSourceRow): string {
+  return row.amountEditBlockReason
+    ?? (row.accountingPostedAt
+      ? '회계전표가 이미 반영되어 금액을 수정할 수 없습니다.'
+      : '잠긴 마감일의 금액은 수정할 수 없습니다.')
+}
+
+function dailyClosingAmountDraftKey(row: DailyClosingSourceRow): string {
+  return dailyClosingRowIdentity(row)
+}
+
+/**
+ * 화면 상태는 전표가 아니라 원본행을 가리켜야 한다.
+ *
+ * 정상적인 일마감 API 응답은 SlipLine.id를 lineId로 전달한다. 구 배포본이나
+ * 테스트 fixture처럼 lineId가 없는 응답만 행 값 fingerprint로 방어한다. seqNo는
+ * 전표 번호라서 fallback의 유일 키로 사용할 수 없다.
+ */
+function dailyClosingRowIdentity(row: DailyClosingSourceRow, occurrence = 0): string {
+  if (row.lineId) return `line:${row.lineId}`
+  const fingerprint = [
+    row.slipId ?? 'unknown-slip',
+    row.slipDate,
+    row.seqNo,
+    row.productName,
+    row.quantity,
+    row.unitPriceWithVat ?? '',
+    row.productPrice ?? '',
+    row.grandTotal ?? '',
+  ].map((value) => String(value).split('|').join('%7C')).join('|')
+  return occurrence === 0 ? fingerprint : `${fingerprint}|duplicate:${occurrence}`
+}
+
+function LegacyAmountEditor({
+  row,
+  values,
+  error,
+  onChange,
+}: {
+  row: DailyClosingSourceRow
+  values: CalculatedAmountValues | null
+  error?: string
+  onChange: (values: CalculatedAmountValues) => void
+}) {
+  const disabled = amountEditDisabled(row)
+  const base = initialEditableAmounts(row)
+  const current = values ?? {
+    ...base,
+    supply: Number(row.supplyAmount ?? 0),
+    vat: Number(row.vatAmount ?? 0),
+    total: Number(row.total ?? 0),
+  }
+  const commit = (field: EditableAmountField, rawValue: string) => {
+    onChange(recalculateLegacyAmounts(current, field, rawValue))
+  }
+  const cell: CSSProperties = {
+    padding: '8px 6px',
+    border: '1px solid var(--line-default)',
+    verticalAlign: 'middle',
+    overflowWrap: 'anywhere',
+  }
+  const num: CSSProperties = { ...cell, textAlign: 'right' }
+  const amountInputStyle: CSSProperties = {
+    width: '100%',
+    minWidth: 0,
+    height: 28,
+    padding: 4,
+    border: '1px solid #3182ce',
+    borderRadius: 4,
+    textAlign: 'right',
+    fontSize: 12,
+    lineHeight: 'normal',
+    boxSizing: 'border-box',
+  }
+  const rateInputStyle: CSSProperties = {
+    width: 'auto',
+    flex: '1 1 auto',
+    minWidth: 0,
+    height: 28,
+    padding: 2,
+    border: '1px solid transparent',
+    background: 'transparent',
+    fontWeight: 700,
+    fontSize: 13,
+    textAlign: 'right',
+    boxSizing: 'border-box',
+  }
+  const input = (field: EditableAmountField, value: number, label: string) => (
+    <input
+      aria-label={label + ' ' + row.seqNo}
+      data-testid={'daily-closing-' + field + '-' + row.seqNo}
+      disabled={disabled}
+      value={formatLegacyNumber(value)}
+      onChange={(event) => commit(field, event.target.value)}
+      title={disabled ? amountEditDisabledReason(row) : undefined}
+      className={field === 'rate' ? 'edit-rate' : 'edit-input'}
+      style={field === 'rate' ? rateInputStyle : amountInputStyle}
+    />
+  )
+
+  return <>
+    <td style={num}>
+      {input('unit', current.unit, '단가(VAT포함)')}
+      {disabled ? <span title={amountEditDisabledReason(row)} style={{ marginLeft: 4, fontSize: 11 }}>수정 불가</span> : null}
+      {!disabled && values ? <span role="status" style={{ marginLeft: 4, fontSize: 11 }}>수정됨</span> : null}
+      {error ? <span role="alert" style={{ display: 'block', fontSize: 11 }}>{error}</span> : null}
+    </td>
+    <td style={num}>{values ? formatLegacyNumber(current.supply) : formatLegacyNumber(row.supplyAmount)}</td>
+    <td style={num}>{values ? formatLegacyNumber(current.vat) : formatLegacyNumber(row.vatAmount)}</td>
+    <td style={num}>{values ? formatLegacyNumber(current.total * row.quantity) : formatLegacyNumber(row.total)}</td>
+    <td style={num}>{input('price', current.price, '출고가')}</td>
+    <td className={legacyDiscountClass(Math.round(current.rate))} style={{ ...num, background: LEGACY_DISCOUNT_COLORS[legacyDiscountClass(Math.round(current.rate))] }}>
+      <div style={{ display: 'inline-flex', width: '100%', alignItems: 'center', justifyContent: 'center' }}>
+        {input('rate', current.rate, '할인율')}
+        <span style={{ marginLeft: 2 }}>%</span>
+      </div>
+    </td>
+    <td style={num}>{values ? formatLegacyNumber(current.total * row.quantity) : formatLegacyNumber(row.grandTotal)}</td>
+  </>
+}
+
+function EditableLegacyDailyClosingTable({
+  slipDate,
+  tab,
+  active,
+  registerSave,
+}: {
+  slipDate: string
+  tab: 'RESULT' | 'PRE_ISSUED'
+  active: boolean
+  registerSave: (save: (() => void) | null, dirtyCount: number) => void
+}) {
+  const [expanded, setExpanded] = useState<string | null>(null)
+  const [drafts, setDrafts] = useState<Record<string, CalculatedAmountValues>>({})
+  const [committedValues, setCommittedValues] = useState<Record<string, CalculatedAmountValues>>({})
+  const [rowErrors, setRowErrors] = useState<Record<string, string>>({})
+  const saveRef = useRef<() => void>(() => undefined)
+  const previousSlipDate = useRef(slipDate)
+  const query = useQuery({
+    queryKey: ['daily-closing-source-rows', slipDate],
+    queryFn: () => getDailyClosingRows(slipDate),
+  })
+  const rows = Array.isArray(query.data) ? query.data : []
+  const rowKeys = useMemo(() => {
+    const occurrences = new Map<string, number>()
+    return new Map(rows.map((row) => {
+      const base = dailyClosingRowIdentity(row)
+      const occurrence = occurrences.get(base) ?? 0
+      occurrences.set(base, occurrence + 1)
+      return [row, dailyClosingRowIdentity(row, occurrence)] as const
+    }))
+  }, [rows])
+  const rowKey = (row: DailyClosingSourceRow) => rowKeys.get(row) ?? dailyClosingAmountDraftKey(row)
+  const dirtyRows = rows.filter((row) => drafts[rowKey(row)] !== undefined)
+  const dirtySlipIds = new Set(dirtyRows.map((row) => row.slipId).filter((id): id is string => Boolean(id)))
+  const saveRows = rows.filter((row) => row.slipId && dirtySlipIds.has(row.slipId))
+  const saveMetadataIssue = dirtyRows.find((row) => !row.slipId || !row.lineId || !row.updatedAt)
+    ?? saveRows.find((row) => !row.slipId || !row.lineId || !row.updatedAt)
+  const saveBlockReason = saveMetadataIssue
+    ? `번호 ${saveMetadataIssue.seqNo}: 저장할 식별자(slipId·lineId·updatedAt)가 없어 최신 조회가 필요합니다.`
+    : null
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const groups = Array.from(new Set(saveRows.map((row) => row.slipId)))
+        .map((slipId) => saveRows.filter((row) => row.slipId === slipId))
+      const results = await Promise.allSettled(groups.map((group) => {
+        const first = group[0]!
+        return updateDailyClosingAmount(first.slipId!, first.updatedAt!, group.map((row) => {
+          const edited = drafts[rowKey(row)]
+          const values = edited ?? initialEditableAmounts(row)
+          return {
+            lineId: row.lineId!,
+            unitPriceWithVat: values.unit,
+            releasePrice: values.price,
+            discountRate: values.price ? 1 - values.unit / values.price : 0,
+          }
+        }))
+      }))
+      return groups.map((group, index) => ({ rows: group, result: results[index]! }))
+    },
+    onSuccess: (results) => {
+      const errors: Record<string, string> = {}
+      const savedKeys = new Set<string>()
+      const savedValues: Record<string, CalculatedAmountValues> = {}
+      results.forEach(({ rows: group, result }) => {
+        if (result.status === 'fulfilled') {
+          group.forEach((row) => {
+            const rowKeyValue = rowKey(row)
+            if (drafts[rowKeyValue] !== undefined) {
+              savedKeys.add(rowKeyValue)
+              savedValues[rowKeyValue] = drafts[rowKeyValue]!
+            }
+          })
+        } else {
+          const status = (result.reason as { response?: { status?: number } })?.response?.status
+          group.forEach((row) => {
+            const rowKeyValue = rowKey(row)
+            if (drafts[rowKeyValue] !== undefined) {
+              errors[rowKeyValue] = status === 409
+                ? `번호 ${row.seqNo}: 다른 사람이 먼저 고쳤습니다. 최신 값을 다시 조회해 주세요.`
+                : `번호 ${row.seqNo}: 금액을 저장하지 못했습니다.`
+            }
+          })
+        }
+      })
+      setRowErrors(errors)
+      setCommittedValues((current) => ({ ...current, ...savedValues }))
+      setDrafts((current) => Object.fromEntries(
+        Object.entries(current).filter(([key]) => !savedKeys.has(key)),
+      ))
+    },
+  })
+  saveRef.current = () => {
+    if (saveBlockReason) return
+    saveMutation.mutate()
+  }
+  useEffect(() => {
+    registerSave(dirtyRows.length > 0 && !saveBlockReason ? () => saveRef.current() : null, dirtyRows.length)
+  }, [dirtyRows.length, registerSave, saveBlockReason])
+  useEffect(() => {
+    if (previousSlipDate.current !== slipDate) {
+      previousSlipDate.current = slipDate
+      setDrafts({})
+      setCommittedValues({})
+      setRowErrors({})
+    }
+  }, [slipDate])
+  const changeDraft = (row: DailyClosingSourceRow, values: CalculatedAmountValues) => {
+    const key = rowKey(row)
+    setDrafts((current) => ({ ...current, [key]: values }))
+    setRowErrors((current) => {
+      if (!current[key]) return current
+      const next = { ...current }
+      delete next[key]
+      return next
+    })
+  }
+  const visible = useMemo(
+    () => rows.filter((row) => tab === 'RESULT'
+      ? Boolean(row.accountingPostedAt)
+      : !row.accountingPostedAt),
+    [rows, tab],
+  )
+  const expandedGroupKey = expanded === null ? null : (() => {
+    const row = visible.find((candidate) => rowKey(candidate) === expanded)
+    return row ? row.slipDate + '_' + row.seqNo : null
+  })()
+  const merges = useMemo(() => visible.map((row, index) => {
+    const key = row.slipDate + '_' + row.seqNo
+    const previous = visible[index - 1]
+    if (index > 0 && previous && key === previous.slipDate + '_' + previous.seqNo) {
+      return { start: false, span: 0 }
+    }
+    let span = 1
+    while (index + span < visible.length
+      && visible[index + span]!.slipDate + '_' + visible[index + span]!.seqNo === key) span += 1
+    if (expandedGroupKey === key) span += 1
+    return { start: true, span }
+  }), [expandedGroupKey, visible])
+  const mergedCell = (
+    value: ReactNode,
+    column: string,
+    style: CSSProperties,
+    merge: { start: boolean; span: number },
+  ) => LEGACY_MERGE_COLS.has(column) && !merge.start
+    ? null
+    : <td rowSpan={LEGACY_MERGE_COLS.has(column) ? merge.span : undefined} style={style}>{value}</td>
+  const cell: CSSProperties = {
+    padding: '8px 6px',
+    border: '1px solid var(--line-default)',
+    verticalAlign: 'middle',
+    overflowWrap: 'anywhere',
+  }
+  const num: CSSProperties = { ...cell, textAlign: 'right' }
+  const subtotalCell: CSSProperties = { ...cell, fontWeight: 700, backgroundColor: '#ebf8ff' }
+  const subtotalNum: CSSProperties = { ...num, fontWeight: 700, backgroundColor: '#ebf8ff' }
+  const totalCell: CSSProperties = { ...cell, fontWeight: 700, backgroundColor: '#e2e8f0' }
+  const totalNum: CSSProperties = { ...num, fontWeight: 700, backgroundColor: '#e2e8f0' }
+  const effectiveAmount = (row: DailyClosingSourceRow) => {
+    const key = rowKey(row)
+    const edited = drafts[key] ?? committedValues[key]
+    return edited
+      ? { quantity: row.quantity, unit: edited.unit, supply: edited.supply, vat: edited.vat, total: edited.total * row.quantity, price: edited.price, rate: edited.rate, grand: edited.total * row.quantity }
+      : {
+        quantity: row.quantity,
+        unit: Number(row.unitPriceWithVat ?? 0),
+        supply: Number(row.supplyAmount ?? 0),
+        vat: Number(row.vatAmount ?? 0),
+        total: Number(row.total ?? 0),
+        price: Number(row.productPrice ?? 0),
+        rate: Number(row.discountRate ?? 0),
+        grand: Number(row.grandTotal ?? 0),
+      }
+  }
+  const amountSummary = (summaryRows: DailyClosingSourceRow[]) => summaryRows.reduce((sum, row) => {
+    const amount = effectiveAmount(row)
+    return {
+      quantity: sum.quantity + amount.quantity,
+      unit: sum.unit + amount.unit,
+      supply: sum.supply + amount.supply,
+      vat: sum.vat + amount.vat,
+      total: sum.total + amount.total,
+      price: sum.price + amount.price,
+      rate: sum.rate + amount.rate,
+      grand: sum.grand + amount.grand,
+    }
+  }, { quantity: 0, unit: 0, supply: 0, vat: 0, total: 0, price: 0, rate: 0, grand: 0 })
+  const summaryRow = (
+    testId: string,
+    label: string,
+    summaryRows: DailyClosingSourceRow[],
+    summaryStyle: CSSProperties,
+    summaryNumStyle: CSSProperties,
+  ) => {
+    const summary = amountSummary(summaryRows)
+    return <tr data-testid={testId} style={{ backgroundColor: summaryStyle.backgroundColor }}>
+      <th colSpan={5} style={{ ...summaryStyle, textAlign: 'center', verticalAlign: 'middle' }}>{label}</th>
+      <th style={summaryNumStyle}>{formatLegacyNumber(summary.quantity)}</th>
+      <th style={summaryNumStyle}>{formatLegacyNumber(summary.unit)}</th>
+      <th style={summaryNumStyle}>{formatLegacyNumber(summary.supply)}</th>
+      <th style={summaryNumStyle}>{formatLegacyNumber(summary.vat)}</th>
+      <th style={summaryNumStyle}>{formatLegacyNumber(summary.total)}</th>
+      <th colSpan={2} style={summaryStyle} />
+      <th style={summaryNumStyle}>{formatLegacyNumber(summary.price)}</th>
+      <th style={summaryNumStyle}>{formatLegacyNumber(summary.rate)}</th>
+      <th style={summaryNumStyle}>{formatLegacyNumber(summary.grand)}</th>
+      <th style={summaryStyle} />
+      <th style={summaryStyle} />
+    </tr>
+  }
+
+  return <div style={{ display: active ? undefined : 'none' }}>
+    <Card style={{ marginBottom: 16 }}>
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+        <h3 style={{ margin: 0 }}>출고전표 원본행</h3>
+        <span style={{ color: 'var(--ink-secondary)', fontSize: 12 }}>출고일 {slipDate}</span>
+      </div>
+      {query.isError ? <div role="alert" className="error-banner">출고전표 원본행을 불러오지 못했습니다.</div> : (
+        <div
+          data-testid={query.isLoading || !active ? undefined : 'daily-closing-table'}
+          className="daily-closing-table-wrapper"
+          style={{ maxHeight: 'calc(100vh - 250px)', overflowY: 'auto', overflowX: 'auto' }}
+        >
+          <table style={{ width: '100%', minWidth: 1680, borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: 12 }}>
+            <colgroup>{DAILY_CLOSING_HEADERS.map((header) => <col key={header} />)}</colgroup>
+            <thead><tr data-testid="daily-closing-columns">
+              {DAILY_CLOSING_HEADERS.map((header) => (
+                <th
+                  key={header}
+                  style={{
+                    ...cell,
+                    position: 'sticky',
+                    top: -1,
+                    zIndex: 2,
+                    background: 'var(--surface-subtle)',
+                    fontWeight: 700,
+                  }}
+                >
+                  {header}
+                </th>
+              ))}
+            </tr></thead>
+            <tbody>
+              {visible.map((row, index) => {
+                const merge = merges[index]!
+                const rowIdentity = rowKey(row)
+                const expandedRow = expanded === rowIdentity
+                const groupKey = row.slipDate + '_' + row.seqNo
+                const nextRow = visible[index + 1]
+                const isGroupEnd = !nextRow || groupKey !== nextRow.slipDate + '_' + nextRow.seqNo
+                const groupStart = (() => {
+                  let start = index
+                  while (start > 0) {
+                    const previous = visible[start - 1]!
+                    if (previous.slipDate + '_' + previous.seqNo !== groupKey) break
+                    start -= 1
+                  }
+                  return start
+                })()
+                return <Fragment key={rowIdentity}>
+                  <tr>
+                    {mergedCell(row.dcCondition || '', 'DC', cell, merge)}
+                    {mergedCell(row.slipDate, '일자', cell, merge)}
+                    {mergedCell(formatLegacyNumber(row.seqNo), '번호', num, merge)}
+                    {mergedCell(row.warehouseName || '', '창고명', cell, merge)}
+                    <td style={cell}>
+                      <div>{row.productName}</div>
+                      <button
+                        type="button"
+                        aria-label={(expandedRow ? '상세 접기' : '상세 펼치기') + ' ' + row.seqNo}
+                        onClick={() => setExpanded(expandedRow ? null : rowIdentity)}
+                        style={{ border: 0, padding: 0, background: 'transparent', color: 'var(--ink-link)', cursor: 'pointer' }}
+                      >
+                        {expandedRow ? '상세 접기' : '상세 펼치기'}
+                      </button>
+                    </td>
+                    <td style={num}>{formatLegacyNumber(row.quantity)}</td>
+                    <LegacyAmountEditor
+                      row={row}
+                      values={drafts[rowKey(row)]
+                        ?? committedValues[rowKey(row)]
+                        ?? null}
+                      error={rowErrors[rowKey(row)]}
+                      onChange={(values) => changeDraft(row, values)}
+                    />
+                    {mergedCell(row.partnerName || '', '거래처명', cell, merge)}
+                    {mergedCell(row.partnerCode || '', '거래처코드', cell, merge)}
+                    <td style={cell}>{legacyStatusBadge(row)}</td>
+                    {mergedCell(
+                      row.accountingPostedAt ? row.accountingPostedAt.replace('T', ' ').slice(0, 16) : '',
+                      '회계반영일자',
+                      cell,
+                      merge,
+                    )}
+                  </tr>
+                  {expandedRow ? <tr data-testid={'daily-closing-expanded-' + row.seqNo}>
+                    <td colSpan={6} style={{ ...cell, background: 'var(--surface-subtle)' }}>
+                      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 12 }}>
+                        <span><strong>모델</strong> {row.modelName || '0'}</span>
+                        <span><strong>카테고리</strong> {row.categoryKey || '0'}</span>
+                        <span><strong>기준 납품가</strong> {formatLegacyNumber(row.deliveryPrice)}</span>
+                        <span><strong>기대율</strong> {formatLegacyNumber(row.expectedRate)}%</span>
+                        <span><strong>DC액</strong> {formatLegacyNumber(row.dcAmount)}</span>
+                        <span><strong>확인 사유</strong> {row.confirmationReason || '0'}</span>
+                      </div>
+                    </td>
+                    <td colSpan={4} style={{ ...cell, background: 'var(--surface-subtle)' }} />
+                  </tr> : null}
+                  {isGroupEnd ? summaryRow(
+                    'daily-closing-subtotal-row',
+                    '소계',
+                    visible.slice(groupStart, index + 1),
+                    subtotalCell,
+                    subtotalNum,
+                  ) : null}
+                </Fragment>
+              })}
+              {visible.length === 0 ? <tr><td colSpan={17} style={{ ...cell, textAlign: 'center', padding: 24 }}>
+                해당 탭의 원본행이 없습니다.
+              </td></tr> : null}
+            </tbody>
+            <tfoot>{summaryRow('daily-closing-total-row', '합계', visible, totalCell, totalNum)}</tfoot>
+          </table>
+        </div>
+      )}
+    </div>
+    </Card>
+  </div>
+}
+
 export function DailyClosingPage() {
   // [C5 후속 사이클2 D2-FE-001] role 문자열 직접 판정 제거 — BE @RequirePermission 과 1:1 page-code 판정.
   // 실행 = accounting.daily-closing.run CREATE / 잠금 해제(역마감) = accounting.daily-closing.unlock UPDATE.
@@ -351,7 +875,12 @@ export function DailyClosingPage() {
 
   usePageTitle('일마감')
 
-  const [filterDate, setFilterDate] = useState(today())
+  // 출고 원본행 표와 마감 이력은 같은 업무 기준일을 보여준다.
+  const [filterDate, setFilterDate] = useState('2026-08-14')
+  const [viewTab, setViewTab] = useState<'RESULT' | 'PRE_ISSUED' | 'HISTORY' | 'DETAIL'>('RESULT')
+  const [showExecutionPanel, setShowExecutionPanel] = useState(false)
+  const [saveAllAction, setSaveAllAction] = useState<(() => void) | null>(null)
+  const [unsavedAmountCount, setUnsavedAmountCount] = useState(0)
   const [partnerCode, setPartnerCode] = useState('')
   const [closingKind, setClosingKind] = useState<ClosingKindFilter>('SALES')
   const [sourceKind, setSourceKind] = useState<DailyClosingSourceKind>('TAX_INVOICE')
@@ -551,6 +1080,7 @@ export function DailyClosingPage() {
     setFilterDate(row.closingDate)
     setClosingKind(row.closingKind)
     setSourceKind(row.sourceKind)
+    setViewTab('DETAIL')
     window.setTimeout(() => {
       // preventScroll:true — focus() 기본값(false)이 scrollIntoView 보다 먼저 즉시
       // 스크롤을 일으켜 뒤이은 smooth 애니메이션을 무의미하게 만드는 동일 결함이
@@ -757,10 +1287,138 @@ export function DailyClosingPage() {
   const execSourceButtons = availableSources(execKind)
   const showProductRevalidation = closingKind !== 'ALL'
 
+  const resetFilters = () => {
+    if (unsavedAmountCount > 0 && !window.confirm('저장하지 않은 금액 수정이 있습니다. 필터를 초기화하시겠습니까?')) return
+    setFilterDate('2026-08-14')
+    setPartnerCode('')
+    setClosingKind('SALES')
+    setSourceKind('TAX_INVOICE')
+    clearSelectedDetail()
+    setViewTab('RESULT')
+  }
+
+  const visibleSourceTab = viewTab === 'PRE_ISSUED' ? 'PRE_ISSUED' : 'RESULT'
+  const guardUnsavedAmount = () => unsavedAmountCount === 0
+    || window.confirm('저장하지 않은 금액 수정이 있습니다. 이동하시겠습니까?')
+  const registerAmountSave = useCallback((save: (() => void) | null, dirtyCount: number) => {
+    setSaveAllAction(() => save)
+    setUnsavedAmountCount(dirtyCount)
+  }, [])
+
   return (
     <div data-testid="daily-closing-page">
-      <Card style={{ marginBottom: 16 }}>
-        <h3 style={{ margin: '0 0 12px' }}>일마감 조회</h3>
+      <header data-testid="daily-closing-header" style={{ marginBottom: 12 }}>
+        <h2 style={{ margin: 0 }}>삼한공조시스템 일마감 프로그램</h2>
+      </header>
+      <nav
+        aria-label="일마감 메뉴"
+        data-testid="daily-closing-nav"
+        style={{ display: 'flex', gap: 4, overflowX: 'auto', borderBottom: '1px solid var(--line-default)', marginBottom: 8 }}
+      >
+        {([
+          ['RESULT', '결과'],
+          ['PRE_ISSUED', '선발행'],
+          ['HISTORY', '마감이력'],
+          ['DETAIL', '상세'],
+        ] as const).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            role="tab"
+            aria-selected={viewTab === key}
+            data-testid={'daily-closing-tab-' + key.toLowerCase()}
+            onClick={() => { if (guardUnsavedAmount()) setViewTab(key) }}
+            style={{
+              height: 36,
+              padding: '0 14px',
+              border: 0,
+              borderBottom: viewTab === key ? '3px solid var(--ink-link)' : '3px solid transparent',
+              background: 'transparent',
+              cursor: 'pointer',
+              fontWeight: viewTab === key ? 700 : 400,
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
+      <div
+        data-testid="daily-closing-action-row"
+        style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12, padding: '8px 0' }}
+      >
+        <label>
+          대상일&nbsp;
+          <input
+            type="date"
+            value={filterDate}
+            onChange={(e) => {
+              if (!guardUnsavedAmount()) return
+              setFilterDate(e.target.value)
+              clearSelectedDetail()
+            }}
+            data-testid="daily-closing-filter-date"
+            style={inputStyle}
+          />
+        </label>
+        <Button type="button" variant="ghost" data-testid="daily-closing-filter-reset" onClick={resetFilters}>
+          필터초기화
+        </Button>
+        <Button
+          type="button"
+          variant="primary"
+          data-testid="daily-closing-exec-button"
+          onClick={() => setShowExecutionPanel(true)}
+          disabled={!canExecute}
+          aria-describedby={!canExecute
+            ? 'daily-closing-exec-permission-hint'
+            : execScopeMode === null ? SCOPE_HINT_ID : undefined}
+          title={!canExecute ? '마감 실행 권한이 없습니다.' : undefined}
+        >
+          {closeMutation.isPending ? '처리 중' : '마감 실행'}
+        </Button>
+        {!canExecute ? (
+          <span
+            id="daily-closing-exec-permission-hint"
+            role="status"
+            style={{ color: 'var(--color-danger-700)', fontSize: 12 }}
+          >
+            마감 실행 권한이 없습니다. 권한 보유자에게 요청하세요.
+          </span>
+        ) : null}
+        <Button
+          type="button"
+          variant="ghost"
+          data-testid="daily-closing-reverse-action"
+          disabled={!canReverse || !selectedDetailRow || reverseMutation.isPending}
+          onClick={() => { if (selectedDetailRow) setReverseConfirmRow(selectedDetailRow) }}
+        >
+          역마감
+        </Button>
+        <Button
+          type="button"
+          variant="primary"
+          data-testid="daily-closing-save-all"
+          disabled={!saveAllAction || unsavedAmountCount === 0}
+          onClick={() => saveAllAction?.()}
+        >
+          내역저장{unsavedAmountCount > 0 ? ` (${unsavedAmountCount})` : ''}
+        </Button>
+        {unsavedAmountCount > 0 ? <span role="status">저장되지 않은 금액 수정 {unsavedAmountCount}건</span> : null}
+        {unsavedAmountCount > 0 && !saveAllAction ? (
+          <span role="alert">저장할 식별자가 없어 저장할 수 없습니다. 최신 조회 후 다시 편집하세요.</span>
+        ) : null}
+        <span style={{ color: 'var(--ink-secondary)', fontSize: 12 }}>조회일 {filterDate}</span>
+      <div data-testid="daily-closing-exec-controls" style={{ display: 'none' }} aria-hidden="true">
+        <input
+          type="date"
+          value={execDate}
+          onChange={(e) => setExecDate(e.target.value)}
+          data-testid="daily-closing-exec-date"
+          tabIndex={-1}
+        />
+      </div>
+      <div style={{ display: 'none' }}>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
           <label>
             대상일&nbsp;
@@ -771,7 +1429,7 @@ export function DailyClosingPage() {
               // 보겠다"는 명시적 의도 — 이전 상세 선택(스냅샷 포함)을 지운다(S4 원래
               // 보장: stale 요약이 남지 않는다).
               onChange={(e) => { setFilterDate(e.target.value); clearSelectedDetail() }}
-              data-testid="daily-closing-filter-date"
+              data-testid="daily-closing-legacy-filter-date"
               style={inputStyle}
             />
           </label>
@@ -830,10 +1488,13 @@ export function DailyClosingPage() {
             </div>
           ) : null}
         </div>
-      </Card>
+        </div>
 
-      <Card style={{ marginBottom: 16 }}>
-        <h3 style={{ margin: '0 0 12px' }}>일마감 실행</h3>
+      {showExecutionPanel ? <Card style={{ marginBottom: 16 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h3 style={{ margin: '0 0 12px' }}>일마감 실행</h3>
+          <Button type="button" variant="ghost" size="sm" onClick={() => setShowExecutionPanel(false)}>닫기</Button>
+        </div>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
           <input
             type="date"
@@ -969,7 +1630,7 @@ export function DailyClosingPage() {
           />
           <Button
             variant="primary"
-            data-testid="daily-closing-exec-button"
+            data-testid="daily-closing-exec-submit"
             onClick={handleExecuteClosing}
             disabled={!canExecute || closeMutation.isPending || !execDate || execScopeMode === null}
             aria-describedby={execScopeMode === null ? SCOPE_HINT_ID : undefined}
@@ -1008,14 +1669,22 @@ export function DailyClosingPage() {
             일마감 실행 권한이 없습니다 — 일마감 실행 권한 보유자만 가능합니다.
           </p>
         ) : null}
-        {closeMutation.isError ? (
+      {closeMutation.isError ? (
           <div className="error-banner" role="alert" style={{ marginTop: 8 }}>
             일마감 실행에 실패했습니다.
           </div>
         ) : null}
-      </Card>
+      </Card> : null}
+      </div>
 
-      <Card style={{ marginBottom: 16 }}>
+      <EditableLegacyDailyClosingTable
+        slipDate={filterDate}
+        tab={visibleSourceTab}
+        active={viewTab === 'RESULT' || viewTab === 'PRE_ISSUED'}
+        registerSave={registerAmountSave}
+      />
+
+      {viewTab === 'HISTORY' ? <Card style={{ marginBottom: 16 }}>
         <h3 style={{ margin: '0 0 12px' }}>마감 이력</h3>
         {listQuery.isLoading ? (
           <div style={{ display: 'grid', placeItems: 'center', minHeight: 140 }}>
@@ -1061,9 +1730,9 @@ export function DailyClosingPage() {
             </button>
           </div>
         ) : null}
-      </Card>
+      </Card> : null}
 
-      <Card>
+      {viewTab === 'DETAIL' ? <Card>
         <div
           id="daily-closing-detail"
           ref={detailCardRef}
@@ -1171,7 +1840,7 @@ export function DailyClosingPage() {
           </>
         )}
         </div>
-      </Card>
+      </Card> : null}
 
       <Modal
         open={reverseConfirmRow !== null}
