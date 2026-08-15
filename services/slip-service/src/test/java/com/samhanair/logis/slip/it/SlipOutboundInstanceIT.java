@@ -140,7 +140,7 @@ class SlipOutboundInstanceIT extends AbstractPostgresIT {
                 .andExpect(status().isOk());
 
         verify(inventoryClient, times(1))
-                .shipInstances(anyString(), eq("AC-S3-SLIP"), eq("P-S3-SLIP"), eq(null),
+                .shipInstances(anyString(), eq("AC-S3-SLIP"), eq(null), eq(null),
                         any(SourceOperationContext.class));
         verify(inventoryClient, times(1))
                 .deduct(eq(batchProductId), eq(sourceWarehouseId), eq(4), eq(true),

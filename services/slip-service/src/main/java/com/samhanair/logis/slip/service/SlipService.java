@@ -313,7 +313,8 @@ public class SlipService {
         //    로 구성품 라인 N개 전개(견적 경로와 동일 단일 엔진), 아니면 1 라인.
         // OUTBOUND/INBOUND 모두 partnerId를 partner-service의 업무 식별자 partnerCode로 snapshot한다.
         // lookup 실패는 기존 전표 생성 계약대로 빈 코드만 남기고 저장을 막지 않는다.
-        String resolvedPartnerCode = req.partnerCode() != null && !req.partnerCode().isBlank()
+        String resolvedPartnerCode = req.slipType() == SlipType.INBOUND
+                && req.partnerCode() != null && !req.partnerCode().isBlank()
                 ? req.partnerCode().trim()
                 : partnerInternalClient.resolvePartnerCode(req.partnerId()).orElse(null);
         // 단가는 화면이 DC/최근단가/사용자 협의가를 반영해 확정한 값을 정본으로 사용한다.
