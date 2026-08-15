@@ -85,8 +85,10 @@ async function selectWarehouseAutocomplete(
 
 /** 같은 거래처 DRAFT 2건 병합 발행을 완료한다(성공 토스트까지). */
 async function performMerge(page: Page): Promise<void> {
-  await expect(page.getByTestId('merge-convert-open')).toBeEnabled({ timeout: 5_000 })
-  await page.getByTestId('merge-convert-open').click()
+  await expect(page.getByTestId('order-convert-open')).toBeEnabled({ timeout: 5_000 })
+  await page.getByTestId('order-convert-open').click()
+  await expect(page.getByTestId('individual-convert-choice-buttons')).toBeVisible({ timeout: 10_000 })
+  await page.getByTestId('merge-convert-action').click()
   await expect(page.getByTestId('merge-convert-dialog-body')).toBeVisible({ timeout: 10_000 })
 
   const partnerInput = page.getByTestId('merge-convert-partner-search')

@@ -26,6 +26,8 @@ interface IndividualConvertDialogProps {
   onMerge: () => void
   onCompleted: (results: IndividualConversionResult[]) => void
   mergeError?: string | null
+  mergeDisabled?: boolean
+  mergeDisabledReason?: string
 }
 
 const SELECTABLE_STATUSES = new Set<PartnerOrderSummary['status']>(['DRAFT', 'ON_HOLD'])
@@ -36,6 +38,8 @@ export function IndividualConvertDialog({
   onMerge,
   onCompleted,
   mergeError,
+  mergeDisabled = false,
+  mergeDisabledReason,
 }: IndividualConvertDialogProps) {
   const [selectedWarehouse, setSelectedWarehouse] = useState<Warehouse | null>(null)
   const [running, setRunning] = useState(false)
@@ -149,12 +153,18 @@ export function IndividualConvertDialog({
               type="button"
               variant="secondary"
               data-testid="merge-convert-action"
-              disabled={running || selectedOrders.length === 0}
+              disabled={running || mergeDisabled}
+              title={mergeDisabled ? mergeDisabledReason : undefined}
               onClick={onMerge}
               style={{ width: '100%', minHeight: 64, fontSize: 20 }}
             >
               병합전환
             </Button>
+            {mergeDisabled && mergeDisabledReason ? (
+              <span role="alert" data-testid="individual-convert-merge-permission-hint">
+                {mergeDisabledReason}
+              </span>
+            ) : null}
           </div>
           </>
         ) : (

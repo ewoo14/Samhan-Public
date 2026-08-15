@@ -646,8 +646,7 @@ export function SalesPartnerOrderListPage() {
         ) : null}
 
         {/* 목록 선택 후 개별/병합 경로를 고른다. */}
-        {canCreateMerge ? (
-          <div
+        <div
             data-testid="merge-convert-action-bar"
             role="region"
             aria-label="선택 주문 출고전표 전환"
@@ -668,20 +667,23 @@ export function SalesPartnerOrderListPage() {
               type="button"
               variant="primary"
               data-testid="order-convert-open"
-              title={canCreateMerge ? '선택한 주문을 출고전표로 전환합니다' : '출고전표 전환 권한이 필요합니다'}
-              disabled={!canCreateMerge || selectedMergeOrders.length === 0}
-              aria-disabled={!canCreateMerge || selectedMergeOrders.length === 0}
+              title={!canCreateMerge ? '출고전표 전환 권한이 필요합니다' : '선택한 주문을 출고전표로 전환합니다'}
+              disabled={!canCreateMerge}
+              aria-disabled={!canCreateMerge}
               onClick={() => setIndividualDialogOpen(true)}
             >
               출고전표 전환
             </Button>
-            {!canSearchPartners ? (
+            {!canCreateMerge ? (
+              <span role="alert" data-testid="merge-convert-permission-hint">
+                출고전표 전환 권한이 필요합니다.
+              </span>
+            ) : !canSearchPartners ? (
               <span role="alert" data-testid="merge-convert-permission-hint">
                 거래처 검색 권한이 필요합니다. 관리자에게 partners.search VIEW 권한을 요청해 주세요.
               </span>
             ) : null}
-          </div>
-        ) : null}
+        </div>
 
         {query.isLoading ? (
           <div className={styles['emptyState']}>주문 목록을 불러오는 중…</div>
@@ -754,6 +756,8 @@ export function SalesPartnerOrderListPage() {
           onMerge={handleMergeChoice}
           onCompleted={(results) => void handleIndividualCompleted(results)}
           mergeError={mergeSelectionError}
+          mergeDisabled={!canSearchPartners}
+          mergeDisabledReason="거래처 검색 권한이 필요합니다. 관리자에게 partners.search VIEW 권한을 요청해 주세요."
         />
       ) : null}
     </div>
