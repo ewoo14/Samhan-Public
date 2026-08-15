@@ -434,9 +434,12 @@ describe('SalesPartnerOrderListPage merge selection', () => {
     expect(mocks.dataTableRowClick).not.toHaveBeenCalled()
   })
 
-  it('requires at least one selected order before opening conversion choices', async () => {
+  it('opens conversion choices without preselection for partner-first merge flow', async () => {
     renderPage()
-    expect((await screen.findByTestId('order-convert-open') as HTMLButtonElement).disabled).toBe(true)
+    const openButton = await screen.findByTestId('order-convert-open') as HTMLButtonElement
+    expect(openButton.disabled).toBe(false)
+    fireEvent.click(openButton)
+    expect(screen.getByTestId('test-individual-dialog')).toBeTruthy()
   })
 })
 

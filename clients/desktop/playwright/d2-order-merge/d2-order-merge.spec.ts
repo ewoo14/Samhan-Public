@@ -164,12 +164,7 @@ test.describe('#825 슬7 주문 병합 거래처 우선 선택', () => {
     await gotoListAndWait(page, `&mockPerms=${encodeURIComponent(perms)}`)
 
     const openButton = page.getByTestId('order-convert-open')
-    await page.getByTestId('partner-order-select-2026/05/04-1').check()
-    await expect(openButton).toBeEnabled({ timeout: 10_000 })
-    await openButton.click()
-    const mergeButton = page.getByTestId('merge-convert-action')
-    await expect(mergeButton).toBeDisabled()
-    await expect(page.getByTestId('individual-convert-merge-permission-hint')).toContainText('partners.search VIEW')
+    await expect(openButton).toBeDisabled({ timeout: 10_000 })
     await expect(page.getByTestId('merge-convert-permission-hint')).toContainText('partners.search VIEW')
   })
 

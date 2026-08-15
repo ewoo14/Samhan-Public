@@ -667,9 +667,9 @@ export function SalesPartnerOrderListPage() {
               type="button"
               variant="primary"
               data-testid="order-convert-open"
-              title={!canCreateMerge ? '출고전표 전환 권한이 필요합니다' : '선택한 주문을 출고전표로 전환합니다'}
-              disabled={!canCreateMerge}
-              aria-disabled={!canCreateMerge}
+              title={!canCreateMerge ? '출고전표 전환 권한이 필요합니다' : !canSearchPartners ? '거래처 검색 권한이 필요합니다' : '선택한 주문을 출고전표로 전환합니다'}
+              disabled={!canCreateMerge || !canSearchPartners}
+              aria-disabled={!canCreateMerge || !canSearchPartners}
               onClick={() => setIndividualDialogOpen(true)}
             >
               출고전표 전환
