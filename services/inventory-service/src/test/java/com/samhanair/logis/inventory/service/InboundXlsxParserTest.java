@@ -21,7 +21,8 @@ class InboundXlsxParserTest {
                         row("NO","고객명","모델","주문","물류출고","주문번호"),
                         row("","","","","",""),
                         row("1","삼성창고","ABC GHP [옵션] (메모)","2","3.6","O-1"),
-                        row("2","삼성창고","1WAY-ABC","9","","O-2"))),
+                        row("2","삼성창고","1WAY-ABC","9","","O-2"),
+                        row("3","상일창고","1WAY-XYZ","5","","O-3"))),
                 sheet("두번째", List.of(
                         row("","","","","",""), row("","","","","",""),
                         row("","","","","",""), row("","","","","",""),
@@ -33,11 +34,11 @@ class InboundXlsxParserTest {
         InboundXlsxParser.ParseResult result = new InboundXlsxParser().parse(new ByteArrayInputStream(xlsx));
 
         assertThat(result.rows()).extracting(InboundXlsxParser.InboundRow::warehouseCode)
-                .containsExactly("00003", "2", "2");
+                .containsExactly("00003", "00003", "2", "2");
         assertThat(result.rows()).extracting(InboundXlsxParser.InboundRow::cleanModel)
-                .containsExactly("ABC 가스히트펌프", "1WAY-ABC", "KNOWN");
+                .containsExactly("ABC 가스히트펌프", "1WAY-ABC", "1WAY-XYZ", "KNOWN");
         assertThat(result.rows()).extracting(InboundXlsxParser.InboundRow::quantity)
-                .containsExactly(4, 9, 4);
+                .containsExactly(4, 9, 5, 4);
     }
 
     @Test

@@ -14,7 +14,7 @@ export function mapInboundProduct(rawModel: string, cleanModel: string, catalog:
   }
   const partial = catalog.find((item) => item.productName.includes(cleanModel) || cleanModel.includes(item.productName))
   if (partial) return { productCode: partial.productCode ?? cleanModel, productName: partial.productName, status: '코드불일치' }
-  const token = rawModel.split(' ')[0]
+  const token = rawModel.split(' ')[0] ?? ''
   const tokenMatch = catalog.find((item) => item.productCode === token)
   if (tokenMatch) return { productCode: tokenMatch.productCode ?? token, productName: tokenMatch.productName, status: '코드불일치' }
   return { productCode: cleanModel, productName: cleanModel, status: '검색실패' }

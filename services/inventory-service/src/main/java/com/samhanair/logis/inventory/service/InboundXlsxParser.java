@@ -75,8 +75,7 @@ public class InboundXlsxParser {
                     }
                     String rawModel = values[2];
                     String cleanModel = cleanModel(rawModel);
-                    String warehouse = rawModel.toUpperCase(Locale.ROOT).contains("1WAY")
-                            ? "2" : WAREHOUSE_BY_CUSTOMER.getOrDefault(customer, "2");
+                    String warehouse = WAREHOUSE_BY_CUSTOMER.getOrDefault(customer, "2");
                     rows.add(new InboundRow(
                             sheet.getSheetName(), rowIndex + 1, values[0], customer, rawModel, cleanModel,
                             values[3], values[4], values[5], values[6], values[7], values[8],
