@@ -825,6 +825,20 @@ export function AppLayout() {
                     {entry.label}
                   </SidebarLink>
                 ))}
+                {category === '판매' ? (
+                  <>
+                    <SalesExternalLink
+                      show={showEstimatesList}
+                      envKey="VITE_WEB_ESTIMATE_URL"
+                      label="웹 종합견적서"
+                    />
+                    <SalesExternalLink
+                      show={showPartnerOrderList}
+                      envKey="VITE_WEB_ORDER_URL"
+                      label="웹 주문서"
+                    />
+                  </>
+                ) : null}
               </SidebarCategory>
             ))
           )}
