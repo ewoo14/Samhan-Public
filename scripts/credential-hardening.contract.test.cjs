@@ -85,3 +85,20 @@ test('CI 임시 자격은 GITHUB_ENV 기록 전에 로그 마스킹한다', () =
     assert.doesNotMatch(source, /echo "(?:SAMHAN_|DB_)[A-Z_]+=\$\(ci_secret\)"/)
   }
 })
+
+test('arologis IT uses only the shared gateway attestation entry point', () => {
+  const localCopy = path.join(
+    root,
+    'services/arologis-service/src/test/java/com/samhanair/logis/arologis/it/GatewayAttestationMockMvcConfig.java',
+  )
+  assert.equal(fs.existsSync(localCopy), false)
+
+  const abstractPostgresIt = read(
+    'services/arologis-service/src/test/java/com/samhanair/logis/arologis/it/AbstractPostgresIT.java',
+  )
+  assert.match(
+    abstractPostgresIt,
+    /@Import\(com\.samhanair\.logis\.security\.test\.GatewayAttestationMockMvcConfig\.class\)/,
+  )
+  assert.doesNotMatch(abstractPostgresIt, /GatewayAttestationMockMvcConfig\.ATTESTATION/)
+})
