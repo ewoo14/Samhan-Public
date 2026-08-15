@@ -404,4 +404,41 @@ describe('DailyClosingPage S3 레거시 단일표', () => {
     expect(screen.getByText(/저장할 식별자|최신 조회/)).toBeTruthy()
     expect(updateDailyClosingAmountMock).not.toHaveBeenCalled()
   })
+
+  it('레거시처럼 셀을 다중 선택하면 선택 숫자 합계와 TSV 복사를 제공한다', async () => {
+    getDailyClosingRowsMock.mockResolvedValue(parityRows)
+    renderPage()
+
+    const table = await screen.findByTestId('daily-closing-table')
+    const firstUnit = within(table).getByTestId('daily-closing-cell-0-단가(VAT포함)')
+    const secondUnit = within(table).getByTestId('daily-closing-cell-1-단가(VAT포함)')
+    fireEvent.mouseDown(firstUnit)
+    fireEvent.mouseDown(secondUnit, { ctrlKey: true })
+
+    expect(screen.getByTestId('daily-closing-selection-summary').textContent).toContain('합계: 300')
+
+    const setData = vi.fn()
+    fireEvent.copy(table, { clipboardData: { setData } })
+    expect(setData).toHaveBeenCalledWith('text/plain', expect.stringContaining('100'))
+    expect(setData).toHaveBeenCalledWith('text/plain', expect.stringContaining('200'))
+  })
+
+  it('레거시처럼 통합검색·열 정렬을 적용하고 삭제행은 결과에서 제외한다', async () => {
+    getDailyClosingRowsMock.mockResolvedValue([
+      ...parityRows,
+      { ...parityRows[0], seqNo: 1, productName: '삭제되어야 함', isDeleted: true },
+    ])
+    renderPage()
+
+    const table = await screen.findByTestId('daily-closing-table')
+    expect(screen.queryByText('삭제되어야 함')).toBeNull()
+
+    fireEvent.click(screen.getByTestId('daily-closing-sort-asc-번호'))
+    const dataRows = Array.from(table.querySelectorAll('[data-testid^="daily-closing-data-row-"]'))
+    expect(dataRows[0]?.textContent).toContain('병합 라인 1')
+
+    fireEvent.change(screen.getByTestId('daily-closing-global-search'), { target: { value: '라인 2' } })
+    expect(screen.queryByText('병합 라인 1')).toBeNull()
+    expect(screen.getByText('병합 라인 2')).toBeTruthy()
+  })
 })
