@@ -118,6 +118,29 @@ class JournalControllerIT extends AbstractPostgresIT {
     }
 
     @Test
+    void malformedOpaqueJournalMutationIdentifiers_allReturn400() throws Exception {
+        assertMalformedJournalMutation("POST /accounting/journals/{id}/post", post(
+                "/accounting/journals/not-a-valid-opaque-id/post"));
+        assertMalformedJournalMutation("POST /accounting/journals/{id}/reverse", post(
+                "/accounting/journals/not-a-valid-opaque-id/reverse"));
+    }
+
+    private void assertMalformedJournalMutation(String route, org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder request)
+            throws Exception {
+        MvcResult result = mockMvc.perform(request
+                        .header("X-User-Id", UUID.randomUUID().toString())
+                        .header("X-User-Role", "ACCOUNTANT"))
+                .andReturn();
+        String body = result.getResponse().getContentAsString();
+        System.out.println("[ACCOUNTING-RAW] " + route + " status=" + result.getResponse().getStatus()
+                + " body=" + body);
+        org.assertj.core.api.Assertions.assertThat(result.getResponse().getStatus()).isEqualTo(400);
+        org.assertj.core.api.Assertions.assertThat(body)
+                .contains("\"code\":\"INVALID_INPUT\"")
+                .doesNotContain("not-a-valid-opaque-id");
+    }
+
+    @Test
     @DisplayName("POST /accounting/journals — ACCOUNTANT 201, SALES 403, MANAGER 403")
     void createJournalAuthMatrix() throws Exception {
         Map<String, Object> body = balancedJournalBody("100000");
