@@ -145,18 +145,21 @@ jobs:
         run: |
           set -euo pipefail
           ci_secret() { openssl rand -hex 32; }
-          {
-            echo "SAMHAN_GATEWAY_ATTESTATION=$(ci_secret)"
-            echo "SAMHAN_INTERNAL_TOKEN=$(ci_secret)"
-            echo "INTERNAL_AUTH_TOKEN=$(ci_secret)"
-            echo "SAMHAN_JWT_SECRET=$(ci_secret)"
-            echo "JWT_SECRET=$(ci_secret)"
-            echo "SAMHAN_AROLOGIS_JWT_SECRET=$(ci_secret)"
-            echo "DB_USER=ci_${GITHUB_RUN_ID}"
-            echo "DB_PASSWORD=$(ci_secret)"
-            echo "SAMHAN_S3_ACCESS_KEY=ci_${GITHUB_RUN_ID}"
-            echo "SAMHAN_S3_SECRET_KEY=$(ci_secret)"
-          } >> "$GITHUB_ENV"
+          ci_value() {
+            local name="$1" value="$2"
+            echo "::add-mask::$value"
+            echo "$name=$value" >> "$GITHUB_ENV"
+          }
+          ci_value SAMHAN_GATEWAY_ATTESTATION "$(ci_secret)"
+          ci_value SAMHAN_INTERNAL_TOKEN "$(ci_secret)"
+          ci_value INTERNAL_AUTH_TOKEN "$(ci_secret)"
+          ci_value SAMHAN_JWT_SECRET "$(ci_secret)"
+          ci_value JWT_SECRET "$(ci_secret)"
+          ci_value SAMHAN_AROLOGIS_JWT_SECRET "$(ci_secret)"
+          ci_value DB_USER "ci_${GITHUB_RUN_ID}"
+          ci_value DB_PASSWORD "$(ci_secret)"
+          ci_value SAMHAN_S3_ACCESS_KEY "ci_${GITHUB_RUN_ID}"
+          ci_value SAMHAN_S3_SECRET_KEY "$(ci_secret)"
 
       # 5차 fix: --no-daemon 제거 — assemble→test 사이 JVM 워밍업 재활용 (52s 절약).
       - name: assemble (전 모듈)

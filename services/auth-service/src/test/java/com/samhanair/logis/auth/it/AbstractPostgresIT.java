@@ -13,6 +13,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
  * <p>Docker 데몬 미가용 Windows 로컬에서는 테스트를 실패가 아니라 skip 처리한다.
  */
 @ExtendWith(AbstractPostgresIT.DockerAvailableCondition.class)
+@org.springframework.context.annotation.Import(com.samhanair.logis.security.test.GatewayAttestationMockMvcConfig.class)
 public abstract class AbstractPostgresIT {
 
     private static final String POSTGRES_PASSWORD = UUID.randomUUID().toString();

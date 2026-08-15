@@ -20,6 +20,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
  * 테스트를 fail 이 아닌 skip 으로 처리한다.
  */
 @ExtendWith(AbstractPostgresIT.DockerAvailableCondition.class)
+@org.springframework.context.annotation.Import(com.samhanair.logis.security.test.GatewayAttestationMockMvcConfig.class)
 public abstract class AbstractPostgresIT {
 
     private static final String POSTGRES_PASSWORD = UUID.randomUUID().toString();

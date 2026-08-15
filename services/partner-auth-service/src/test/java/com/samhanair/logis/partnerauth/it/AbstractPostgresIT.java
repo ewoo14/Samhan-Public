@@ -15,6 +15,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
  * (memory feedback_testcontainers_windows_docker.md).
  */
 @ExtendWith(AbstractPostgresIT.DockerAvailableCondition.class)
+@org.springframework.context.annotation.Import(com.samhanair.logis.security.test.GatewayAttestationMockMvcConfig.class)
 public abstract class AbstractPostgresIT {
 
     /** 통합테스트 컨테이너 자격은 매 실행 임시값이다 — 소스에 고정 자격을 박지 않는다. */

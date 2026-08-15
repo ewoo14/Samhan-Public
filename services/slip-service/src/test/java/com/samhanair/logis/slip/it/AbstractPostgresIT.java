@@ -36,6 +36,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
  * false stub 을 둔다.
  */
 @ExtendWith(AbstractPostgresIT.DockerAvailableCondition.class)
+@org.springframework.context.annotation.Import(com.samhanair.logis.security.test.GatewayAttestationMockMvcConfig.class)
 public abstract class AbstractPostgresIT {
 
     @MockBean

@@ -77,3 +77,11 @@ test('공유 DB 자격과 Testcontainers 리터럴을 재사용하지 않는다'
   visit(path.join(root, 'services'))
   for (const text of allMain) assert.doesNotMatch(text, /LIVE_SHARED_USER|samhan_dev_pw/)
 })
+
+test('CI 임시 자격은 GITHUB_ENV 기록 전에 로그 마스킹한다', () => {
+  for (const workflow of ['.github/workflows/ci.yml', '.github/workflows/arologis-ci.yml']) {
+    const source = read(workflow)
+    assert.match(source, /ci_value\(\)\s*\{[\s\S]*?echo "::add-mask::\$value"[\s\S]*?echo "\$name=\$value" >> "\$GITHUB_ENV"/)
+    assert.doesNotMatch(source, /echo "(?:SAMHAN_|DB_)[A-Z_]+=\$\(ci_secret\)"/)
+  }
+})

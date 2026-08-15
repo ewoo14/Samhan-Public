@@ -27,6 +27,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
  * 테스트를 fail 이 아닌 skip 으로 처리한다.
  */
 @ExtendWith(AbstractPostgresIT.DockerAvailableCondition.class)
+@org.springframework.context.annotation.Import(com.samhanair.logis.security.test.GatewayAttestationMockMvcConfig.class)
 public abstract class AbstractPostgresIT {
 
     /** 통합테스트 컨테이너 자격은 매 실행 임시값이다 — 소스에 실 개발 스택 자격을 박지 않는다. */
