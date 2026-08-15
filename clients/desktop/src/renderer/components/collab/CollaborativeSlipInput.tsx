@@ -7,6 +7,10 @@ import {
   type RemoteFieldCursor,
   type RemoteFieldEdit,
 } from '../../realtime/createCoeditProvider'
+import {
+  adjustEditableAmountByArrow,
+  type EditableAmountArrowDirection,
+} from '../../utils/editableAmountInput'
 
 // header 키는 dot 을 포함할 수 있으므로(동적필드 field_a.b 등) 첫 dot 이후 전체를 키로; items 는 index.cell 2-세그먼트 유지.
 function headerKey(fieldPath: string): string {
@@ -80,6 +84,8 @@ export interface CollaborativeSlipInputProps {
   formatValue?: (raw: string, selectionStart: number | null) => { displayValue: string; selectionStart: number }
   /** 표시값을 서버/Y.Doc 계약값으로 되돌린다. */
   parseFormattedValue?: (displayValue: string) => string
+  /** formatted 금액 입력에서 HTML number와 같은 ArrowUp/ArrowDown 한 단계 증감. */
+  enableAmountKeyboardStep?: boolean
   type?: string
   min?: number
   maxLength?: number
@@ -113,6 +119,7 @@ export function CollaborativeSlipInput({
   parseValue,
   formatValue,
   parseFormattedValue,
+  enableAmountKeyboardStep,
   type,
   min,
   maxLength,
@@ -292,6 +299,19 @@ export function CollaborativeSlipInput({
         onClick={updateCursor}
         onKeyUp={updateCursor}
         onSelect={updateCursor}
+        onKeyDown={(event) => {
+          if (!enableAmountKeyboardStep || (event.key !== 'ArrowUp' && event.key !== 'ArrowDown')) return
+          event.preventDefault()
+          const direction: EditableAmountArrowDirection = event.key === 'ArrowUp' ? 'up' : 'down'
+          const nextValue = adjustEditableAmountByArrow(value, direction)
+          const serverValue = parseFormattedValue ? parseFormattedValue(nextValue) : nextValue
+          onValueChange(serverValue)
+          if (provider) {
+            setProviderValue(provider, fieldPath, serverValue)
+            provider.setLocalLastEdit(fieldPath)
+          }
+          updateCursor()
+        }}
         onBlur={() => {
           updateCursor()
           // read-only(잠금/coeditPending) 상태에선 lookup 등 onBlur 부작용 미발생(리뷰 LOW).

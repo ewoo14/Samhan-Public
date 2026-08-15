@@ -116,6 +116,7 @@ import {
 import { isSelectableProductStatus, searchProducts as searchProductsApi } from '../api/productApi'
 import { searchPartners as searchPartnersApi } from '../api/partnerApi'
 import { useIsMobile } from '../hooks/useIsMobile'
+import { formatEditableAmountInput, parseEditableAmountForServer } from '../utils/editableAmountInput'
 import { usePageTitle } from '../hooks/usePageTitle'
 import { InventoryLookupModal } from './components/InventoryLookupModal'
 
@@ -428,10 +429,14 @@ function SlipMobileLineCard(props: {
           type="text"
           inputMode="numeric"
           className="mobile-line-text-input mobile-line-number-input"
-          value={props.priceLookupPending ? '' : props.line.unitPrice}
+          value={props.priceLookupPending ? '' : formatEditableAmountInput(props.line.unitPrice, null).displayValue}
           onChange={(e) => {
-            const numeric = parseEditableAmountInput(e.target.value)
-            if (numeric !== null) props.onUnitPriceChange(numeric)
+            const formatted = formatEditableAmountInput(e.target.value, e.target.selectionStart)
+            props.onUnitPriceChange(parseEditableAmountForServer(formatted.displayValue))
+            const input = e.currentTarget
+            const restoreSelection = () => input.setSelectionRange(formatted.selectionStart, formatted.selectionStart)
+            if (typeof requestAnimationFrame === 'function') requestAnimationFrame(restoreSelection)
+            else setTimeout(restoreSelection, 0)
           }}
           aria-label={`라인 ${props.lineNumber} 단가`}
           aria-describedby={priceDescribedBy}

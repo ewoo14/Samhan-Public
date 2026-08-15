@@ -3553,6 +3553,7 @@ export function SlipDetailPage({ mode, slipId }: SlipDetailPageProps) {
                     parseValue={parseEditableDetailAmountInput}
                     formatValue={formatEditableAmountInput}
                     parseFormattedValue={parseEditableAmountForServer}
+                    enableAmountKeyboardStep
                     onValueChange={(value) => {
                       // 함수형 patch 로 바뀌어 updateSalesLine 내부의 object-patch 전용
                       // 강조해제 분기를 타지 않는다 — 여기서 직접 처리한다(단가값 자체는
@@ -3889,6 +3890,7 @@ export function SlipDetailPage({ mode, slipId }: SlipDetailPageProps) {
                     parseValue={parseEditableDetailAmountInput}
                     formatValue={formatEditableAmountInput}
                     parseFormattedValue={parseEditableAmountForServer}
+                    enableAmountKeyboardStep
                     onValueChange={(value) => {
                       // 매출 행과 동일 — 함수형 patch 전환으로 우회된 강조해제를 여기서 직접 처리.
                       clearRepriceHighlight(line.lineId)

@@ -3,6 +3,8 @@ export interface FormattedEditableAmount {
   selectionStart: number
 }
 
+export type EditableAmountArrowDirection = 'up' | 'down'
+
 function sanitizeAmount(raw: string): string {
   const sign = raw.trimStart().startsWith('-') ? '-' : ''
   const withoutSign = raw.replace(/-/g, '')
@@ -40,4 +42,16 @@ export function formatEditableAmountInput(raw: string, selectionStart: number | 
 
 export function parseEditableAmountForServer(displayValue: string): string {
   return sanitizeAmount(displayValue).replace(/,/g, '')
+}
+
+/** 콤마가 포함된 표시값을 숫자 입력의 ArrowUp/ArrowDown 한 단계 값으로 바꾼다. */
+export function adjustEditableAmountByArrow(
+  displayValue: string,
+  direction: EditableAmountArrowDirection,
+  step = 1,
+): string {
+  const current = Number(parseEditableAmountForServer(displayValue))
+  if (!Number.isFinite(current)) return displayValue
+  const next = current + (direction === 'up' ? step : -step)
+  return String(next)
 }
