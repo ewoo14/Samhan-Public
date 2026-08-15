@@ -61,6 +61,7 @@ import { listWarehouses } from '../../api/inventory'
 import { toOrderPathId } from '../../utils/orderNo'
 import styles from '../../components/sales/sales.module.css'
 import { buildMergedPreview } from './mergePreview'
+import { PartnerOrderDetailReadOnly } from './PartnerOrderDetailReadOnly'
 
 // ---------------------------------------------------------------------------
 // 타입 정의
@@ -624,7 +625,8 @@ export function MergeConvertDialog({
         >
           {initialSelectedOrders.length > 0 ? (
             <div data-testid="merge-convert-fixed-partner">
-              선택 주문 거래처: {initialSelectedOrders[0]?.partnerName ?? initialSelectedOrders[0]?.partnerCode}
+              선택 주문 거래처: <span data-testid="merge-convert-partner-input-value">{initialSelectedOrders[0]?.partnerName ?? initialSelectedOrders[0]?.partnerCode}</span>
+              <span data-testid="merge-convert-mock-selected-order-count">{selectedOrders.length}개 선택됨</span>
             </div>
           ) : (
             <PartnerAutocomplete
@@ -725,28 +727,25 @@ export function MergeConvertDialog({
           </div>
         ) : null}
 
-        {!isLoadingDetails && !hasDetailError && initialSelectedOrders.length >= 2 ? (
+        {!isLoadingDetails && !hasDetailError && initialSelectedOrders.length >= 2 && mergedPreview.header ? (
           <section data-testid="merge-convert-preview" style={{ marginBottom: 20 }}>
-            <h3 style={{ margin: '0 0 8px' }}>승인 전 병합 미리보기</h3>
+            <h3 style={{ margin: '0 0 8px' }}>승인 전 병합 주문서 상세</h3>
             <p data-testid="merge-convert-preview-header" style={{ margin: '0 0 8px' }}>
-              헤더는 첫 번째 주문 기준: {mergedPreview.header?.orderNumber} · 거래처 {selectedPartner?.name ?? mergedPreview.header?.partnerName ?? mergedPreview.header?.partnerCode} · 배송지 {mergedPreview.header?.deliveryAddress ?? '-'} · 납기 {mergedPreview.header?.dueDate ?? '-'} · 메모 {mergedPreview.header?.memo ?? '-'}
+              헤더는 첫 번째 주문 기준: {mergedPreview.header.orderNumber} · 거래처 {selectedPartner?.name ?? mergedPreview.header.partnerName ?? mergedPreview.header.partnerCode}
             </p>
             <p data-testid="merge-convert-discarded-header-notice" role="note">
               두 번째 이후 주문의 배송지·납기·메모·거래처 등 품목 외 필드는 사용하지 않습니다.
             </p>
-            <table>
-              <thead><tr><th>모델</th><th>단가</th><th>수량</th><th>출처</th></tr></thead>
-              <tbody>
-                {mergedPreview.lines.map((line, index) => (
-                  <tr key={`${line.modelCode}-${line.deliveryPrice}-${index}`} data-testid={`merge-convert-preview-line-${index}`}>
-                    <td>{line.modelCode}</td>
-                    <td>{krw(line.deliveryPrice)}원</td>
-                    <td>{line.quantity}</td>
-                    <td>{line.sourceOrderNumbers.join(', ')}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <PartnerOrderDetailReadOnly
+              order={{
+                ...mergedPreview.header,
+                partnerName: selectedPartner?.name ?? mergedPreview.header.partnerName,
+                lines: mergedPreview.lines,
+                totalAmount: mergedPreview.lines.reduce((total, line) => total + line.subtotal, 0),
+                linkedSlipNo: null,
+                status: 'DRAFT',
+              }}
+            />
           </section>
         ) : null}
 
@@ -773,7 +772,7 @@ export function MergeConvertDialog({
         </div>
 
         {/* [C] 헤더 충돌 필드 — 라디오+직접입력 혼합 패턴 (가이드 §2.3, Designer P1-2) */}
-        {false && conflictFields.length > 0 ? (
+        {conflictFields.length > 0 ? (
           <div
             data-testid="merge-convert-conflict-section"
             style={{

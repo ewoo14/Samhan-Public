@@ -72,10 +72,29 @@ test('주문 개별·병합 전환 정본 흐름을 쓰기 없이 확인한다',
   await expect(page.getByTestId('merge-convert-preview-header')).toContainText('첫 번째 주문 기준')
   await expect(page.getByTestId('merge-convert-preview-header')).toContainText('주식회사 중앙유통')
   await expect(page.getByTestId('merge-convert-discarded-header-notice')).toBeVisible()
+  await expect(page.getByTestId('partner-order-detail-read-only')).toBeVisible()
+  await expect(page.getByTestId('partner-order-detail-read-only')).toContainText('품목명')
+  await expect(page.getByTestId('partner-order-detail-read-only')).toContainText('납품가')
+  await expect(page.getByTestId('partner-order-detail-read-only')).toContainText('구성품 펼침')
+  await expect(page.getByTestId('partner-order-detail-read-only')).toContainText('AJ060MXHNBC1')
   await expect(page.getByTestId('merge-convert-submit')).toHaveAccessibleName('승인')
+  await page.keyboard.press('Escape')
+  await page.getByTestId('merge-convert-preview').evaluate((node) => {
+    let current: HTMLElement | null = node.parentElement
+    while (current) {
+      current.scrollTop = 0
+      current = current.parentElement
+    }
+  })
   await capture(page, '09-r3-merge-preview-before-approval.png', '사용자는 병합전환을 선택한 뒤 승인 버튼을 누르기 전에 첫 주문 헤더와 병합 품목을 검토한다.')
 
   await page.getByTestId('merge-convert-cancel').click()
+  const detailHref = await first.locator('a').first().getAttribute('href')
+  expect(detailHref).toBeTruthy()
+  await page.goto(`${baseUrl}${detailHref!}`, { waitUntil: 'domcontentloaded' })
+  await expect(page.getByText('주문서 상세', { exact: true })).toBeVisible()
+  await capture(page, '10-r4-normal-order-detail.png', '사용자는 주문서 관리 목록의 주문번호를 눌러 평소 보던 주문서 상세 화면으로 이동한다.')
+  await page.goto(`${baseUrl}#/sales/partner-orders`, { waitUntil: 'domcontentloaded' })
   const status = page.getByTestId('partner-order-list-status-filter')
   await expect(status.locator('option')).toHaveText(['전체', '접수', '완료'])
   await status.selectOption('')

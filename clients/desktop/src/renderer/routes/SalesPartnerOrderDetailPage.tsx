@@ -38,6 +38,7 @@ import {
 } from '../api/sales'
 import { InventoryLookupModal } from './components/InventoryLookupModal'
 import { LineLookupReferenceModal } from './components/LineLookupReferenceModal'
+import { PartnerOrderDetailReadOnly } from './components/PartnerOrderDetailReadOnly'
 import { apiClient } from '../api/client'
 import { PartnerOrderCollaborationPanel } from '../components/collab/PartnerOrderCollaborationPanel'
 import { CollaborativeSlipInput } from '../components/collab/CollaborativeSlipInput'
@@ -1081,7 +1082,38 @@ export function SalesPartnerOrderDetailPage() {
               </MobileCollapsible>
             ) : null}
 
-            {!isMobile ? (
+            {!isMobile && query.data ? (
+              <PartnerOrderDetailReadOnly
+                order={query.data}
+                statusBadge={slipPublishStatusMeta ? (
+                  <Badge
+                    variant={slipPublishStatusMeta.variant}
+                    title={slipPublishStatusTitle}
+                    data-testid="partner-order-slip-publish-status"
+                  >
+                    {slipPublishStatusMeta.label}
+                  </Badge>
+                ) : null}
+                selectedLineIds={checkedLineIds}
+                onToggleLine={(lineId) => {
+                  setCheckedLineIds((prev) => {
+                    const next = new Set(prev)
+                    if (next.has(lineId)) next.delete(lineId)
+                    else next.add(lineId)
+                    return next
+                  })
+                }}
+                onToggleAllLines={(selected) => {
+                  setCheckedLineIds(selected ? new Set((query.data?.lines ?? []).map((line) => line.lineId)) : new Set())
+                }}
+                onInventoryLookup={() => setInventoryLookupOpen(true)}
+                onLineLookup={() => setLineLookupOpen(true)}
+                onClearSelection={() => setCheckedLineIds(new Set())}
+                canViewProductLookups={canViewProductLookups}
+              />
+            ) : null}
+
+            {query.data && slipPublishStatusMeta ? (false ? (
             <Card padding={4} shadow="sm">
               <div
                 style={{
@@ -1095,49 +1127,50 @@ export function SalesPartnerOrderDetailPage() {
               >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   <h4 style={{ margin: 0 }}>
-                    거래처 · {query.data.partnerName ?? query.data.partnerCode}
+                    거래처 · {query.data!.partnerName ?? query.data!.partnerCode}
                   </h4>
-                  <OrderStatusBadge status={query.data.status} />
+                    <OrderStatusBadge status={query.data!.status} />
                   {slipPublishStatusMeta ? (
                     <Badge
-                      variant={slipPublishStatusMeta.variant}
+                      variant={slipPublishStatusMeta!.variant}
                       title={slipPublishStatusTitle}
                       data-testid="partner-order-slip-publish-status"
                     >
-                      {slipPublishStatusMeta.label}
+                      {slipPublishStatusMeta!.label}
                     </Badge>
                   ) : null}
                 </div>
                 <strong style={{ fontVariantNumeric: 'tabular-nums' }}>
-                  합계 {krw(query.data.totalAmount)}원
+                  합계 {krw(query.data!.totalAmount)}원
                 </strong>
               </div>
               <div className="detail-grid">
-                <DetailGridField label="거래처 코드" value={query.data.partnerCode}>
-                  {emptyLabel(query.data.partnerCode)}
+                <DetailGridField label="거래처 코드" value={query.data!.partnerCode}>
+                  {emptyLabel(query.data!.partnerCode)}
                 </DetailGridField>
-                <DetailGridField label="연결 전표" value={query.data.linkedSlipNo}>
-                  {emptyLabel(query.data.linkedSlipNo)}
+                <DetailGridField label="연결 전표" value={query.data!.linkedSlipNo}>
+                  {emptyLabel(query.data!.linkedSlipNo)}
                 </DetailGridField>
-                <DetailGridField label="배송지" value={query.data.deliveryAddress}>
-                  {emptyLabel(query.data.deliveryAddress)}
+                <DetailGridField label="배송지" value={query.data!.deliveryAddress}>
+                  {emptyLabel(query.data!.deliveryAddress)}
                 </DetailGridField>
-                <DetailGridField label="현장" value={query.data.siteAddress}>
-                  {emptyLabel(query.data.siteAddress)}
+                <DetailGridField label="현장" value={query.data!.siteAddress}>
+                  {emptyLabel(query.data!.siteAddress)}
                 </DetailGridField>
-                <DetailGridField label="연락처" value={query.data.contactPhone}>
-                  {emptyLabel(query.data.contactPhone)}
+                <DetailGridField label="연락처" value={query.data!.contactPhone}>
+                  {emptyLabel(query.data!.contactPhone)}
                 </DetailGridField>
-                <DetailGridField label="납기" value={query.data.dueDate}>
-                  {emptyLabel(query.data.dueDate)}
+                <DetailGridField label="납기" value={query.data!.dueDate}>
+                  {emptyLabel(query.data!.dueDate)}
                 </DetailGridField>
-                <DetailGridField label="요청사항" value={query.data.memo}>
-                  {emptyLabel(query.data.memo)}
+                <DetailGridField label="요청사항" value={query.data!.memo}>
+                  {emptyLabel(query.data!.memo)}
                 </DetailGridField>
               </div>
             </Card>
-            ) : null}
+            ) : null) : null}
 
+            {isMobile ? (
             <Card padding={4} shadow="sm" style={{ marginTop: 24 }}>
               <div className="detail-mobile-hide" style={{
                 display: 'flex',
@@ -1412,6 +1445,7 @@ export function SalesPartnerOrderDetailPage() {
                 })}
               </div>
             </Card>
+            ) : null}
 
             {isMobile ? (
               collabCurrentValues ? (

@@ -47,9 +47,11 @@ const ORDER_B = order({ orderNumber: '2026/07/23-B', partnerCode: PARTNER_B.part
 const ORDER_C = order({ orderNumber: '2026/07/23-C', partnerCode: PARTNER_C.partnerCode, partnerName: PARTNER_C.name })
 
 vi.mock('@samhan/design-system', () => ({
+  Card: ({ children }: { children: React.ReactNode }) => <section>{children}</section>,
   Badge: ({ children, ...props }: { children: React.ReactNode } & Record<string, unknown>) => (
     <span {...props}>{children}</span>
   ),
+  OrderStatusBadge: ({ status }: { status: string }) => <span>{status}</span>,
   Button: ({ children, ...props }: { children: React.ReactNode } & Record<string, unknown>) => (
     <button {...props}>{children}</button>
   ),
@@ -139,6 +141,16 @@ it('restores list-selected orders after resolving their partner', async () => {
   mocks.searchPartners.mockResolvedValue([PARTNER_A])
   mocks.listPartnerOrders.mockResolvedValue({ content: [ORDER_A, ORDER_C], totalElements: 2 })
   mocks.listWarehouses.mockResolvedValue([])
+  mocks.getPartnerOrder.mockImplementation(async (orderNumber: string) => ({
+    orderNumber,
+    partnerName: PARTNER_A.name,
+    deliveryAddress: null,
+    contactPhone: null,
+    dueDate: null,
+    memo: null,
+    totalAmount: 1000,
+    lines: [{ lineId: `line-${orderNumber}`, productId: 'product-1', productName: '품목', modelCode: 'MODEL-1', quantity: 1, convertedQuantity: 0 }],
+  } as never))
 
   renderDialog(undefined, [ORDER_A, ORDER_C])
 
@@ -146,6 +158,19 @@ it('restores list-selected orders after resolving their partner', async () => {
   await waitFor(() => {
     expect(screen.getByTestId('merge-convert-mock-selected-order-count').textContent).toContain('2')
   })
+})
+
+it('상세 조회 실패 시 실패 사실을 표시하고 승인을 막는다', async () => {
+  mocks.searchPartners.mockResolvedValue([PARTNER_A])
+  mocks.listPartnerOrders.mockResolvedValue({ content: [ORDER_A, ORDER_C], totalElements: 2 })
+  mocks.listWarehouses.mockResolvedValue([])
+  mocks.getPartnerOrder.mockRejectedValue(new Error('detail unavailable'))
+
+  renderDialog(undefined, [ORDER_A, ORDER_C])
+
+  const error = await screen.findByRole('alert', {}, { timeout: 3000 })
+  expect(error.textContent).toContain('주문 상세를 불러오지 못했습니다')
+  expect(screen.getByTestId('merge-convert-submit').hasAttribute('disabled')).toBe(true)
 })
 
 describe('MergeConvertDialog 거래처 우선 주문 칩', () => {
