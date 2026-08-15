@@ -48,6 +48,8 @@ export function buildInboundSlipBatches(
           destinationWarehouseId,
           partnerCode: '1248100998',
           partnerName: '삼성전자(주)',
+          sourceType: 'INBOUND_XLSX',
+          idempotencyKey,
           memo: `가입고 XLSX 원본 파일 SHA-256: ${fileHash}`,
           lines: chunk.map((row) => ({
             productId: row.productId!,

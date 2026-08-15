@@ -3,6 +3,7 @@ package com.samhanair.logis.slip.web.dto;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.samhanair.logis.slip.domain.DeliveryTag;
 import com.samhanair.logis.slip.domain.SlipType;
+import com.samhanair.logis.slip.domain.SlipSourceType;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotEmpty;
@@ -90,6 +91,8 @@ public record CreateSlipRequest(
          * 당착(지방 당일 하차) = slipDate 와 동일 값 전달. 지방/야적 태그에만 유효.
          */
         LocalDate unloadDate,
+        SlipSourceType sourceType,
+        @Size(max = 255) String idempotencyKey,
         @NotEmpty @Size(max = 100, message = "전표 라인은 최대 100건까지 저장할 수 있습니다")
         @Valid List<SlipLineRequest> lines) {
 
@@ -133,7 +136,7 @@ public record CreateSlipRequest(
                 customerTel, customerAddress, customerRepresentative, shippingAddress,
                 inspectionAddress, receiverPhone, paymentDueLabel, discountInfo, collectTerm,
                 agreeTerm, deliveryAddress, supervisionAddress, projectName, recipientPhone,
-                paymentDueDate, unloadDate, lines);
+                paymentDueDate, unloadDate, null, null, lines);
     }
 
     /**

@@ -481,6 +481,10 @@ export interface CreateSlipRequest {
    * 당착(지방 당일하차) 시 slipDate 와 동일 값을 전송.
    */
   unloadDate?: string
+  /** 생성 출처 — 가입고 XLSX 경로가 저장 계층까지 보존하는 provenance. */
+  sourceType?: SlipSourceType
+  /** 파일·창고·청크 단위 재시도 멱등성 키. 헤더가 유실돼도 저장할 정본. */
+  idempotencyKey?: string
   lines: SlipLineInput[]
 }
 

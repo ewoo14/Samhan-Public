@@ -266,8 +266,8 @@ public class SlipService {
     /** 가입고 XLSX 재시도 시 동일 파일·창고·청크 DRAFT를 재사용한다. */
     public SlipDetailResponse create(CreateSlipRequest req, String requesterId, String requesterName,
                                      String idempotencyKey) {
-        String normalizedIdempotencyKey = idempotencyKey == null || idempotencyKey.isBlank()
-                ? null : idempotencyKey.trim();
+        String normalizedIdempotencyKey = normalizeOptionalKey(
+                idempotencyKey != null ? idempotencyKey : req.idempotencyKey());
         if (normalizedIdempotencyKey != null) {
             Optional<Slip> existing = slipRepository.findByIdempotencyKeyAndIsDeletedFalse(normalizedIdempotencyKey);
             if (existing.isPresent()) {
@@ -386,7 +386,8 @@ public class SlipService {
         if (slip.getSlipType() == SlipType.OUTBOUND) {
             slip.markSourceWarehouseCodePending();
         }
-        if (normalizedIdempotencyKey != null && req.slipType() == SlipType.INBOUND) {
+        if (req.slipType() == SlipType.INBOUND
+                && req.sourceType() == SlipSourceType.INBOUND_XLSX) {
             slip.assignPublishSource(SlipSourceType.INBOUND_XLSX, normalizedIdempotencyKey,
                     normalizedIdempotencyKey);
         }
@@ -402,6 +403,13 @@ public class SlipService {
                 parseActorId(requesterId), resolveActorName(requesterName, requesterId), null);
         priceMemoryService.rememberBatchAfterCommit(priceMemoryCommands, "slip.create");
         return SlipDetailResponse.from(saved);
+    }
+
+    private static String normalizeOptionalKey(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.trim();
     }
 
     /**

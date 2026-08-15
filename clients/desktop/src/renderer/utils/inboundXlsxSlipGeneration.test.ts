@@ -36,6 +36,8 @@ describe('buildInboundSlipBatches', () => {
     expect(batches[0].request.lines[0].unitPrice).toBe('0')
     expect(batches[0].request.partnerCode).toBe('1248100998')
     expect(batches[0].request.partnerName).toBe('삼성전자(주)')
+    expect(batches[0].request.sourceType).toBe('INBOUND_XLSX')
+    expect(batches[0].request.idempotencyKey).toBe('inbound-xlsx:FILE-HASH:00003:1')
     expect(batches[0].request.lines[0].note).toContain('FILE-HASH')
     expect(batches[0].request.lines[0].note).toContain('입고/8')
   })
