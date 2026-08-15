@@ -177,18 +177,25 @@ class PartnerBlockImportServiceTest {
 
     @Test
     void importCsv_actualIsoUtcTimestamp_isImported() {
-        // 실제 2026-07-28 BLOCK 원천 6행: 모두 ISO UTC이며 코드-only도 원천 형식이다.
-        String csv = "거래처코드,이카운트 사업자명,생성 일시\n"
-                + "3128640516,,2026-04-25 22:36:20Z\n"
-                + "1428116616,,2026-04-25 22:36:54Z\n"
-                + "6348602237,,2026-04-25 22:36:57Z\n"
-                + "1068616876,,2026-04-25 22:36:49Z\n"
-                + "1138620591,,2026-04-25 22:36:40Z\n"
-                + "2188121662,,2026-04-25 22:36:46Z\n";
-        for (String code : new String[] {
+        // 실제 2026-07-28 BLOCK 원천의 헤더·사업자명·ISO 시각을 그대로 사용한다.
+        String csv = "이카운트 사업자명,생성 일시\n"
+                + "주식회사 삼성이엔지 (윤정희),2026-04-25 22:36:20Z\n"
+                + "(주)에어뱅크,2026-04-25 22:36:54Z\n"
+                + "주식회사 대승 (에스원이엔지),2026-04-25 22:36:57Z\n"
+                + "(주)을지공조시스템,2026-04-25 22:36:49Z\n"
+                + "에스원이엔지 (주),2026-04-25 22:36:40Z\n"
+                + "훼밀리공조 주식회사,2026-04-25 22:36:46Z\n";
+        String[] names = {
+            "주식회사 삼성이엔지 (윤정희)", "(주)에어뱅크", "주식회사 대승 (에스원이엔지)",
+            "(주)을지공조시스템", "에스원이엔지 (주)", "훼밀리공조 주식회사"
+        };
+        String[] codes = {
             "3128640516", "1428116616", "6348602237", "1068616876", "1138620591", "2188121662"
-        }) {
-            when(partnerService.findByCodeForLookup(code)).thenReturn(Optional.of(stub(code, code)));
+        };
+        for (int i = 0; i < names.length; i++) {
+            String name = names[i];
+            String code = codes[i];
+            when(partnerService.findByNameForLookup(name)).thenReturn(Optional.of(stub(code, name)));
             when(blockService.isBlocked(code)).thenReturn(false);
         }
 
@@ -199,6 +206,7 @@ class PartnerBlockImportServiceTest {
         assertThat(result.rejected()).isEmpty();
         verify(blockService, times(6)).block(anyString(), any(), any(LocalDateTime.class),
                 eq("NOTION_IMPORT"), anyString());
+        verify(partnerService, times(6)).findByNameForLookup(anyString());
     }
 
     @Test
