@@ -365,6 +365,19 @@ const EMPTY_DAILY_CLOSING_VIEW_STATE: DailyClosingViewState = {
   globalSearch: '',
   sort: null,
 }
+const DAILY_CLOSING_FILTER_ICON = 'url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 18 18%22%3E%3Cpath d=%22M2 3h14M5 8h8M7 13h4%22 fill=%22none%22 stroke=%22%2336474f%22 stroke-width=%222%22/%3E%3C/svg%3E")'
+const DAILY_CLOSING_ASC_ICON = 'url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 18 18%22%3E%3Cpath d=%22M9 14V4m0 0L5 8m4-4 4 4%22 fill=%22none%22 stroke=%22%2336474f%22 stroke-width=%222%22/%3E%3C/svg%3E")'
+const DAILY_CLOSING_DESC_ICON = 'url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 18 18%22%3E%3Cpath d=%22M9 4v10m0 0 4-4m-4 4-4-4%22 fill=%22none%22 stroke=%22%2336474f%22 stroke-width=%222%22/%3E%3C/svg%3E")'
+const DAILY_CLOSING_HEADER_ICON_STYLE: CSSProperties = {
+  width: 18,
+  height: 18,
+  minWidth: 18,
+  flex: '0 0 18px',
+  display: 'inline-block',
+  backgroundRepeat: 'no-repeat',
+  backgroundPosition: 'center',
+  backgroundSize: '16px 16px',
+}
 
 function dailyClosingRawCellValue(row: DailyClosingSourceRow, header: DailyClosingHeader): string {
   const values: Record<DailyClosingHeader, unknown> = {
@@ -771,7 +784,7 @@ function EditableLegacyDailyClosingTable({
           if (leftNumber !== null && rightNumber !== null) comparison = leftNumber - rightNumber
           else comparison = leftText.localeCompare(rightText, 'ko')
         }
-        if (comparison === 0) comparison = (originalIndex.get(left) ?? 0) - (originalIndex.get(right) ?? 0)
+        if (comparison === 0) return (originalIndex.get(left) ?? 0) - (originalIndex.get(right) ?? 0)
         return state.sort!.dir === 'asc' ? comparison : -comparison
       })
     },
@@ -822,7 +835,10 @@ function EditableLegacyDailyClosingTable({
       ? null
       : Array.from(document.querySelectorAll<HTMLElement>('[data-selection-key]')).find((candidate) => candidate.dataset.selectionKey === key)
     const field = cell?.querySelector<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>('input,select,textarea')
-    return field?.value ?? dailyClosingRawCellValue(row, header)
+    if (field) return field.value
+    const numericHeaders = new Set<DailyClosingHeader>(['번호', '수량', '공급가액', '부가세', '합계', '출고가', '총계'])
+    if (numericHeaders.has(header) && cell?.textContent?.trim()) return cell.textContent.trim()
+    return dailyClosingRawCellValue(row, header)
   }
   const selectedSum = visible.reduce((sum, _row, rowIndex) => DAILY_CLOSING_HEADERS.reduce((rowSum, _header, columnIndex) => {
     if (!selectedCells.has(cellSelectionKey(rowIndex, columnIndex))) return rowSum
@@ -995,10 +1011,10 @@ function EditableLegacyDailyClosingTable({
                       title="필터"
                       data-testid={`daily-closing-filter-button-${header}`}
                       onClick={() => setActiveFilterColumn(activeFilterColumn === header ? null : header)}
-                      style={{ border: 0, padding: 0, background: 'transparent', cursor: 'pointer', color: currentViewState.filters[header] ? 'var(--ink-link)' : 'var(--ink-secondary)' }}
+                      style={{ ...DAILY_CLOSING_HEADER_ICON_STYLE, border: 0, padding: 0, backgroundColor: 'transparent', backgroundImage: DAILY_CLOSING_FILTER_ICON, cursor: 'pointer', color: currentViewState.filters[header] ? 'var(--ink-link)' : 'var(--ink-secondary)' }}
                     />
-                    <button type="button" aria-label={`${header} 오름차순`} data-testid={`daily-closing-sort-asc-${header}`} onClick={() => updateViewState((state) => ({ ...state, sort: state.sort?.col === header && state.sort.dir === 'asc' ? null : { col: header, dir: 'asc' } }))} style={{ border: 0, padding: 0, background: 'transparent', cursor: 'pointer' }} />
-                    <button type="button" aria-label={`${header} 내림차순`} onClick={() => updateViewState((state) => ({ ...state, sort: state.sort?.col === header && state.sort.dir === 'desc' ? null : { col: header, dir: 'desc' } }))} style={{ border: 0, padding: 0, background: 'transparent', cursor: 'pointer' }} />
+                    <button type="button" aria-label={`${header} 오름차순`} data-testid={`daily-closing-sort-asc-${header}`} onClick={() => updateViewState((state) => ({ ...state, sort: state.sort?.col === header && state.sort.dir === 'asc' ? null : { col: header, dir: 'asc' } }))} style={{ ...DAILY_CLOSING_HEADER_ICON_STYLE, border: 0, padding: 0, backgroundColor: 'transparent', backgroundImage: DAILY_CLOSING_ASC_ICON, cursor: 'pointer' }} />
+                    <button type="button" aria-label={`${header} 내림차순`} data-testid={`daily-closing-sort-desc-${header}`} onClick={() => updateViewState((state) => ({ ...state, sort: state.sort?.col === header && state.sort.dir === 'desc' ? null : { col: header, dir: 'desc' } }))} style={{ ...DAILY_CLOSING_HEADER_ICON_STYLE, border: 0, padding: 0, backgroundColor: 'transparent', backgroundImage: DAILY_CLOSING_DESC_ICON, cursor: 'pointer' }} />
                   </div>
                   {activeFilterColumn === header ? <div style={{ display: 'grid', gap: 4, marginTop: 4 }}>
                     <select aria-label={`${header} 필터 방식`} value={currentViewState.filters[header]?.type ?? 'include'} onChange={(event) => updateViewState((state) => ({ ...state, filters: { ...state.filters, [header]: { type: event.target.value as DailyClosingFilterType, text: state.filters[header]?.text ?? '' } } }))}>

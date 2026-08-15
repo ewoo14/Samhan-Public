@@ -441,4 +441,54 @@ describe('DailyClosingPage S3 레거시 단일표', () => {
     expect(screen.queryByText('병합 라인 1')).toBeNull()
     expect(screen.getByText('병합 라인 2')).toBeTruthy()
   })
+
+  it('정렬·필터 버튼은 마우스로 클릭할 수 있는 실제 크기를 가진다', async () => {
+    getDailyClosingRowsMock.mockResolvedValue(parityRows)
+    renderPage()
+
+    await screen.findByTestId('daily-closing-table')
+    const sortButton = screen.getByTestId('daily-closing-sort-asc-번호') as HTMLButtonElement
+    const filterButton = screen.getByTestId('daily-closing-filter-button-번호') as HTMLButtonElement
+    expect(sortButton.style.width).toBe('18px')
+    expect(sortButton.style.height).toBe('18px')
+    expect(filterButton.style.width).toBe('18px')
+    expect(filterButton.style.height).toBe('18px')
+  })
+
+  it('내림차순에서도 정렬값이 같은 행의 기존 순서를 유지한다', async () => {
+    getDailyClosingRowsMock.mockResolvedValue([
+      { ...parityRows[0], productName: '동률 1' },
+      { ...parityRows[1], productName: '동률 2' },
+      { ...parityRows[0], productName: '동률 3' },
+    ])
+    renderPage()
+
+    const table = await screen.findByTestId('daily-closing-table')
+    fireEvent.click(screen.getByRole('button', { name: 'DC 내림차순' }))
+    const dataRows = Array.from(table.querySelectorAll('[data-testid^="daily-closing-data-row-"]'))
+    expect(dataRows.map((row) => row.textContent)).toEqual(expect.arrayContaining([
+      expect.stringContaining('동률 1'),
+      expect.stringContaining('동률 2'),
+      expect.stringContaining('동률 3'),
+    ]))
+    expect(dataRows.findIndex((row) => row.textContent?.includes('동률 1')))
+      .toBeLessThan(dataRows.findIndex((row) => row.textContent?.includes('동률 2')))
+    expect(dataRows.findIndex((row) => row.textContent?.includes('동률 2')))
+      .toBeLessThan(dataRows.findIndex((row) => row.textContent?.includes('동률 3')))
+  })
+
+  it('TSV 복사는 일반 숫자 셀도 화면의 콤마 표시를 유지한다', async () => {
+    getDailyClosingRowsMock.mockResolvedValue([
+      { ...parityRows[0], supplyAmount: 9091 },
+      { ...parityRows[1], supplyAmount: 9091 },
+    ])
+    renderPage()
+
+    const table = await screen.findByTestId('daily-closing-table')
+    fireEvent.mouseDown(within(table).getByTestId('daily-closing-cell-0-공급가액'))
+    fireEvent.mouseDown(within(table).getByTestId('daily-closing-cell-1-공급가액'), { ctrlKey: true })
+    const setData = vi.fn()
+    fireEvent.copy(table, { clipboardData: { setData } })
+    expect(setData).toHaveBeenCalledWith('text/plain', '9,091\n9,091')
+  })
 })
