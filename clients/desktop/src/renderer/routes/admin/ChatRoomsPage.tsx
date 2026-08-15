@@ -55,6 +55,12 @@ import {
 } from '../../api/chatRoomApi'
 import { usePageTitle } from '../../hooks/usePageTitle'
 import { usePermissions } from '../../hooks/usePermissions'
+import {
+  getChatRoomLinkLabel,
+  getChatRoomLinkReason,
+  getChatRoomPartnerCodeLabel,
+  getChatRoomLinkStatus,
+} from './chatRoomLinkPresentation'
 
 const SOURCE_VARIANT: Record<
   ChatRoomMappingSource,
@@ -272,6 +278,7 @@ export function ChatRoomsPage() {
               }}
             >
               <th style={thStyle}>거래처 코드</th>
+              <th style={{ ...thStyle, width: 150 }}>연결 상태</th>
               <th style={thStyle}>사업자명 (snapshot)</th>
               <th style={thStyle}>단톡방 이름</th>
               <th style={{ ...thStyle, width: 110 }}>출처</th>
@@ -282,19 +289,19 @@ export function ChatRoomsPage() {
           <tbody>
             {query.isLoading ? (
               <tr>
-                <td colSpan={6} style={emptyTdStyle}>
+                <td colSpan={7} style={emptyTdStyle}>
                   단톡방 매핑을 불러오는 중…
                 </td>
               </tr>
             ) : query.isError ? (
               <tr>
-                <td colSpan={6} style={emptyTdStyle}>
+                <td colSpan={7} style={emptyTdStyle}>
                   notification-service 가 응답하지 않습니다.
                 </td>
               </tr>
             ) : groups.length === 0 ? (
               <tr>
-                <td colSpan={6} style={emptyTdStyle}>
+                <td colSpan={7} style={emptyTdStyle}>
                   등록된 단톡방 매핑이 없습니다. 우상단의 "CSV 업로드" 또는
                   "단건 추가" 버튼으로 시작하세요.
                 </td>
@@ -375,11 +382,14 @@ function ChatRoomGroupRows({
           }}
         >
           <td style={tdStyle}>
-            <span style={{ fontVariantNumeric: 'tabular-nums' }}>
-              {row.partnerCode}
+            <span style={{ ...wrapTextStyle, fontVariantNumeric: 'tabular-nums' }}>
+              {getChatRoomPartnerCodeLabel(row)}
             </span>
           </td>
-          <td style={tdStyle}>{row.partnerBusinessName}</td>
+          <td style={tdStyle}>
+            <LinkStatusCell row={row} />
+          </td>
+          <td style={tdStyle}><span style={wrapTextStyle}>{row.partnerBusinessName}</span></td>
           {idx === 0 ? (
             <td
               style={{
@@ -390,7 +400,7 @@ function ChatRoomGroupRows({
               }}
               rowSpan={groupSize}
             >
-              {row.chatRoomName}
+              <span style={wrapTextStyle}>{row.chatRoomName}</span>
               {groupSize > 1 ? (
                 <span
                   style={{
@@ -425,6 +435,18 @@ function ChatRoomGroupRows({
         </tr>
       ))}
     </>
+  )
+}
+
+function LinkStatusCell({ row }: { row: ChatRoomMapping }) {
+  const status = getChatRoomLinkStatus(row)
+  const reason = getChatRoomLinkReason(status)
+  const variant = status === 'LINKED' ? 'success' : status === 'UNLINKED_AMBIGUOUS' ? 'warning' : 'danger'
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
+      <Badge variant={variant}>{getChatRoomLinkLabel(status)}</Badge>
+      {reason ? <span style={{ ...wrapTextStyle, fontSize: 11, color: 'var(--color-neutral-600, #4B5563)' }}>{reason}</span> : null}
+    </div>
   )
 }
 
@@ -607,6 +629,15 @@ const thStyle: React.CSSProperties = {
 const tdStyle: React.CSSProperties = {
   padding: '10px 12px',
   verticalAlign: 'middle',
+  whiteSpace: 'normal',
+  overflowWrap: 'anywhere',
+  wordBreak: 'break-word',
+}
+
+const wrapTextStyle: React.CSSProperties = {
+  whiteSpace: 'normal',
+  overflowWrap: 'anywhere',
+  wordBreak: 'break-word',
 }
 
 const emptyTdStyle: React.CSSProperties = {

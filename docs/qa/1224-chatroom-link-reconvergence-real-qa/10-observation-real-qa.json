@@ -1,0 +1,79 @@
+{
+  "route": "http://127.0.0.1:60204/#/admin/chat-rooms",
+  "apiCounts": {
+    "total": 112,
+    "linked": 106,
+    "ambiguous": 4,
+    "unmatched": 2
+  },
+  "ui": {
+    "initialRows": 112,
+    "nameTriplesMatchingApi": 112,
+    "explicitStatusLabels": 0,
+    "deletedMarkersVisible": false,
+    "duplicatePartnerRows": 2,
+    "pagingControls": 0,
+    "sortContract": "chatRoomName ko asc; partnerCode asc within room"
+  },
+  "clipping": {
+    "viewport": {
+      "width": 1024,
+      "documentWidth": 1024
+    },
+    "probes": [
+      {
+        "kind": "partnerBusinessName",
+        "text": "정도엔지니어링-이경진대표(그린공조시스템-조영진대표 출고건)",
+        "clientWidth": 149,
+        "scrollWidth": 149,
+        "clientHeight": 79,
+        "scrollHeight": 79,
+        "overflow": "visible",
+        "whiteSpace": "normal",
+        "rect": {
+          "left": 395.25,
+          "right": 544,
+          "width": 148.75
+        }
+      },
+      {
+        "kind": "chatRoomName",
+        "text": "삼성에스에이씨(더블유케이) 발주방",
+        "clientWidth": 95,
+        "scrollWidth": 95,
+        "clientHeight": 79,
+        "scrollHeight": 79,
+        "overflow": "visible",
+        "whiteSpace": "normal",
+        "rect": {
+          "left": 544,
+          "right": 639,
+          "width": 95
+        }
+      }
+    ],
+    "clipped": []
+  },
+  "writeRequests": [],
+  "pageErrors": [],
+  "untouchedWriteContracts": {
+    "singleCreate": {
+      "method": "POST",
+      "path": "/api/v1/notification/admin/chat-rooms",
+      "jsonFields": [
+        "partnerCode",
+        "partnerBusinessName",
+        "chatRoomName"
+      ],
+      "serverDefaultStatus": "UNLINKED"
+    },
+    "csvImport": {
+      "method": "POST",
+      "path": "/api/v1/notification/admin/chat-rooms/import",
+      "multipartFields": [
+        "file"
+      ],
+      "importedEntityDefaultStatus": "UNLINKED"
+    }
+  }
+}
