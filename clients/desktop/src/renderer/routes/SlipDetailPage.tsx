@@ -3547,7 +3547,7 @@ export function SlipDetailPage({ mode, slipId }: SlipDetailPageProps) {
                     provider={lineProvider} coeditPending={slipFormCoeditPending}
                     fieldPath={detailCoeditFieldPath(index, line, 'unitPrice')}
                     testIdPath={detailCoeditTestIdPath(index, 'unitPrice')}
-                    type="number"
+                    type="text" inputMode="decimal"
                     min={0}
                     value={formatEditableAmountInput(String(line.unitPrice), null).displayValue}
                     parseValue={parseEditableDetailAmountInput}
@@ -3883,7 +3883,7 @@ export function SlipDetailPage({ mode, slipId }: SlipDetailPageProps) {
                     provider={slipFormCoeditProvider} coeditPending={slipFormCoeditPending}
                     fieldPath={detailCoeditFieldPath(index, line, 'unitPrice')}
                     testIdPath={detailCoeditTestIdPath(index, 'unitPrice')}
-                    type="number"
+                    type="text" inputMode="decimal"
                     min={0}
                     value={formatEditableAmountInput(String(line.unitPrice), null).displayValue}
                     parseValue={parseEditableDetailAmountInput}

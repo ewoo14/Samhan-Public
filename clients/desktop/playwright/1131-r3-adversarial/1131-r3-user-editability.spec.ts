@@ -31,13 +31,14 @@ test('R3 BUNDLE 전개행의 수량·단가·삭제가 사용자 입력으로 �
   const secondComponentLineNo = draftLineNo + 1
   const thirdComponentLineNo = draftLineNo + 2
   const quantity = page.getByRole('spinbutton', { name: `수량 ${firstComponentLineNo}` })
-  const unitPrice = page.getByRole('spinbutton', { name: new RegExp(`단가\\(VAT포함\\) ${secondComponentLineNo}$`) })
+  const unitPrice = page.getByLabel(new RegExp(`단가\\(VAT포함\\) ${secondComponentLineNo}$`))
   await quantity.fill('9')
   await unitPrice.fill('123456')
   await page.getByRole('button', { name: `${thirdComponentLineNo}번 행 삭제` }).click()
 
   await expect(quantity).toHaveValue('9')
-  await expect(unitPrice).toHaveValue('123456')
+  await expect(unitPrice).toHaveValue('123,456')
+  await expect(unitPrice).toHaveAttribute('type', 'text')
   await expect(rows).toHaveCount(afterExpand - 1)
   await expect(page.getByTestId('sales-slip-edit-save')).toBeEnabled()
   await page.screenshot({
