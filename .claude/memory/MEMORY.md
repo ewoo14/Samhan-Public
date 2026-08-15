@@ -296,3 +296,5 @@
 - [🚨 라이브QA 는 접힌 것을 전부 펼쳐라 — 목록만 보면 "항상 0" 을 놓친다](feedback_live_qa_must_expand_detail_rows.md)
 
 - [🚨 GAS 판정선 — 기능·결과 표시방식은 동등 · UI 디자인은 자유](feedback_gas_parity_function_and_result_not_ui.md)
+
+- [🚨 트랙은 반드시 PR 과 함께 — "빠른 fix" 라도 main 직커밋 금지](feedback_track_always_opens_with_pr.md)
