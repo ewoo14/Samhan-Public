@@ -1,0 +1,20 @@
+{
+  "route": "http://127.0.0.1:54753/#/admin/chat-rooms",
+  "initialRows": 112,
+  "candidateRows": 13,
+  "candidateHasExplicitUnlinked": false,
+  "clipping": [],
+  "chatResponses": [
+    {
+      "status": 200,
+      "rows": 112,
+      "statusFieldRows": 0
+    },
+    {
+      "status": 200,
+      "rows": 13,
+      "statusFieldRows": 0
+    }
+  ],
+  "pageErrors": []
+}
