@@ -19,6 +19,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import com.samhanair.logis.shared.audit.contract.AuditEventV2;
 import com.samhanair.logis.shared.audit.publisher.AuditPublisher;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 import org.springframework.beans.factory.annotation.Value;
 import java.util.Arrays;
 import java.util.Set;
@@ -130,6 +131,12 @@ public class PartnerAuthExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleIllegalState(IllegalStateException ex) {
         return ResponseEntity.status(ErrorCode.CONFLICT.getHttpStatus())
                 .body(ApiResponse.fail(ErrorCode.CONFLICT, ExceptionMessageSanitizer.sanitize(ex.getMessage())));
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleNoResource(NoResourceFoundException ex) {
+        return ResponseEntity.status(ErrorCode.NOT_FOUND.getHttpStatus())
+                .body(ApiResponse.fail(ErrorCode.NOT_FOUND, ErrorCode.NOT_FOUND.getDefaultMessage()));
     }
 
     @ExceptionHandler(Exception.class)

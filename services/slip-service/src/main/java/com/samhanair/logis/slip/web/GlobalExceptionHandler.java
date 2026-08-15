@@ -21,6 +21,7 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 import org.springframework.web.multipart.support.MissingServletRequestPartException;
 
 /** Maps {@link BusinessException} and validation errors to {@link ApiResponse} envelopes. */
@@ -151,6 +152,12 @@ public class GlobalExceptionHandler {
         log.warn("Data integrity conflict: {}", ex.getClass().getSimpleName());
         return ResponseEntity.status(ErrorCode.CONFLICT.getHttpStatus())
                 .body(ApiResponse.fail(ErrorCode.CONFLICT, "데이터 중복 또는 무결성 충돌입니다."));
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ApiResponse<Void>> handleNoResource(NoResourceFoundException ex) {
+        return ResponseEntity.status(ErrorCode.NOT_FOUND.getHttpStatus())
+                .body(ApiResponse.fail(ErrorCode.NOT_FOUND, ErrorCode.NOT_FOUND.getDefaultMessage()));
     }
 
     @ExceptionHandler(Exception.class)
