@@ -1,9 +1,12 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { previewInboundXlsx, type InboundXlsxPreview, type InboundXlsxRow } from '../api/inboundXlsxApi'
-import { listWarehouses } from '../api/inventory'
+import { listWarehouses, type Warehouse } from '../api/inventory'
+import { createSlip } from '../api/slip'
 import { searchProducts } from '../api/productApi'
 import { mapInboundProduct, type InboundProductMapping } from '../utils/inboundXlsxMapping'
+import { buildInboundSlipBatches } from '../utils/inboundXlsxSlipGeneration'
+import { usePermissions } from '../hooks/usePermissions'
 
 type PreviewRow = InboundXlsxRow & InboundProductMapping
 
@@ -15,7 +18,13 @@ export function InboundXlsxPreviewPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [warehouseLabels, setWarehouseLabels] = useState<Record<string, string>>({})
+  const [warehouseIds, setWarehouseIds] = useState<Record<string, string>>({})
   const [failedAcknowledged, setFailedAcknowledged] = useState(false)
+  const [fileHash, setFileHash] = useState('')
+  const [generating, setGenerating] = useState(false)
+  const [generationResults, setGenerationResults] = useState<Array<{ key: string; status: '성공' | '실패'; message: string }>>([])
+  const { canAccess } = usePermissions()
+  const canCreateInbound = canAccess('purchases.slip.edit', 'update')
 
   async function onFileChange(file?: File) {
     if (!file) return
@@ -23,8 +32,12 @@ export function InboundXlsxPreviewPage() {
     setError('')
     try {
       const parsed = await previewInboundXlsx(file)
-      const warehouses = await listWarehouses().catch(() => [])
+      const digest = await crypto.subtle.digest('SHA-256', await file.arrayBuffer())
+      const hash = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')
+      setFileHash(hash)
+      const warehouses = await listWarehouses().catch(() => [] as Warehouse[])
       setWarehouseLabels(Object.fromEntries(warehouses.map((warehouse) => [warehouse.code, `${warehouse.code} · ${warehouse.name}`])))
+      setWarehouseIds(Object.fromEntries(warehouses.map((warehouse) => [warehouse.code, warehouse.id])))
       const cache = new Map<string, Awaited<ReturnType<typeof searchProducts>>>()
       const catalogFor = async (query: string) => {
         if (!query || cache.has(query)) return cache.get(query) ?? []
@@ -39,6 +52,7 @@ export function InboundXlsxPreviewPage() {
           ? [...first, ...(await catalogFor(token))]
           : first
         const mapping = mapInboundProduct(row.rawModel, row.cleanModel, candidates.map((item) => ({
+          productId: item.id,
           productCode: item.productCode ?? null,
           productName: item.productName,
         })))
@@ -54,6 +68,32 @@ export function InboundXlsxPreviewPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  async function generateSlips() {
+    if (!rows.length || !fileHash) return
+    if (failed > 0 && !failedAcknowledged) {
+      setError('검색실패 행을 제외할지 확인한 뒤 생성할 수 있습니다.')
+      return
+    }
+    const batches = buildInboundSlipBatches(rows, fileHash, warehouseIds)
+    if (!batches.length) {
+      setError('생성할 유효 행이 없습니다. 검색실패·0수량 행만 남았을 수 있습니다.')
+      return
+    }
+    if (!window.confirm(`창고별 ${batches.length}건의 입고전표를 DRAFT로 생성합니다. 확정 전이는 하지 않습니다. 계속하시겠습니까?`)) return
+    setGenerating(true)
+    setError('')
+    const results = await Promise.all(batches.map(async (batch) => {
+      try {
+        const slip = await createSlip(batch.request, { idempotencyKey: batch.idempotencyKey })
+        return { key: `${batch.warehouseCode}/${batch.chunkNumber}`, status: '성공' as const, message: `${slip.slipNo} (DRAFT)` }
+      } catch (cause) {
+        return { key: `${batch.warehouseCode}/${batch.chunkNumber}`, status: '실패' as const, message: cause instanceof Error ? cause.message : '전표 생성 실패' }
+      }
+    }))
+    setGenerationResults(results)
+    setGenerating(false)
   }
 
   const failed = rows.filter((row) => row.status === '검색실패').length
@@ -77,9 +117,17 @@ export function InboundXlsxPreviewPage() {
           <section aria-label="가입고 누락 요약" style={{ padding: 16, background: '#f7f8fa', borderRadius: 8 }}>
             <strong>결과 {rows.length}건</strong> · 검색실패 {failed}건 · 키워드 불일치 {preview.keywordFilteredRows}건 · 중복 상쇄 {preview.deduplicatedRows}건
             <div>짧아 건너뛴 시트: {preview.skippedShortSheets.join(', ') || '없음'} · 헤더 없어 건너뛴 시트: {preview.skippedHeaderSheets.join(', ') || '없음'}</div>
-            <div>고정 거래처: 1248100998 (삼성전자(주)) · 단가: 0 · 전표 생성: 다음 라운드</div>
+            <div>고정 거래처: 1248100998 (삼성전자(주)) · 단가: 0 · 모든 전표는 DRAFT로만 생성</div>
             <div>창고 연결: staging 별칭은 0건이므로 활성 warehouses.code(00003/2)를 직접 사용</div>
             <label style={{ display: 'block', marginTop: 8 }}><input type="checkbox" checked={failedAcknowledged} onChange={(event) => setFailedAcknowledged(event.target.checked)} /> 검색실패 {failed}건을 확인했으며 다음 라운드에서 제외할 행으로 표시했습니다.</label>
+          </section>
+          <section style={{ marginTop: 16 }} aria-label="가입고 전표 생성">
+            {!canCreateInbound && <p role="alert">입고전표 생성 권한이 없어 생성 버튼이 비활성화되었습니다.</p>}
+            <button type="button" disabled={!canCreateInbound || generating || !rows.length} onClick={() => void generateSlips()} data-testid="inbound-xlsx-generate">
+              {generating ? '전표 생성 중…' : '확인 후 입고전표 DRAFT 생성'}
+            </button>
+            <p>100라인 초과 시 창고별로 100라인 단위 전표가 나뉩니다. 같은 파일·창고·청크는 다시 눌러도 중복 생성되지 않습니다.</p>
+            {generationResults.length > 0 && <ul>{generationResults.map((result) => <li key={result.key}>{result.key}: {result.status} — {result.message}</li>)}</ul>}
           </section>
           <div style={{ overflowX: 'auto', marginTop: 16 }}>
             <table style={{ borderCollapse: 'collapse', width: '100%', minWidth: 1250 }}>

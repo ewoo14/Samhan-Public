@@ -55,6 +55,7 @@ public record CreateSlipRequest(
         @JsonDeserialize(using = OpaqueUuidDeserializer.class)
         UUID destinationWarehouseId,
         UUID partnerId,
+        @Size(max = 50) String partnerCode,
         @Size(max = 100) String partnerName,
         DeliveryTag deliveryTag,
         @Size(max = 1000) String memo,

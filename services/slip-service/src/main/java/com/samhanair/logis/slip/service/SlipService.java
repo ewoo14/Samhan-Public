@@ -21,6 +21,7 @@ import com.samhanair.logis.slip.service.cutoff.OutboundCutoffGuard;
 import com.samhanair.logis.slip.service.closing.SlipClosedDateGuard;
 import com.samhanair.logis.slip.domain.SlipLine;
 import com.samhanair.logis.slip.domain.SlipStatus;
+import com.samhanair.logis.slip.domain.SlipSourceType;
 import com.samhanair.logis.slip.domain.SlipType;
 import com.samhanair.logis.slip.editrequest.domain.SlipEditRequest;
 import com.samhanair.logis.slip.editrequest.service.SlipEditRequestService;
@@ -259,6 +260,20 @@ public class SlipService {
      * @throws BusinessException(INVALID_INPUT) 출고전표 sourceWarehouseId null, 입고전표 destinationWarehouseId null 또는 입력 불량
      */
     public SlipDetailResponse create(CreateSlipRequest req, String requesterId, String requesterName) {
+        return create(req, requesterId, requesterName, null);
+    }
+
+    /** 가입고 XLSX 재시도 시 동일 파일·창고·청크 DRAFT를 재사용한다. */
+    public SlipDetailResponse create(CreateSlipRequest req, String requesterId, String requesterName,
+                                     String idempotencyKey) {
+        String normalizedIdempotencyKey = idempotencyKey == null || idempotencyKey.isBlank()
+                ? null : idempotencyKey.trim();
+        if (normalizedIdempotencyKey != null) {
+            Optional<Slip> existing = slipRepository.findByIdempotencyKeyAndIsDeletedFalse(normalizedIdempotencyKey);
+            if (existing.isPresent()) {
+                return SlipDetailResponse.from(existing.get());
+            }
+        }
         // 1. 라인 productId 일괄 검증 + lookup map 빌드 (snapshot 보강)
         List<UUID> productIds = req.lines().stream()
                 .map(CreateSlipRequest.SlipLineRequest::productId)
@@ -298,7 +313,9 @@ public class SlipService {
         //    로 구성품 라인 N개 전개(견적 경로와 동일 단일 엔진), 아니면 1 라인.
         // OUTBOUND/INBOUND 모두 partnerId를 partner-service의 업무 식별자 partnerCode로 snapshot한다.
         // lookup 실패는 기존 전표 생성 계약대로 빈 코드만 남기고 저장을 막지 않는다.
-        String resolvedPartnerCode = partnerInternalClient.resolvePartnerCode(req.partnerId()).orElse(null);
+        String resolvedPartnerCode = req.partnerCode() != null && !req.partnerCode().isBlank()
+                ? req.partnerCode().trim()
+                : partnerInternalClient.resolvePartnerCode(req.partnerId()).orElse(null);
         // 단가는 화면이 DC/최근단가/사용자 협의가를 반영해 확정한 값을 정본으로 사용한다.
         // 서버에서 다시 dc-config-service를 호출하면 화면의 할인 완료 단가를 정가로 오인해
         // 전역DC를 재적용하므로(예: 970,200 -> 494,802) 계산하지 않는다.
@@ -367,6 +384,10 @@ public class SlipService {
 
         if (slip.getSlipType() == SlipType.OUTBOUND) {
             slip.markSourceWarehouseCodePending();
+        }
+        if (normalizedIdempotencyKey != null && req.slipType() == SlipType.INBOUND) {
+            slip.assignPublishSource(SlipSourceType.INBOUND_XLSX, normalizedIdempotencyKey,
+                    normalizedIdempotencyKey);
         }
 
         Slip saved = slipRepository.save(slip);
