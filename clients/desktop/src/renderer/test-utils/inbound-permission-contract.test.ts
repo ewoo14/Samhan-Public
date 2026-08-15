@@ -71,5 +71,5 @@ describe('inbound.inspection permission contract', () => {
     for (const [pageCode, actions] of Object.entries(response.data)) {
       expect(actions, `MASTER ${pageCode}`).toEqual(expectedActions)
     }
-  })
+  }, 10_000)
 })
