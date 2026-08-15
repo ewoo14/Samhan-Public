@@ -344,7 +344,8 @@ class BankTransactionPermissionEnforcementIT {
                     builder,
                     "http://auth-service",
                     INTERNAL_TOKEN,
-                    "accounting-service"
+                    "accounting-service",
+                    "test-gateway-attestation"
             );
         }
     }
