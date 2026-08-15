@@ -158,11 +158,14 @@ html[data-theme="dark"], body[data-theme="dark"] {
  * LineRow는 design-system 소유라 수정하지 않고, 이 화면의 소비자 범위에서만 열/간격을 정리한다. */
 .sfp-line-table {
   --col-sum: 0px;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .sfp-line-table [class*='lineRow'],
 .sfp-line-table [class*='lineHeader'] {
   column-gap: 8px;
+  min-width: 1320px;
 }
 
 .sfp-line-table [class*='priceMemoryNote'],
@@ -1656,7 +1659,8 @@ button {
 .sfp-line-table {
   border: 1px solid var(--line-default);
   border-radius: var(--radius-card);
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
   background: var(--surface-card);
 }
 

@@ -2733,7 +2733,11 @@ export function SlipFormPage({ mode }: SlipFormPageProps) {
             })}
           </div>
         ) : (
-          <div className="sfp-line-table">
+          <div
+            className="sfp-line-table"
+            data-testid="slip-form-line-table"
+            style={{ overflowX: 'auto', overflowY: 'hidden' }}
+          >
             <LineTableHeader
               allSelected={allSelected}
               someSelected={someSelected}
