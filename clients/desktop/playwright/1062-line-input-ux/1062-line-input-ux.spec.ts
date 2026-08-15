@@ -76,7 +76,11 @@ test.describe('PR #1063 전표 라인 입력 UX mock', () => {
     // 현재 mock 후보의 규격 값은 데이터 fixture에 따라 공란일 수 있으므로,
     // 현재 사용자 계약인 규격 입력 surface가 확정 라인에 유지되는지 단정한다.
     await expect(page.getByRole('textbox', { name: '라인 1 규격' })).toBeVisible()
-    await expect(page.getByRole('textbox', { name: '라인 1 단가' })).toHaveValue('1850000')
+    await expect(page.getByRole('textbox', { name: '라인 1 단가' })).toHaveValue('1,850,000')
+    expect(
+      (await page.getByRole('textbox', { name: '라인 1 단가' }).inputValue()).replaceAll(',', ''),
+      '표시 단가를 정규화한 값은 raw 숫자와 같아야 함',
+    ).toBe('1850000')
 
     await page.screenshot({ path: test.info().outputPath('03-new-filled-next-blank.png'), fullPage: true })
   })
@@ -123,7 +127,7 @@ test.describe('PR #1063 전표 라인 입력 UX mock', () => {
     const model = page.getByTestId('estimate-form-line-0').getByRole('combobox', { name: '라인 1 모델명' })
     await model.fill('AJ040')
     await expect(model).toHaveValue('AJ040RXH4BC1', { timeout: 10_000 })
-    await expect(page.getByRole('textbox', { name: '라인 1 단가' })).toHaveValue('1850000')
+    await expect(page.getByRole('textbox', { name: '라인 1 단가' })).toHaveValue('1,850,000')
     await model.click()
     await model.press('Control+A')
     await model.press('Delete')
@@ -235,7 +239,7 @@ test.describe('PR #1063 전표 라인 입력 UX mock', () => {
     await expect(page.locator('[data-testid^="estimate-form-line-"][data-price-source]')).toHaveCount(3)
     await expect(page.getByRole('textbox', { name: '라인 1 규격' })).toBeVisible()
     // 기존 확정행의 사용자 단가는 품목 교체만으로 덮지 않는다(가격기억 회귀 방지).
-    await expect(page.getByRole('textbox', { name: '라인 1 단가' })).toHaveValue('1850000')
+    await expect(page.getByRole('textbox', { name: '라인 1 단가' })).toHaveValue('1,850,000')
     await expect(page.getByTestId('estimate-form-save-button')).toBeEnabled()
     await expect(page.getByTestId('estimate-form-send-button')).toBeEnabled()
     let sendDialogMessage = ''

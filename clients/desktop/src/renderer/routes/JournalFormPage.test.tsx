@@ -148,6 +148,25 @@ afterEach(() => {
 })
 
 describe('JournalFormPage 데스크톱 라인 grid', () => {
+  it('RED-LUNA: 1440px desktop debit and credit inputs step with ArrowUp/ArrowDown', async () => {
+    renderPage()
+    await screen.findByText('계정과목')
+
+    const debit = screen.getByLabelText('라인 1 차변')
+    const credit = screen.getByLabelText('라인 1 대변')
+    fireEvent.change(debit, { target: { value: '3456789' } })
+    fireEvent.change(credit, { target: { value: '3456789' } })
+
+    fireEvent.keyDown(debit, { key: 'ArrowUp' })
+    expect((debit as HTMLInputElement).value).toBe('3456790')
+    fireEvent.keyDown(debit, { key: 'ArrowDown' })
+    fireEvent.keyDown(credit, { key: 'ArrowUp' })
+    expect((credit as HTMLInputElement).value).toBe('3456790')
+    fireEvent.keyDown(credit, { key: 'ArrowDown' })
+
+    expect((debit as HTMLInputElement).value).toBe('3456789')
+    expect((credit as HTMLInputElement).value).toBe('3456789')
+  })
   it('신규 작성 모드에서 라인을 채우지 않고 저장하면 여전히 "최소 2 라인" 오류를 표시한다 (정상 경로 검증 유지 — K2)', async () => {
     renderPage()
     await screen.findByText('계정과목')

@@ -18,7 +18,7 @@
  * UUID 비공개 가드: 사용자에게는 journalNo / accountCode 만 노출. line.id /
  * journal.id 는 화면 표시 X.
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type KeyboardEvent } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -28,7 +28,6 @@ import {
   Card,
   Input,
   JournalLineRow,
-  MoneyInput,
   Spinner,
   type Account,
   type JournalLineDraft,
@@ -43,6 +42,7 @@ import {
 } from '../api/accounting'
 import { isPartnerLookupUnavailableError } from '../api/apiError'
 import { PartnerLookupErrorBanner } from '../components/common/PartnerLookupErrorBanner'
+import { EditableAmountInput } from '../components/common/EditableAmountInput'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { usePageTitle } from '../hooks/usePageTitle'
 import { buildRiskyPartnerLinesWarning, findRiskyPartnerLines } from './JournalFormPage.model'
@@ -96,6 +96,25 @@ const fmt = (n: number): string =>
   n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',')
 
 const JOURNAL_LINE_GRID_TEMPLATE = '40px 160px 260px 110px 110px minmax(180px, 1fr)'
+
+function JournalAmountInput({
+  value,
+  onChange,
+  ariaLabel,
+}: {
+  value: number
+  onChange: (value: number) => void
+  ariaLabel: string
+}) {
+  return (
+    <EditableAmountInput
+      value={value === 0 ? '' : String(value)}
+      onValueChange={(next) => onChange(Number(next) || 0)}
+      inputMode="numeric"
+      aria-label={ariaLabel}
+    />
+  )
+}
 
 interface MobileJournalLineCardProps {
   index: number
@@ -193,7 +212,7 @@ function MobileJournalLineCard({
 
       <div className="mobile-line-field">
         <label className="mobile-line-field-label">차변</label>
-        <MoneyInput
+        <JournalAmountInput
           value={line.debit}
           onChange={(n) => onChange({ debit: n })}
           ariaLabel={`라인 ${index} 차변`}
@@ -202,7 +221,7 @@ function MobileJournalLineCard({
 
       <div className="mobile-line-field">
         <label className="mobile-line-field-label">대변</label>
-        <MoneyInput
+        <JournalAmountInput
           value={line.credit}
           onChange={(n) => onChange({ credit: n })}
           ariaLabel={`라인 ${index} 대변`}
@@ -553,7 +572,22 @@ export function JournalFormPage() {
           </div>
         ) : (
           <>
-            <div className="journal-line-grid-scroll">
+            <div
+              className="journal-line-grid-scroll"
+              onKeyDownCapture={(event: KeyboardEvent<HTMLDivElement>) => {
+                if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return
+                const target = event.target as HTMLInputElement
+                const match = target.getAttribute('aria-label')?.match(/^라인 (\d+) (차변|대변)$/)
+                if (!match) return
+                const lineIndex = Number(match[1]) - 1
+                if (!Number.isInteger(lineIndex) || lineIndex < 0 || lineIndex >= lines.length) return
+                event.preventDefault()
+                const field = match[2] === '차변' ? 'debit' : 'credit'
+                const current = lines[lineIndex]?.[field] ?? 0
+                const next = Math.max(0, current + (event.key === 'ArrowUp' ? 1 : -1))
+                updateLine(lineIndex, { [field]: next }, true)
+              }}
+            >
               {/* 라인 헤더 */}
               <div
                 className="journal-line-grid-header"

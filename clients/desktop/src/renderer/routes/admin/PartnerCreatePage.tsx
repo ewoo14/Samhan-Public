@@ -33,6 +33,7 @@ import {
   type PartnerType,
 } from '../../api/partnerApi'
 import { usePageTitle } from '../../hooks/usePageTitle'
+import { EditableAmountInput } from '../../components/common/EditableAmountInput'
 
 // ---------------------------------------------------------------------------
 // 내부 로컬 상태 타입
@@ -481,14 +482,13 @@ function PriceDiscountTab({
           onChange={(e) => set('paymentTermDays', e.target.value)}
           hint="현금(0), 30일, 60일, 90일, 익월말(99) 등"
         />
-        <Input
+        <EditableAmountInput
           label="신용한도 (원)"
-          type="number"
           min={0}
-          step={1000}
           placeholder="미설정 시 공란"
           value={value.creditLimit}
-          onChange={(e) => set('creditLimit', e.target.value)}
+          onValueChange={(next) => set('creditLimit', next)}
+          enableAmountKeyboardStep
           hint="공란 = 한도 미설정"
         />
       </FormGrid>

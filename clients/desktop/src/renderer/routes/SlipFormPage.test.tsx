@@ -2338,7 +2338,7 @@ describe('SlipFormPage 모바일 라인 카드 #902 R3 회귀 가드 — 제외 
     fireEvent.change(screen.getByLabelText('라인 1 단가'), { target: { value: '11000' } })
     fireEvent.change(screen.getByLabelText('라인 1 공급가액'), { target: { value: '50000' } })
 
-    expect(mobileUnitPrice().value).toBe('11000')
+    expect(mobileUnitPrice().value).toBe('11,000')
   })
 
   it('P4(통합): 부가세를 편집해도 단가는 바뀌지 않는다(역산 금지)', () => {
@@ -2346,7 +2346,7 @@ describe('SlipFormPage 모바일 라인 카드 #902 R3 회귀 가드 — 제외 
     fireEvent.change(screen.getByLabelText('라인 1 단가'), { target: { value: '11000' } })
     fireEvent.change(screen.getByLabelText('라인 1 부가세'), { target: { value: '7000' } })
 
-    expect(mobileUnitPrice().value).toBe('11000')
+    expect(mobileUnitPrice().value).toBe('11,000')
   })
 
   it('P6(통합): 공급가액을 편집해도 부가세는 그대로다 — 합계만 재계산된다', () => {
@@ -2437,7 +2437,7 @@ describe('SlipFormPage 모바일 라인 카드 aria-describedby (MED-1)', () => 
     renderMobilePage()
     await selectPartnerA()
     fireEvent.click(screen.getByTestId('select-product-a-1'))
-    await waitFor(() => expect(mobileUnitPrice().value).toBe(harness.productA.sellingPrice))
+    await waitFor(() => expect(mobileUnitPrice().value).toBe(Number(harness.productA.sellingPrice).toLocaleString('ko-KR')))
 
     const note = screen.getByRole('note')
     expect(note.textContent).toBe('판매가')
@@ -2475,7 +2475,7 @@ describe('SlipFormPage 모바일 라인 카드 aria-describedby (MED-1)', () => 
     renderMobilePage()
     await selectPartnerA()
     fireEvent.click(screen.getByTestId('select-product-a-1'))
-    await waitFor(() => expect(mobileUnitPrice().value).toBe('100000'))
+    await waitFor(() => expect(mobileUnitPrice().value).toBe('100,000'))
 
     await selectPartnerB()
     await waitFor(() => expect(harness.getPriceMemories).toHaveBeenCalledWith(
@@ -2492,7 +2492,7 @@ describe('SlipFormPage 모바일 라인 카드 aria-describedby (MED-1)', () => 
       }], failedProductIds: [] })
       await partnerBPrice.promise
     })
-    await waitFor(() => expect(mobileUnitPrice().value).toBe('200000'))
+    await waitFor(() => expect(mobileUnitPrice().value).toBe('200,000'))
     await waitFor(() => expect(screen.getByText('단가 변경')).toBeTruthy())
 
     const note = screen.getByRole('note')        // 거래처 최근단가 (priceStatusId)

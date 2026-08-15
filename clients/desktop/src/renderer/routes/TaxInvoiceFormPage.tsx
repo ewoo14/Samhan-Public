@@ -39,6 +39,8 @@ import { searchPartners } from '../api/partnerApi'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { usePageTitle } from '../hooks/usePageTitle'
 import { vatFromSupply } from '../utils/vatRounding'
+import { EditableAmountInput } from '../components/common/EditableAmountInput'
+import { formatEditableAmountInput, parseEditableAmountForServer } from '../utils/editableAmountInput'
 
 export function resolveTaxInvoicePartnerId(
   selectedPartnerId: string | undefined,
@@ -177,12 +179,11 @@ function TaxInvoiceMobileLineCard(props: {
 
       <div className="mobile-line-field">
         <label className="mobile-line-field-label">단가</label>
-        <input
-          type="text"
+        <EditableAmountInput
           inputMode="decimal"
           className="mobile-line-text-input mobile-line-number-input"
           value={props.line.unitPrice}
-          onChange={(e) => props.onUpdate({ unitPrice: e.target.value })}
+          onValueChange={(value) => props.onUpdate({ unitPrice: value })}
           aria-label={`라인 ${lineNumber} 단가`}
           disabled={props.isReadOnly}
           data-testid={`tax-invoice-form-line-${props.index}-unit-price`}
@@ -753,11 +754,10 @@ export function TaxInvoiceFormPage() {
                 }}
                 data-testid={`tax-invoice-form-line-${i}-qty`}
               />
-              <input
-                type="text"
+              <EditableAmountInput
                 inputMode="decimal"
                 value={line.unitPrice}
-                onChange={(e) => updateLine(i, { unitPrice: e.target.value })}
+                onValueChange={(value) => updateLine(i, { unitPrice: value })}
                 disabled={Boolean(isReadOnly)}
                 style={{
                   height: 32,

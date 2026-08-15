@@ -20,6 +20,7 @@ import { PartnerLookupErrorBanner } from '../components/common/PartnerLookupErro
 import { usePageTitle } from '../hooks/usePageTitle'
 import { usePermissions } from '../hooks/usePermissions'
 import { CollaborativeSlipInput } from '../components/collab/CollaborativeSlipInput'
+import { formatEditableAmountInput, parseEditableAmountForServer } from '../utils/editableAmountInput'
 import { createDocCoeditProvider, type DocCoeditProvider } from '../realtime/createCoeditProvider'
 import { getReturnTo, type ReturnNavigationState } from '../utils/returnContract'
 import {
@@ -422,7 +423,7 @@ export function CashReceiptFormPage() {
                   searchPartners={searchPartners}
                   disabled={readOnly || coeditActive}
                 />
-                <CollaborativeSlipInput provider={coeditProvider} fieldPath={`items.${index}.amount`} label="금액" inputMode="numeric" value={line.amount} onValueChange={(value) => patchLine(index, { amount: value.replace(/[^\d.]/g, '') })} readOnly={readOnly} aria-label={`입금 행 ${index + 1} 금액`} />
+              <CollaborativeSlipInput provider={coeditProvider} fieldPath={`items.${index}.amount`} label="금액" inputMode="numeric" value={line.amount} formatValue={formatEditableAmountInput} parseFormattedValue={parseEditableAmountForServer} onValueChange={(value) => patchLine(index, { amount: value })} readOnly={readOnly} aria-label={`입금 행 ${index + 1} 금액`} />
                 <CollaborativeSlipInput provider={coeditProvider} fieldPath={`items.${index}.memo`} label="적요" value={line.memo} onValueChange={(value) => patchLine(index, { memo: value })} readOnly={readOnly} aria-label={`입금 행 ${index + 1} 적요`} />
                 <span style={{ fontSize: 12, color: '#6B7280' }}>{index === state.lines.length - 1 && !line.amount && !line.partnerName ? '새 빈행' : ''}</span>
                 <Button type="button" variant="ghost" onClick={() => removeLine(index)} disabled={readOnly || (state.lines.length === 1 && index === 0)} aria-label={`입금 행 ${index + 1} 삭제`}>삭제</Button>
@@ -486,7 +487,9 @@ export function CashReceiptFormPage() {
               label="금액"
               inputMode="numeric"
               value={state.amount}
-              onValueChange={(value) => patch({ amount: value.replace(/[^\d.]/g, '') })}
+              formatValue={formatEditableAmountInput}
+              parseFormattedValue={parseEditableAmountForServer}
+              onValueChange={(value) => patch({ amount: value })}
               readOnly={readOnly}
               error={errors.amount}
               required
