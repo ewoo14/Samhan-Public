@@ -102,3 +102,33 @@ test('arologis IT uses only the shared gateway attestation entry point', () => {
   )
   assert.doesNotMatch(abstractPostgresIt, /GatewayAttestationMockMvcConfig\.ATTESTATION/)
 })
+
+test('QA evidence never stores reusable JWTs or fixed credential values', () => {
+  const evidenceRoots = [
+    path.join(root, 'docs/qa'),
+    path.join(root, 'docs/qa-shots'),
+  ]
+  const evidenceFiles = []
+  const visit = (directory) => {
+    if (!fs.existsSync(directory)) return
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const target = path.join(directory, entry.name)
+      if (entry.isDirectory()) visit(target)
+      else if (/\.(json|md|txt|ps1|sh)$/.test(entry.name)) evidenceFiles.push(target)
+    }
+  }
+  evidenceRoots.forEach(visit)
+
+  for (const target of evidenceFiles) {
+    const source = fs.readFileSync(target, 'utf8')
+    assert.doesNotMatch(source, /eyJ[A-Za-z0-9_-]{8,}(?:\.[A-Za-z0-9_-]+){2}/, target)
+    for (const line of source.split(/\r?\n/)) {
+      if (/resolveQaCredential|QA_DEV_DEFAULT_PASSWORD/.test(line)) continue
+      assert.doesNotMatch(
+        line,
+        /(?:password|passwd|pwd|api[_-]?key|x-api-key|client[_-]?secret|access[_-]?key)\s*[:=]\s*["'](?!\$\{|<|\{|\*|REDACTED|redacted|wrong-password)[^"']+["']/i,
+        target,
+      )
+    }
+  }
+})
