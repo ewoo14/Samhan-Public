@@ -59,7 +59,7 @@ samhan:
     # §7 결재 첨부 파일 storage. false/default 에서는 NoopApprovalAttachmentStorage fallback.
     enabled: ${SAMHAN_MINIO_ENABLED:false}
     endpoint: ${SAMHAN_MINIO_ENDPOINT:http://localhost:9000}
-      access-key: ${SAMHAN_MINIO_ACCESS_KEY:${SAMHAN_S3_ACCESS_KEY}}
+    access-key: ${SAMHAN_MINIO_ACCESS_KEY:${SAMHAN_S3_ACCESS_KEY}}
     secret-key: ${SAMHAN_MINIO_SECRET_KEY:${MINIO_ROOT_PASSWORD}}
     groupware-approval-bucket: ${SAMHAN_GROUPWARE_APPROVAL_MINIO_BUCKET:groupware-approval-attachments}
 
