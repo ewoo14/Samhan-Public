@@ -290,3 +290,5 @@
 - [🚨🚨 공유 서비스 재배포가 다른 트랙 라이브QA 를 깨뜨린다](feedback_shared_service_redeploy_breaks_other_track_qa.md)
 
 - [🚨 자격이 휘발성 셸 환경에만 있으면 재배포마다 깨진다 — 화면엔 "권한 없음"](feedback_credentials_only_in_volatile_shell_env.md)
+
+- [🚨 opaque id 를 UUID.fromString 으로 직접 파싱하면 500 — Jackson 기본이 이미 지원한다](feedback_manual_uuid_parse_breaks_opaque_id.md)
