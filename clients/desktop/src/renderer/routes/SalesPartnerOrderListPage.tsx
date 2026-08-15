@@ -16,7 +16,6 @@ import {
   DataTable,
   Input,
   OrderNumberDisplay,
-  OrderStatusBadge,
   Select,
   type DataTableColumn,
 } from '@samhan/design-system'
@@ -35,6 +34,7 @@ import { restoreScrollAnchorWhenReady, saveScrollAnchor, type ReturnToLocation }
 import { AuditInfoBanner } from '../components/audit/AuditOverlaySection'
 import { usePageTitleStore } from '../stores/pageTitle'
 import { usePermissions } from '../hooks/usePermissions'
+import { searchPartners } from '../api/partnerApi'
 import { MergeConvertDialog } from './components/MergeConvertDialog'
 import { IndividualConvertDialog } from './components/IndividualConvertDialog'
 import type { IndividualConversionResult } from './components/individualConversion'
@@ -54,6 +54,11 @@ const ORDER_STATUS_FILTER_OPTIONS: Array<{ value: PartnerOrderStatus | ''; label
   { value: 'DRAFT', label: '접수' },
   { value: 'CONVERTED', label: '완료' },
 ]
+const ORDER_STATUS_DISPLAY_LABEL: Record<PartnerOrderStatus, string> = {
+  ...PARTNER_ORDER_STATUS_LABEL,
+  DRAFT: '접수',
+  CONVERTED: '완료',
+}
 
 const krw = (n: number) => new Intl.NumberFormat('ko-KR').format(n)
 // v2 §정정 8 — 'YYYY/MM/DD' 통일.
@@ -200,16 +205,29 @@ export function SalesPartnerOrderListPage() {
   const query = useQuery({
     queryKey: [
       'partner-orders', dateFrom, dateTo, partnerId, statusFilter,
-      slipPublishStatusFilter, searchKeyword, page,
+      slipPublishStatusFilter, searchKeyword, page, canSearchPartners,
     ],
-    queryFn: () => listPartnerOrders(page, 50, {
-      dateFrom: dateFrom || undefined,
-      dateTo: dateTo || undefined,
-      partnerId: partnerId.trim() || undefined,
-      status: statusFilter || undefined,
-      slipPublishStatus: slipPublishStatusFilter || undefined,
-      searchKeyword: searchKeyword.trim() || undefined,
-    }),
+    queryFn: async () => {
+      const result = await listPartnerOrders(page, 50, {
+        dateFrom: dateFrom || undefined,
+        dateTo: dateTo || undefined,
+        partnerId: partnerId.trim() || undefined,
+        status: statusFilter || undefined,
+        slipPublishStatus: slipPublishStatusFilter || undefined,
+        searchKeyword: searchKeyword.trim() || undefined,
+      })
+      if (!canSearchPartners) return result
+      const codes = [...new Set(result.content.filter((row) => !row.partnerName).map((row) => row.partnerCode))]
+      const names = new Map<string, string>()
+      await Promise.all(codes.map(async (code) => {
+        const partner = (await searchPartners(code, { activeOnly: true })).find((item) => item.partnerCode === code)
+        if (partner?.name) names.set(code, partner.name)
+      }))
+      return {
+        ...result,
+        content: result.content.map((row) => ({ ...row, partnerName: row.partnerName ?? names.get(row.partnerCode) ?? null })),
+      }
+    },
     retry: 1,
   })
 
@@ -403,7 +421,9 @@ export function SalesPartnerOrderListPage() {
                 {PARTNER_ORDER_STATUS_LABEL[o.status]}
               </Badge>
             ) : (
-              <OrderStatusBadge status={o.status} />
+              <Badge variant={o.status === 'CONVERTED' ? 'success' : 'warning'}>
+                {ORDER_STATUS_DISPLAY_LABEL[o.status]}
+              </Badge>
             )}
             {publishMeta ? (
               <Badge

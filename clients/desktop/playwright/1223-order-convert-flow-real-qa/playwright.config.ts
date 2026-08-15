@@ -11,6 +11,7 @@ export default defineConfig({
     baseURL: process.env['AUDIT_BASE_URL'],
     viewport: { width: 1440, height: 900 },
     headless: true,
+    animations: 'disabled',
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
 })

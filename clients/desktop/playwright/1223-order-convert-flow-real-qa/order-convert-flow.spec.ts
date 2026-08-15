@@ -17,6 +17,7 @@ async function login(page: Page) {
 
 async function openOrders(page: Page) {
   await page.goto(`${baseUrl}#/sales/partner-orders`, { waitUntil: 'domcontentloaded' })
+  await page.addStyleTag({ content: '*,:before,:after{animation:none!important;transition:none!important}' })
   await expect(page.getByTestId('order-convert-open')).toBeVisible()
   await expect(page.locator('[data-testid^="partner-order-select-"]').first()).toBeVisible()
 }
@@ -46,19 +47,30 @@ test('주문 개별·병합 전환 정본 흐름을 쓰기 없이 확인한다',
   await first.locator('input[type="checkbox"]').check()
   await eligible.nth(secondIndex).locator('input[type="checkbox"]').check()
   await expect(page.getByTestId('merge-convert-selection-count')).toContainText('2')
-  await capture(page, '01-two-orders-selected.png', '사용자는 주문서 관리 목록에서 전환할 두 주문을 체크박스로 선택한다.')
-
   await page.getByTestId('order-convert-open').click()
   await expect(page.getByTestId('individual-convert-choice-buttons')).toBeVisible()
+  await page.waitForTimeout(200)
+  console.log('[MODAL_STYLE]', await page.getByTestId('individual-convert-choice-buttons').evaluate((node) => {
+    const dialog = node.closest('[role="dialog"]') ?? node
+    const style = getComputedStyle(dialog)
+    return { opacity: style.opacity, zIndex: style.zIndex, animation: style.animationName, transition: style.transition }
+  }))
   await expect(page.getByTestId('individual-convert-action')).toHaveText('개별전환')
   await expect(page.getByTestId('merge-convert-action')).toHaveText('병합전환')
-  await capture(page, '02-convert-choice-modal.png', '사용자는 선택 후 출고전표 전환 버튼을 눌러 개별전환·병합전환 중 하나를 고른다.')
+  await capture(page, '05-r2-convert-choice-modal.png', '사용자는 선택 후 출고전표 전환 버튼을 눌러 개별전환·병합전환 중 하나를 고른다.')
 
   await page.getByTestId('merge-convert-action').click()
   await expect(page.getByTestId('merge-convert-preview')).toBeVisible({ timeout: 60_000 })
+  await page.waitForTimeout(200)
+  console.log('[MERGE_MODAL_STYLE]', await page.getByTestId('merge-convert-preview').evaluate((node) => {
+    const dialog = node.closest('[role="dialog"]') ?? node
+    const style = getComputedStyle(dialog)
+    return { opacity: style.opacity, zIndex: style.zIndex, animation: style.animationName, transition: style.transition }
+  }))
   await expect(page.getByTestId('merge-convert-preview-header')).toContainText('첫 번째 주문 기준')
   await expect(page.getByTestId('merge-convert-discarded-header-notice')).toBeVisible()
-  await capture(page, '03-merge-preview-before-approval.png', '사용자는 병합전환을 선택한 뒤 승인 버튼을 누르기 전에 첫 주문 헤더와 병합 품목을 검토한다.')
+  await expect(page.getByTestId('merge-convert-submit')).toHaveAccessibleName('승인')
+  await capture(page, '06-r2-merge-preview-before-approval.png', '사용자는 병합전환을 선택한 뒤 승인 버튼을 누르기 전에 첫 주문 헤더와 병합 품목을 검토한다.')
 
   await page.getByTestId('merge-convert-cancel').click()
   const status = page.getByTestId('partner-order-list-status-filter')
@@ -69,7 +81,10 @@ test('주문 개별·병합 전환 정본 흐름을 쓰기 없이 확인한다',
   await expect(status).toHaveValue('DRAFT')
   await status.selectOption('CONVERTED')
   await expect(status).toHaveValue('CONVERTED')
-  await capture(page, '04-status-filter-all-received-complete.png', '사용자는 상태 필터에서 전체·접수·완료를 선택해 전환 전후 주문을 조회한다.')
+  await status.selectOption('DRAFT')
+  await expect(page.locator('[data-testid^="partner-order-row-"]').first()).toContainText('접수')
+  await expect(page.locator('[data-testid^="partner-order-row-"]').first()).not.toContainText('진행중')
+  await capture(page, '07-r2-status-filter-and-chip.png', '사용자는 상태 필터에서 전체·접수·완료를 선택하고 목록 행의 접수 상태 칩을 확인한다.')
 
   expect(posts.filter((url) => url.includes('convert-to-slip'))).toEqual([])
   console.log(`[QA] POST observed: ${posts.length === 0 ? 'none' : posts.join(', ')}`)

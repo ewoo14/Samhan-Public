@@ -598,7 +598,7 @@ export function MergeConvertDialog({
               mergeMutation.mutate()
             }}
           >
-            {mergeMutation.isPending ? '병합 발행 중…' : '병합 발행 →'}
+            {mergeMutation.isPending ? '승인 처리 중…' : '승인'}
           </Button>
         </>
       }
@@ -1040,10 +1040,10 @@ export function MergeConvertDialog({
 
 /** 모달 내 status 한국어 라벨 (순환 import 방지용 로컬 상수). */
 const PARTNER_ORDER_STATUS_LABEL_LOCAL: Record<string, string> = {
-  DRAFT: '진행중',
+  DRAFT: '접수',
   ON_HOLD: '보류',
   CONFIRMING: '확인중',
   CONFIRMED: '완료',
   CANCELED: '취소',
-  CONVERTED: '전환완료',
+  CONVERTED: '완료',
 }
