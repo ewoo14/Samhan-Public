@@ -60,6 +60,7 @@ import {
   getChatRoomLinkReason,
   getChatRoomPartnerCodeLabel,
   getChatRoomLinkStatus,
+  getChatRoomDeleteConfirmationMessage,
 } from './chatRoomLinkPresentation'
 
 const SOURCE_VARIANT: Record<
@@ -155,11 +156,7 @@ export function ChatRoomsPage() {
 
   function handleDelete(row: ChatRoomMapping) {
     if (!canDeleteChatRoom) return
-    const ok = window.confirm(
-      `다음 매핑을 삭제하시겠습니까?\n\n`
-      + `거래처: ${row.partnerCode} (${row.partnerBusinessName})\n`
-      + `단톡방: ${row.chatRoomName}`,
-    )
+    const ok = window.confirm(getChatRoomDeleteConfirmationMessage(row))
     if (!ok) return
     deleteMutation.mutate(row.id)
   }

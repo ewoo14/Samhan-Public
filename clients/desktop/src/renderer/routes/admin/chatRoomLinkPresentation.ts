@@ -35,3 +35,11 @@ export function getChatRoomPartnerCodeLabel(
 ): string {
   return getChatRoomLinkStatus(row) === 'LINKED' ? row.partnerCode : '미연결'
 }
+
+export function getChatRoomDeleteConfirmationMessage(
+  row: Pick<ChatRoomMapping, 'partnerCode' | 'partnerLinkStatus' | 'partnerBusinessName' | 'chatRoomName'>,
+): string {
+  return `다음 매핑을 삭제하시겠습니까?\n\n`
+    + `거래처: ${getChatRoomPartnerCodeLabel(row)} (${row.partnerBusinessName})\n`
+    + `단톡방: ${row.chatRoomName}`
+}
