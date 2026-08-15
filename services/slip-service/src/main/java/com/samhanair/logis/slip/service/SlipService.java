@@ -47,9 +47,13 @@ import jakarta.persistence.OptimisticLockException;
 import jakarta.persistence.criteria.Predicate;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -388,7 +392,7 @@ public class SlipService {
         }
         if (req.slipType() == SlipType.INBOUND
                 && req.sourceType() == SlipSourceType.INBOUND_XLSX) {
-            slip.assignPublishSource(SlipSourceType.INBOUND_XLSX, normalizedIdempotencyKey,
+            slip.assignPublishSource(SlipSourceType.INBOUND_XLSX, inboundXlsxSourceId(normalizedIdempotencyKey),
                     normalizedIdempotencyKey);
         }
 
@@ -403,6 +407,28 @@ public class SlipService {
                 parseActorId(requesterId), resolveActorName(requesterName, requesterId), null);
         priceMemoryService.rememberBatchAfterCommit(priceMemoryCommands, "slip.create");
         return SlipDetailResponse.from(saved);
+    }
+
+    /**
+     * 가입고 XLSX의 복합 멱등키를 {@code slips.source_id(VARCHAR(64))}에 저장 가능한
+     * 안정적인 opaque 식별자로 변환한다. 원문 키는 별도 {@code idempotency_key(VARCHAR(128))}
+     * 에 보존하므로 재시도 조회 계약은 바뀌지 않는다.
+     *
+     * <p>SHA-256 32바이트를 URL-safe Base64 무패딩으로 인코딩하면 43자이며,
+     * {@code inbound-xlsx:} 접두사를 포함해 56자다. 따라서 현재 source_id 한도 64자보다
+     * 8자 여유가 있고, 파일명·창고코드·청크번호가 길어져도 저장 길이는 변하지 않는다.
+     */
+    private static String inboundXlsxSourceId(String idempotencyKey) {
+        if (idempotencyKey == null) {
+            return null;
+        }
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256")
+                    .digest(idempotencyKey.getBytes(StandardCharsets.UTF_8));
+            return "inbound-xlsx:" + Base64.getUrlEncoder().withoutPadding().encodeToString(digest);
+        } catch (NoSuchAlgorithmException e) {
+            throw new IllegalStateException("SHA-256 digest is unavailable", e);
+        }
     }
 
     private static String normalizeOptionalKey(String value) {

@@ -333,6 +333,60 @@ class SlipControllerIT extends AbstractPostgresIT {
     }
 
     @Test
+    void inboundXlsxCreate_with85CharacterKey_reachesDatabaseWithoutSourceIdOverflow() throws Exception {
+        UUID accountId = UUID.randomUUID();
+        String idempotencyKey = "inbound-xlsx:"
+                + "a".repeat(64)
+                + ":00003:1";
+        assertThat(idempotencyKey).hasSize(85);
+        Map<String, Object> body = createInboundSlipBody();
+        body.put("partnerCode", "1248100998");
+        body.put("partnerName", "삼성전자(주)");
+        body.put("sourceType", "INBOUND_XLSX");
+        body.put("idempotencyKey", idempotencyKey);
+
+        Mockito.when(dynamicPermissionClient.check(
+                        ArgumentMatchers.eq(accountId),
+                        ArgumentMatchers.eq("purchases.slip.edit"),
+                        ArgumentMatchers.eq(PermissionAction.UPDATE)))
+                .thenReturn(true);
+        Mockito.when(dynamicPermissionClient.check(
+                        ArgumentMatchers.eq(accountId),
+                        ArgumentMatchers.eq("sales.slip.create"),
+                        ArgumentMatchers.eq(PermissionAction.CREATE)))
+                .thenReturn(false);
+
+        MvcResult first = mockMvc.perform(post("/slips")
+                        .header("X-User-Id", accountId.toString())
+                        .header("X-User-Role", "WAREHOUSE")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isCreated())
+                .andReturn();
+
+        String firstId = objectMapper.readTree(first.getResponse().getContentAsString())
+                .get("data").get("id").asText();
+        var saved = slipRepository.findByIdempotencyKeyAndIsDeletedFalse(idempotencyKey).orElseThrow();
+        assertThat(saved.getSourceType().name()).isEqualTo("INBOUND_XLSX");
+        assertThat(saved.getSourceId()).startsWith("inbound-xlsx:").hasSize(56);
+        assertThat(saved.getIdempotencyKey()).isEqualTo(idempotencyKey);
+
+        MvcResult retry = mockMvc.perform(post("/slips")
+                        .header("X-User-Id", accountId.toString())
+                        .header("X-User-Role", "WAREHOUSE")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(body)))
+                .andExpect(status().isCreated())
+                .andReturn();
+        String retryId = objectMapper.readTree(retry.getResponse().getContentAsString())
+                .get("data").get("id").asText();
+        assertThat(retryId).isEqualTo(firstId);
+        assertThat(slipRepository.findAll().stream()
+                .filter(slip -> idempotencyKey.equals(slip.getIdempotencyKey()))
+                .count()).isEqualTo(1);
+    }
+
+    @Test
     void salesAccount_createOutboundSlip_returns201_withoutPurchasesGrant() throws Exception {
         UUID accountId = UUID.randomUUID();
         Mockito.when(dynamicPermissionClient.check(
