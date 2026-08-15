@@ -18,7 +18,7 @@
  * UUID 비공개 가드: 사용자에게는 journalNo / accountCode 만 노출. line.id /
  * journal.id 는 화면 표시 X.
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type KeyboardEvent } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -572,7 +572,22 @@ export function JournalFormPage() {
           </div>
         ) : (
           <>
-            <div className="journal-line-grid-scroll">
+            <div
+              className="journal-line-grid-scroll"
+              onKeyDownCapture={(event: KeyboardEvent<HTMLDivElement>) => {
+                if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return
+                const target = event.target as HTMLInputElement
+                const match = target.getAttribute('aria-label')?.match(/^라인 (\d+) (차변|대변)$/)
+                if (!match) return
+                const lineIndex = Number(match[1]) - 1
+                if (!Number.isInteger(lineIndex) || lineIndex < 0 || lineIndex >= lines.length) return
+                event.preventDefault()
+                const field = match[2] === '차변' ? 'debit' : 'credit'
+                const current = lines[lineIndex]?.[field] ?? 0
+                const next = Math.max(0, current + (event.key === 'ArrowUp' ? 1 : -1))
+                updateLine(lineIndex, { [field]: next }, true)
+              }}
+            >
               {/* 라인 헤더 */}
               <div
                 className="journal-line-grid-header"
