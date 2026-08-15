@@ -35,7 +35,7 @@ const detail = (orderNumber: string): PartnerOrderDetail => ({
 
 it('keeps successful conversions when a later order fails and reports each order', async () => {
   const convert = vi.fn()
-    .mockResolvedValueOnce({ slipNo: 'SLIP-1', orderStatus: 'CONVERTED', fullyConverted: true })
+    .mockResolvedValueOnce({ slipNo: '2026/05/31-1', orderStatus: 'CONVERTED', fullyConverted: true })
     .mockRejectedValueOnce(new Error('재고 부족'))
 
   const result = await runIndividualConversions(
@@ -50,7 +50,7 @@ it('keeps successful conversions when a later order fails and reports each order
     items: [{ orderLineId: 'line-ORDER-1', quantity: 2 }],
   })
   expect(result).toEqual([
-    { orderNumber: 'ORDER-1', status: 'success', slipNo: 'SLIP-1' },
+    { orderNumber: 'ORDER-1', status: 'success', slipNo: '2026/05/31-1' },
     { orderNumber: 'ORDER-2', status: 'failed', reason: '재고 부족' },
   ])
 })

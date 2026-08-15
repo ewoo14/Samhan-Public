@@ -385,7 +385,7 @@ describe('SalesPartnerOrderListPage merge selection', () => {
         row({ orderNumber: '2026/05/31-select-2', partnerCode: 'P-A', partnerName: 'A', status: 'ON_HOLD' }),
         row({ orderNumber: '2026/05/31-select-3', partnerCode: 'P-B', partnerName: 'B', status: 'DRAFT' }),
         row({ orderNumber: '2026/05/31-select-4', partnerCode: 'P-A', partnerName: 'A', status: 'CONFIRMING' }),
-        row({ orderNumber: '2026/05/31-select-5', partnerCode: 'P-A', partnerName: 'A', status: 'CONVERTED', linkedSlipNo: 'SLIP-OLD' }),
+        row({ orderNumber: '2026/05/31-select-5', partnerCode: 'P-A', partnerName: 'A', status: 'CONVERTED', linkedSlipNo: '2026/05/31-2' }),
       ],
       totalElements: 5,
       totalPages: 1,
