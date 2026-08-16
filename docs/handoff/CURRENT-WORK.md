@@ -67,6 +67,57 @@ Expo 는 네비게이터 배선부터 · #1240 은 Cloudflare 로 이전
 확인 필요건은 항상 선택지로 올린다
 ```
 
+## 🔑 자격 회전 — 다음 세션에서 수행 (개발책임자 승인 완료 · 실행만 남음)
+
+2026-08-16 검증 중 codex 세션 출력에 자격 값이 노출됐다. 회전은 승인됐고 **스크립트까지 준비돼 있다.**
+
+```text
+scripts/ops/rotate-credentials-phase1.ps1   앱 시크릿 4개 (저위험)
+scripts/ops/rotate-credentials-phase2.ps1   인프라 공유 비밀번호 1개 (고위험)
+```
+
+### 회전 대상 — 9키가 실제로는 6개 값
+
+```text
+757dafe9  DB_PASSWORD = POSTGRES_PASSWORD = RABBIT_PASSWORD
+          = RABBITMQ_DEFAULT_PASS = MINIO_ROOT_PASSWORD = SAMHAN_S3_SECRET_KEY
+          ⟹ 인프라 4종이 비밀번호 하나를 공유한다
+0ec39e75  DB_USER = POSTGRES_USER = RABBIT_USER
+          = RABBITMQ_DEFAULT_USER = MINIO_ROOT_USER = SAMHAN_S3_ACCESS_KEY
+443e251d  SAMHAN_GATEWAY_ATTESTATION      독립
+cb9b211f  SAMHAN_INTERNAL_TOKEN           독립
+153cd5d4  SAMHAN_JWT_SECRET               독립
+4c3f6e4f  SAMHAN_AROLOGIS_JWT_SECRET      독립
+```
+
+### 실행 순서
+
+```text
+0  진행 중 codex 라운드가 없는지 확인한다
+   🚨 라운드가 공유 DB 를 pg_dump 로 읽는 중이면 비밀번호 변경이 그 라운드를 깬다
+
+1  phase1 실행 → .env.local 백업 · 앱 시크릿 4개 교체 · 인프라 키 불변 확인
+2  전 서비스 재배포 → 헬스 확인
+   🚨 compose 가 :?required 로 19키를 요구한다. 반쪽 재배포는 mesh 를 깬다 (실측 2회)
+3  phase1 이 깨끗하면 phase2
+   PostgreSQL ALTER USER → 새 비밀번호 접속 검증 (실패 시 .env.local 미변경 상태로 중단)
+   RabbitMQ change_password → authenticate_user 검증
+   .env.local 6개 키 동시 갱신
+   MinIO 컨테이너 재생성 (root 자격이 env 기반 · 데이터 볼륨 유지)
+4  14개 전체 재배포 → 헬스 확인
+5  9개 워크트리에 .env.local 동기화
+   🚨 동기화 시 형식 검증을 먼저 하고 덮어라 — 이번 세션에서 옛 값이 덮인 사고가 있었다
+```
+
+### 🚩 범위를 좁힌 부분 (PM 판단 · 개발책임자 확인 필요)
+
+```text
+사용자명(DB_USER · MINIO_ROOT_USER · RABBIT_USER · SAMHAN_S3_ACCESS_KEY)은 회전하지 않는다
+  비밀이 아니고, 바꾸려면 새 PostgreSQL role 생성 + 소유권 이관 + MinIO 루트 교체가 필요해
+  실패 시 데이터 접근이 막힐 위험이 크다
+사용자명까지 바꿔야 한다면 별도 작업으로 계획을 다시 세운다
+```
+
 ## ⏸️ 개발책임자 조치 대기
 
 ```text
