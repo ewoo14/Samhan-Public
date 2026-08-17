@@ -130,6 +130,7 @@
 - [🚨 머지 안 된 마이그레이션이 다른 트랙…](feedback_unmerged_migration_blocks_other_tracks.md)
 - [🚨🚨 백엔드 트랙은 직렬화 — 병렬 트랙이…](feedback_parallel_backend_tracks_share_docker_stack.md)
 - [🚨 `git worktree add` 는…](feedback_git_worktree_cwd_use_dash_c.md)
+- [🚨 `cd … && …` 복합은 항상 권한창 — `git -C`·절대경로](feedback_no_cd_compound_use_git_dash_c.md)
 - [🚨 새 테스트마다 "이 단정이 Linux…](feedback_new_test_needs_linux_skip_guard.md)
 - [🚨 새 워크트리에는 gitignore 된…](feedback_worktree_missing_gitignored_inputs.md)
 - [🚨 지우기 전에 `git ls-files`…](feedback_check_tracked_before_delete.md)
