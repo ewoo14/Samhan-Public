@@ -11,15 +11,29 @@ You've hit your usage limit. … try again at Aug 20th, 2026 12:31 PM.
 **새 codex 라운드를 발주할 수 없다.** 계정 한도라 `TERRA` 폴백도 안 듣는다
 (`feedback_model_substitution_delegated_to_pm` 의 "at capacity" 와 다른 상황).
 
-### 선택지 (개발책임자 결정 대기)
+### ✅ 개발책임자 결정 (2026-08-18) — **한도 회복까지 대기**
 
-| | 방안 | 내용 |
-|---|---|---|
-| **①** | **크레딧 구매** | https://chatgpt.com/codex/settings/usage · 즉시 재개 |
-| ② | 대기 | 8/20 12:31 까지 정지 |
-| ③ | Claude 서브에이전트 | 🚫 기록된 규칙이 금지 — 같은 토큰 풀이라 절약 0 |
+> *"그래 그러면 코덱스 토큰 회복될때까지 기다릴게. 우선 핸드오프로 정리 부탁해."*
 
-🚩 **PM 권장 ①.** 파이프라인이 가장 잘 돌던 시점이다.
+```text
+재개 가능 시각  2026-08-20 12:31 (또는 크레딧 충전 시 즉시)
+              https://chatgpt.com/codex/settings/usage
+```
+
+🚫 Claude 서브에이전트로 대체하지 않는다 — 같은 토큰 풀이라 절약이 0 이다
+   (`feedback_pm_delegate_to_codex_conserve_tokens`)
+
+### 🔁 재개 순서 (권장)
+
+```text
+1  공유 QA 계정 1068689215 잠금 해제        ← 아래 §"공유 QA 계정 잠금" 참조
+2  #1268  golden fixture 기대값 갱신        ← 가장 가깝다. 한 라운드면 머지
+3  #1265  SOL 재판정 4회차
+4  #1271  브리핑 순화 후 SOL 판정
+5  #1245  라이브 확인 · SOL 적대검증
+6  #1251  범위 좁혀 증상 재현부터
+7  #1268 머지 후 → 판넬·자재·할인 축으로 하드코딩 제거 확대 → #1269 보류 해제
+```
 
 ---
 
@@ -137,7 +151,26 @@ feedback_daily_closing_uses_estimate_items A-2 탭 분류 레거시 정본 확�
 대체      최종 증거는 resolveQaCredential() 과 일치하는 9999000001 로 수집
 ```
 
-🚩 **잠금을 풀지 여부가 개발책임자 판단이다.** 그 계정을 다른 데서 쓰고 있으면 지금 막혀 있다.
+### ✅ 개발책임자 지시 (2026-08-18) — **메뉴에서 풀고 진행**
+
+> *"메뉴에서 잠금해제(잠금 → 승인 상태로 변경)하여 진행요망"*
+
+🚨 **재개 시 가장 먼저 할 일이다.** PM 이 경로를 확인해 뒀다.
+
+```text
+서비스   partner-auth-service
+경로     PartnerApprovalService.updateStatus(partnerCode, APPROVED)
+동작     services/partner-auth-service/.../service/PartnerApprovalService.java:118-126
+           status == PENDING      → approvePending()
+           status == LOCKED       → unlock()          ← 이 계정이 해당
+           status == LONG_UNUSED  → restoreFromLongUnused()
+결과     PartnerAuth.unlock() 이 failedAttempts = 0 으로 되돌리고 잠금을 푼다
+           services/partner-auth-service/.../domain/PartnerAuth.java:235-237
+```
+
+⟹ **거래처 승인 관리 메뉴에서 `1068689215` 를 「승인」으로 바꾸면 된다.**
+🚫 DB 직접 UPDATE 로 풀지 마라 — 화면 경로로 하라는 지시다.
+
 🚨 재발 방지 — QA 브리핑에 "자격은 `resolveQaCredential()` 로만 얻고, 임의 계정으로 시도하지 마라" 를 넣어야 한다.
 
 ---
