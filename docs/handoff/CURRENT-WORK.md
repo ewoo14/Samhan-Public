@@ -181,6 +181,23 @@ feedback_daily_closing_uses_estimate_items A-2 탭 분류 레거시 정본 확�
 권한 모드     bypassPermissions (.claude/settings.local.json)
 워크트리      본체 + w1234 · w1240 · wd03 · wdps · wslip · wsrd · (wcat/wdcp/wdc70/wp2/wuuid 회수됨)
               전부 미커밋 0
-공유 컨테이너  24개 유지 · 격리 컨테이너 0
+공유 컨테이너  24개 유지 (unhealthy 0) · 격리 컨테이너 0
+QA 포트       잔여 listener 0
 main          origin 과 격차 0
+원격 브랜치    머지된 6건 잔재 0
+```
+
+### 🚩 세션 종료 시 회수한 것
+
+```text
+라운드들이 "회수 완료" 로 보고했지만 실제로 남아 있던 것
+  java 4개  포트 28081 · 28085 · 28185 · 28186   (브랜치 JAR)
+  node 2개  포트 5195 · 5196                     (renderer dev server)
+  격리 컨테이너 2개  codex-1271-sol-r3b-pg · codex-1271-r3-pg
+
+🚨 라운드 보고의 "프로세스 잔여 0" 을 그대로 믿지 마라.
+   세션 종료 전에 PM 이 포트를 직접 훑어야 한다
+   (`feedback_qa_processes_leak_and_starve_machine`)
+🚩 특히 **중단·실패한 라운드**는 회수 단계에 도달하지 못해 반드시 남긴다.
+   이번엔 보안 필터로 죽은 #1271 판정과 PM 이 중단시킨 #1269 판정이 그랬다
 ```
